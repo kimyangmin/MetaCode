@@ -15,8 +15,9 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
 
 ## 현재 상태
 
-- **Phase 1 (인증과 사용자) 진행 중.** GitHub 로그인(웹/데스크톱), 세션, 프로필, Presence, 운영용 구성은 끝났습니다. 남은 것은 사용자가 Oracle Cloud 서버에서 `docs/deploy.md`대로 첫 배포를 하는 것입니다.
-- 개발용 GitHub OAuth App(`localhost` 콜백)으로 웹·데스크톱 실제 로그인을 확인했습니다 (2026-09-26).
+- **Phase 1 (인증과 사용자) 완료, Phase 2 (채팅 모드 MVP) 구현 완료.** 다음은 Phase 3 (파일·이미지 첨부)입니다.
+- **운영 중:** https://metacode.kimyangmin.me (2026-09-26 첫 배포, `main` 기준). 서버는 SSH 별칭 `myserver3`(ubuntu, `~/MetaCode`)로 접속할 수 있고, 업데이트는 `git pull` 후 `docker compose -f infra/docker-compose.prod.yml --env-file .env.production up -d --build`입니다. DB 백업은 서버 crontab이 매일 04:00 KST(19:00 UTC)에 `infra/backup.sh`를 실행합니다 (`~/MetaCode/backups/`, 14일 보관, 로그 `backups/backup.log`). 운영 서버에서 무언가를 바꾸기 전에는 사용자에게 확인받습니다.
+- 개발용 GitHub OAuth App(`localhost` 콜백)으로 웹·데스크톱, 운영용 OAuth App으로 운영 웹의 실제 로그인을 확인했습니다 (2026-09-26).
 - 기술 스택은 README 표대로 확정되었습니다 (2026-09-26).
 - Phase를 진행하면 이 섹션과 README 로드맵 체크박스를 함께 갱신합니다.
 
@@ -59,6 +60,17 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
 - **Presence 한계:** 서버가 시작할 때 Redis의 Presence 키를 모두 지웁니다 (비정상 종료로 남은 연결 정리). 서버가 한 대라는 전제이므로, 여러 대로 늘리면 인스턴스별 키 + 만료 시간으로 바꿔야 합니다.
 - **sandbox preload:** preload는 `electron` 외에는 require할 수 없어서 로컬 파일도 import하지 못합니다. IPC 채널 이름은 `apps/desktop/src/main/index.ts`와 `preload/index.ts`에 똑같이 적어 둡니다.
 - **데스크톱 로그인은 루프백, 커스텀 스킴 아님:** 처음에는 `metacode://` 딥링크로 앱에 돌아오게 했지만, 브라우저마다 다른 앱 열기를 막거나(사용자 기본 브라우저 Comet에서 실제로 동작 안 함) 확인 창을 띄워서 루프백(RFC 8252)으로 바꿨습니다. 커스텀 스킴이 다시 필요해지면(예: 초대 링크로 앱 열기) 로그인과 별개로 도입합니다.
+- **채팅 구조 (Phase 2):**
+  - 서버: `apps/server/src/chat/`. 권한 판단은 `AccessService` 한 곳에서 합니다 (권한 없으면 존재 여부도 숨기려고 404).
+  - 실시간: `ChatGateway`가 접속 때 인증하고, 볼 수 있는 커뮤니티/채널 방에 넣습니다. 메시지는 방 단위로만 보내므로 권한 없는 채널의 메시지는 받지 않습니다. 멤버십이 바뀌면(참여, 탈퇴, 채널 생성, DM 생성) HTTP 쪽 서비스가 `RealtimeService`로 방 구성을 바로 고칩니다.
+  - 메시지 보내기는 WebSocket(`message:send` + ack), 기록 조회와 읽음 처리는 HTTP입니다.
+  - PostgreSQL에는 uuid용 `max()`가 없어서 채널별 최신 메시지는 `DISTINCT ON`으로 구합니다 (`ChannelSummaryService`).
+  - 웹: `RealtimeProvider`가 소켓 하나를 유지하고 서버 이벤트로 TanStack Query 캐시를 고칩니다. 온라인 상태와 입력 중 표시는 zustand 스토어에 둡니다. 재연결하면 전체 쿼리를 다시 불러옵니다.
+  - 메시지 목록은 `column-reverse`로 그려 맨 아래가 기준점입니다. 이전 기록은 위쪽 끝 요소를 IntersectionObserver로 감지해 불러옵니다 (페이지가 그려지지 않는 숨은 탭에서는 동작하지 않음).
+  - 입력창은 한글 조합 중 Enter(`isComposing`, keyCode 229)로 보내지 않습니다.
+  - 라우터: 웹은 일반 주소, 데스크톱은 해시 주소(`#/c/...`). 로그인 전에 연 초대 링크는 sessionStorage에 기억했다가 로그인 후 이어 갑니다.
+  - 아직 없는 것: 메시지 수정/삭제, 보내기 속도 제한, 모바일 화면(가로 1000px 미만이면 멤버 목록만 숨김).
+- **여러 사용자로 확인:** `tools/fake-github.mjs`(가짜 GitHub, 앨리스/밥/캐롤) + 서버를 `GITHUB_OAUTH_URL`/`GITHUB_API_URL`=`http://localhost:4010`으로 띄웁니다. 두 번째 사용자는 다른 브라우저나 스크립트(socket.io-client)로 접속합니다.
 - **Windows에서 파일 수정:** Windows PowerShell 5.1의 `Get-Content`/`Set-Content`는 UTF-8 한글을 깨뜨립니다. 파일 수정은 편집 도구나 bash를 씁니다.
 
 ## 확정된 결정
@@ -144,12 +156,15 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
 - 이름은 `도메인:동작` 형식입니다. 도메인: `message`, `channel`, `plaza`, `presence`, `voice`, `typing`
 - 클라이언트 → 서버는 명령형, 서버 → 클라이언트는 과거형으로 짓습니다.
   - `message:send` → `message:created`
+  - `typing:start` → `typing:started` (보낸 연결 제외)
+  - `channel:created`, `dm:created`, `community:member-joined` / `member-left` / `deleted`, `presence:changed`
   - `plaza:watch` / `plaza:unwatch`: 광장 화면을 열고 닫을 때 (위치 업데이트 구독)
   - `plaza:move` → `plaza:moved`
   - 광장 인원 변화 → `plaza:roster`
   - `voice:join` / `voice:leave` → `voice:joined` / `voice:left`
   - `voice:setProximity` → `voice:proximityChanged`
-- Socket.IO room 이름은 `channel:<channelId>`, `plaza:<plazaId>` 형식을 씁니다.
+- Socket.IO room 이름은 `user:<userId>`, `community:<communityId>`, `channel:<channelId>`, `plaza:<plazaId>` 형식을 씁니다.
+- 이벤트 이름과 페이로드 타입은 `packages/shared/src/events`의 `SocketEvent`, `ClientToServerEvents`, `ServerToClientEvents`에만 정의합니다.
 
 ## 인증 흐름
 
@@ -175,17 +190,19 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
 - **WebSocket:** 핸드셰이크에서 인증합니다. 웹은 쿠키, 데스크톱은 `auth.token`을 씁니다. 실패하면 서버가 연결을 끊고, 웹은 세션을 갱신한 뒤 한 번 다시 연결합니다.
 - **보호된 API:** `@UseGuards(AuthGuard)` + `@CurrentUserId()`. `AuthGuard`는 전역 `AuthCoreModule`에 있어서 어느 모듈에서든 쓸 수 있습니다.
 
-## 도메인 모델 (초안)
+## 도메인 모델
 
-Phase 1~2에서 Prisma 스키마로 구체화합니다. 바꿔도 되지만 바꾸면 여기도 고칩니다.
+`apps/server/prisma/schema.prisma`가 기준입니다. 바꾸면 여기도 고칩니다.
 
 - `User` (구현됨): githubId, username, displayName, avatarUrl. characterId는 Phase 6에서 추가
 - `RefreshToken` (구현됨): userId, tokenHash, familyId, client, expiresAt, revokedAt
-- `Community`: name, ownerId / `CommunityMember`: userId, communityId, role
-- `Channel`: type(`TEXT` | `VOICE` | `DM` | `GROUP_DM`), communityId(DM이면 null), name, proximityVoice(`VOICE`, `DM`, `GROUP_DM`에서 사용)
+- `Community` (구현됨): name, ownerId / `CommunityMember`: userId, communityId, role(`OWNER` | `ADMIN` | `MEMBER`) / `Invite`: code(8자), expiresAt(7일), uses
+- `Channel` (구현됨): type(`TEXT` | `VOICE` | `DM` | `GROUP_DM`), communityId(DM이면 null), name, position, proximityVoice, dmKey(1:1 DM 중복 방지)
   - `ChannelMember`: DM 참여자. 커뮤니티 채널의 접근은 커뮤니티 멤버십(추후 채널 권한)으로 판단
   - 광장은 테이블이 아닙니다. 채널에서 계산합니다: `TEXT`·`VOICE` → `community:<communityId>`(분수 광장), `DM`·`GROUP_DM` → `dm:<channelId>`(모닥불 캠프)
-- `Message`: channelId(`TEXT`, `DM`, `GROUP_DM`), authorId, content, createdAt / `Attachment`: messageId, url, mimeType, size(기본 최대 50MB)
+- `Message` (구현됨): channelId, authorId, content(최대 4000자), createdAt. id가 UUIDv7이라 id 순서 = 시간 순서
+- `ChannelReadState` (구현됨): channelId, userId, lastReadMessageId. 앞으로만 옮긴다
+- `Attachment` (Phase 3): messageId, url, mimeType, size(기본 최대 50MB)
 - `Character`: 에셋 키, 커스터마이징 값
 
 ## 도트 에셋 규격

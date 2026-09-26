@@ -175,10 +175,10 @@ DB를 `backups/`에 압축 덤프로 저장하고 14일 지난 파일은 지웁�
 sh infra/backup.sh
 ```
 
-매일 새벽 4시에 자동으로 실행하려면 `crontab -e`에 추가합니다 (경로는 클론한 위치에 맞게):
+매일 자동으로 실행하려면 `crontab -e`에 추가합니다 (경로는 클론한 위치에 맞게). Oracle Cloud 서버의 시계는 기본으로 UTC이므로, 한국 시간 04:00은 `19:00 UTC`로 적습니다. 서버 시간대는 `timedatectl`로 확인합니다.
 
 ```
-0 4 * * * cd /home/ubuntu/MetaCode && sh infra/backup.sh >> backups/backup.log 2>&1
+0 19 * * * cd /home/ubuntu/MetaCode && sh infra/backup.sh >> backups/backup.log 2>&1
 ```
 
 백업은 같은 서버 디스크에 남으므로, 서버가 통째로 사라지는 경우까지 대비하려면 `backups/`를 Oracle Object Storage 같은 다른 곳에 주기적으로 복사하세요. 첨부 파일(SeaweedFS) 백업은 Phase 3에서 파일 업로드를 만들 때 추가합니다.
