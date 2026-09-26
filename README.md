@@ -128,12 +128,12 @@ DM, 그룹 DM  →  모닥불 캠프 1개씩 (대화 기록 + 통화)
 | 분할 화면 | react-resizable-panels | VSCode식 크기 조절 패널 |
 | 백엔드 | Node.js 24 + NestJS 12 (ESM) | 모듈 단위 구조(인증, 채팅, 광장, 음성), WebSocket 게이트웨이 |
 | 실시간 통신 | Socket.IO (+ Redis adapter) | 방 단위 브로드캐스트, 서버 수평 확장 |
-| DB | PostgreSQL + Prisma | 커뮤니티, 채널, 메시지 같은 관계형 데이터 |
+| DB | PostgreSQL 17 + Prisma 7 | 커뮤니티, 채널, 메시지 같은 관계형 데이터 |
 | 캐시·Presence | Redis | 온라인 상태, 광장 위치 같은 휘발성 데이터, pub/sub |
 | 파일 저장소 | SeaweedFS (S3 호환, 셀프 호스팅) | presigned URL로 클라이언트가 직접 업로드. AWS S3 없이 서버에서 직접 운영 |
 | 운영 | Oracle Cloud Ubuntu + Docker Compose + Caddy | 서버 한 대에서 전체 운영, Caddy가 HTTPS 인증서 자동 발급 |
 | 음성 통화 | LiveKit (WebRTC SFU) | 다자간 음성, 참여자별 구독 제어(근접 음성), 오픈소스라 셀프 호스팅 가능 |
-| 인증 | GitHub OAuth 2.0 + JWT | 웹은 HttpOnly 쿠키, 데스크톱은 딥링크(`metacode://`)로 로그인 완료 |
+| 인증 | GitHub OAuth 2.0 + JWT | 웹은 HttpOnly 쿠키, 데스크톱은 루프백(`127.0.0.1`)으로 로그인 완료 |
 | 검증 | zod | 클라이언트/서버 공용 스키마 |
 | 테스트 | Vitest 5, Playwright | 단위 테스트 / E2E |
 
@@ -201,8 +201,13 @@ MetaCode/
 │   ├── characters/       # 캐릭터 에셋 (추후 추가)
 │   └── maps/             # 분수 광장, 모닥불 캠프 맵 (추후 추가)
 │       └── <맵>/themes/<테마>/  # 테마별 타일셋, 장식 (default, winter ...)
-└── infra/
-    └── docker-compose.yml  # PostgreSQL, Redis, SeaweedFS(S3), LiveKit
+├── infra/
+│   ├── docker-compose.yml       # 개발용: PostgreSQL, Redis, SeaweedFS(S3)
+│   ├── docker-compose.prod.yml  # 운영용: + Caddy(HTTPS), 서버, 마이그레이션
+│   ├── caddy/                   # Caddyfile, 웹 빌드를 담은 Caddy 이미지
+│   └── backup.sh                # 운영 DB 백업
+└── docs/
+    └── deploy.md                # 운영 서버 배포 안내
 ```
 
 ---
@@ -222,12 +227,13 @@ MetaCode/
 - [x] `.env.example` 작성
 
 ### Phase 1: 인증과 사용자
-- [ ] GitHub OAuth 로그인 / 로그아웃 (웹)
-- [ ] 데스크톱 로그인: 시스템 브라우저로 GitHub 인증 → `metacode://` 딥링크로 앱 복귀
-- [ ] JWT 발급, 갱신
-- [ ] 사용자 프로필 (GitHub 닉네임, 아바타 연동)
-- [ ] 온라인 상태(Presence): WebSocket 연결 기준
-- [ ] 운영용 구성 (Docker Compose + Caddy HTTPS), Oracle Cloud 서버에 첫 배포
+- [x] GitHub OAuth 로그인 / 로그아웃 (웹)
+- [x] 데스크톱 로그인: 시스템 브라우저로 GitHub 인증 → 루프백(`127.0.0.1`)으로 앱 복귀
+- [x] JWT 발급, 갱신
+- [x] 사용자 프로필 (GitHub 닉네임, 아바타 연동)
+- [x] 온라인 상태(Presence): WebSocket 연결 기준
+- [x] 운영용 구성 (Docker Compose + Caddy HTTPS, 백업 스크립트, 배포 안내서)
+- [ ] Oracle Cloud 서버에 첫 배포 ([docs/deploy.md](docs/deploy.md))
 
 ### Phase 2: 채팅 모드 MVP
 - [ ] 기본 레이아웃 (사이드바 + 채팅 패널)
@@ -319,6 +325,8 @@ fix(plaza): 광장 퇴장 시 캐릭터가 남아있는 문제 수정
 
 ## 시작하기
 
+개발 환경 설정입니다. 운영 서버 배포는 [docs/deploy.md](docs/deploy.md)를 봅니다.
+
 ### 필요한 도구
 
 - Node.js 22 이상 (24 권장, `.nvmrc` 참고)
@@ -340,6 +348,35 @@ pnpm infra:up
 ```
 
 `pnpm infra:up`은 PostgreSQL(5433), Redis(6379), SeaweedFS(S3 API 9000)를 띄우고 첨부 파일 버킷을 만듭니다.
+
+DB 테이블을 만듭니다 (스키마가 바뀔 때마다 다시 실행):
+
+```bash
+pnpm --filter @metacode/server db:migrate
+```
+
+`.env`에 `JWT_SECRET`을 채웁니다 (32자 이상 무작위 값):
+
+```bash
+openssl rand -base64 48
+```
+
+### GitHub 로그인 설정
+
+GitHub에서 **OAuth App**을 만들고 값을 `.env`에 넣어야 로그인할 수 있습니다. 비워 두면 서버는 뜨지만 로그인 버튼이 동작하지 않습니다.
+
+1. GitHub → Settings → Developer settings → OAuth Apps → **New OAuth App**
+2. 다음과 같이 입력합니다.
+
+   | 항목 | 값 |
+   | --- | --- |
+   | Application name | `MetaCode (dev)` |
+   | Homepage URL | `http://localhost:5173` |
+   | Authorization callback URL | `http://localhost:3000/auth/github/callback` |
+
+3. 만든 앱의 **Client ID**와, **Generate a new client secret**으로 만든 값을 `.env`의 `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`에 넣습니다.
+
+GitHub OAuth App은 콜백 URL을 하나만 받으므로, 운영 서버용 앱은 따로 만듭니다.
 
 ### 개발 서버
 
@@ -363,3 +400,7 @@ pnpm dev:desktop
 | `pnpm lint` | ESLint |
 | `pnpm format` / `pnpm format:check` | Prettier 적용 / 검사 |
 | `pnpm infra:up` / `pnpm infra:down` | 로컬 인프라 시작 / 중지 |
+| `pnpm --filter @metacode/server db:migrate` | 스키마 변경을 마이그레이션으로 만들고 로컬 DB에 적용 |
+| `pnpm --filter @metacode/server db:studio` | DB 내용을 브라우저에서 보기 (Prisma Studio) |
+
+`pnpm test`의 서버 테스트는 실제 PostgreSQL과 Redis를 쓰므로 `pnpm infra:up`이 먼저 필요합니다. 개발 DB는 건드리지 않고 `metacode_test` DB와 Redis 1번 DB를 따로 씁니다.

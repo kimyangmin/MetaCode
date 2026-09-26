@@ -13,6 +13,7 @@ out/
 .env
 .env.*
 !.env.example
+!.env.production.example
 
 # 테스트
 coverage/
@@ -28,3 +29,9 @@ Thumbs.db
 .idea/
 .vscode/*
 !.vscode/extensions.json
+
+# Prisma가 생성하는 클라이언트 (빌드할 때 prisma generate로 다시 만든다)
+apps/server/src/generated/
+
+# 운영 서버 DB 백업 (infra/backup.sh)
+backups/

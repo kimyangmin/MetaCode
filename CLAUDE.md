@@ -15,7 +15,8 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
 
 ## 현재 상태
 
-- **Phase 0 (프로젝트 기반) 완료.** 다음은 Phase 1 (인증과 사용자)입니다. CI는 원격에 올린 뒤 첫 실행을 확인해야 합니다.
+- **Phase 1 (인증과 사용자) 진행 중.** GitHub 로그인(웹/데스크톱), 세션, 프로필, Presence, 운영용 구성은 끝났습니다. 남은 것은 사용자가 Oracle Cloud 서버에서 `docs/deploy.md`대로 첫 배포를 하는 것입니다.
+- 개발용 GitHub OAuth App(`localhost` 콜백)으로 웹·데스크톱 실제 로그인을 확인했습니다 (2026-09-26).
 - 기술 스택은 README 표대로 확정되었습니다 (2026-09-26).
 - Phase를 진행하면 이 섹션과 README 로드맵 체크박스를 함께 갱신합니다.
 
@@ -32,15 +33,32 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
 - **로컬 S3는 SeaweedFS:** MinIO가 Docker 이미지 배포를 중단해서(`minio/minio`, `quay.io/minio/minio` 모두 pull 불가) SeaweedFS를 씁니다. S3 API는 `localhost:9000`, 계정은 `infra/seaweedfs/s3.json`에 있고, 버킷은 `seaweedfs-init` 컨테이너가 만듭니다. S3 클라이언트는 `forcePathStyle: true`로 씁니다.
 - **presigned URL 체크섬:** AWS SDK v3는 기본으로 presigned URL에 CRC32 체크섬을 넣는데, 서명할 때는 본문이 비어 있어서 실제 업로드가 `BadDigest`(400)로 실패합니다. S3 클라이언트를 만들 때 `requestChecksumCalculation: 'WHEN_REQUIRED'`를 꼭 넣습니다. SeaweedFS뿐 아니라 실제 S3에서도 같은 문제입니다.
 - **로컬 포트:** Docker 컨테이너 포트는 `127.0.0.1`에만 엽니다 (Linux에서 Docker가 연 포트는 ufw를 우회함). 개발 PC에 설치된 PostgreSQL과 겹치지 않게 Docker PostgreSQL은 호스트 포트 **5433**을 씁니다.
-- **운영 구성 원칙 (Phase 1 끝에 만듦):** `infra/docker-compose.prod.yml` + `.env.production.example` + Caddy(HTTPS 자동 발급)로 따로 만듭니다.
-  - 외부에는 Caddy의 80/443만 엽니다. 앱, DB, Redis, SeaweedFS는 내부 네트워크에만 둡니다.
-  - SeaweedFS는 presigned 업로드를 위해 Caddy를 거쳐 HTTPS 서브도메인으로 공개하고 CORS를 설정합니다.
-  - 비밀값은 전부 `.env`로 받고 저장소에 두지 않습니다 (개발용 `infra/seaweedfs/s3.json` 같은 고정 계정을 운영에 쓰지 않음).
-  - 이미지 태그는 버전을 고정하고, 컨테이너에 `restart: unless-stopped`를 겁니다. PostgreSQL과 SeaweedFS 볼륨을 백업합니다.
+- **운영 구성:** `infra/docker-compose.prod.yml` + `.env.production` (예시: `.env.production.example`). 배포 절차는 `docs/deploy.md`.
+  - 도메인: 웹 `APP_DOMAIN`(metacode.kimyangmin.me), API `API_DOMAIN`(api.metacode…), 파일 `FILES_DOMAIN`(files.metacode…). API를 별도 서브도메인에 둔 이유는 경로 접두사(/api) 없이 쿠키 경로(`/auth`)와 OAuth 콜백 URL을 개발 환경과 똑같이 쓰기 위해서입니다. 웹과 API는 같은 사이트(kimyangmin.me)라 SameSite=Lax 쿠키가 그대로 동작합니다.
+  - 외부에는 Caddy의 80/443만 엽니다. 나머지는 내부 네트워크에만 둡니다. 이미지 태그는 버전을 고정하고 `restart: unless-stopped`를 겁니다.
+  - 비밀값은 전부 `.env.production`으로 받습니다. SeaweedFS 계정도 시작할 때 환경변수로 설정 파일을 만듭니다 (개발용 `infra/seaweedfs/s3.json`은 운영에 쓰지 않음). 필수 값이 비면 compose가 시작하지 않습니다 (`${VAR:?}`).
+  - 서버 이미지(`apps/server/Dockerfile`)는 `pnpm deploy --legacy --prod`로 운영 의존성만 담습니다. 마이그레이션은 같은 Dockerfile의 `migrate` 단계가 서버보다 먼저 실행합니다.
+  - 웹은 `infra/caddy/Dockerfile`에서 `WEB_BASE=/`, `VITE_API_URL=https://<API_DOMAIN>`으로 빌드해 Caddy 이미지에 넣습니다 (Electron용 기본 빌드는 `base: './'`).
+  - 서버 이미지가 740MB 정도로 큽니다. `@prisma/client`의 peer 의존성 때문에 Prisma CLI, Studio, TypeScript가 함께 들어갑니다. 필요하면 나중에 줄입니다.
+  - Phase 3에서 할 일: presigned URL은 `https://<FILES_DOMAIN>`으로 서명해야 하고(서버 내부 주소 `seaweedfs:9000`이 아님), 버킷 CORS와 첨부 파일 백업을 추가해야 합니다.
 - **Oracle Cloud 주의점:**
+  - 서버는 VM.Standard3.Flex(Intel, x86_64)라 amd64 이미지를 씁니다.
   - 포트를 열려면 VCN의 Security List(또는 NSG)와 서버 안의 iptables(`/etc/iptables/rules.v4`, Oracle Ubuntu 이미지는 기본으로 막혀 있음)를 **둘 다** 열어야 합니다.
-  - 무료 티어 Ampere 서버는 ARM64(aarch64)이므로, 쓰는 이미지가 arm64를 지원하는지 확인합니다.
   - LiveKit(Phase 5)은 UDP 포트 범위도 열어야 합니다.
+- **Prisma 7:**
+  - 접속 URL은 `schema.prisma`가 아니라 `apps/server/prisma.config.ts`에 있고, 루트 `.env`를 직접 읽습니다.
+  - 클라이언트는 `apps/server/src/generated/prisma`에 생성되며 git에 올리지 않습니다. 서버의 `dev`/`build`/`typecheck`/`test` 스크립트가 먼저 `prisma generate`를 실행합니다.
+  - DB 접속은 드라이버 어댑터(`@prisma/adapter-pg`)로 합니다.
+  - npm의 `prisma@latest`가 8.0 RC를 가리키므로 `prisma`와 `@prisma/client`는 버전을 맞춰 고정합니다 (지금 7.10.0).
+- **socket.io 버전:** `socket.io`는 `@nestjs/platform-socket.io`가 고정한 버전과 같아야 합니다. 다르면 두 벌이 설치되어 타입 오류가 납니다.
+- **서버 테스트:**
+  - `apps/server/test/*.e2e.test.ts`는 실제 앱을 임의 포트로 띄우고, GitHub는 `test/fake-github.ts`로 대신합니다.
+  - DB는 `metacode_test`, Redis는 1번 DB를 씁니다 (`test/env.ts`, 전역 설정이 DB 생성·마이그레이션·초기화).
+  - Vitest는 Nest 데코레이터 메타데이터 때문에 `unplugin-swc`로 변환합니다.
+  - CI는 같은 포트(5433, 6379)의 서비스 컨테이너로 돌립니다.
+- **Presence 한계:** 서버가 시작할 때 Redis의 Presence 키를 모두 지웁니다 (비정상 종료로 남은 연결 정리). 서버가 한 대라는 전제이므로, 여러 대로 늘리면 인스턴스별 키 + 만료 시간으로 바꿔야 합니다.
+- **sandbox preload:** preload는 `electron` 외에는 require할 수 없어서 로컬 파일도 import하지 못합니다. IPC 채널 이름은 `apps/desktop/src/main/index.ts`와 `preload/index.ts`에 똑같이 적어 둡니다.
+- **데스크톱 로그인은 루프백, 커스텀 스킴 아님:** 처음에는 `metacode://` 딥링크로 앱에 돌아오게 했지만, 브라우저마다 다른 앱 열기를 막거나(사용자 기본 브라우저 Comet에서 실제로 동작 안 함) 확인 창을 띄워서 루프백(RFC 8252)으로 바꿨습니다. 커스텀 스킴이 다시 필요해지면(예: 초대 링크로 앱 열기) 로그인과 별개로 도입합니다.
 - **Windows에서 파일 수정:** Windows PowerShell 5.1의 `Get-Content`/`Set-Content`는 UTF-8 한글을 깨뜨립니다. 파일 수정은 편집 도구나 bash를 씁니다.
 
 ## 확정된 결정
@@ -50,7 +68,7 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
 | 항목 | 결정 |
 | --- | --- |
 | 배포 형태 | 웹 + 데스크톱 앱 둘 다 |
-| 운영 서버 | Oracle Cloud의 Ubuntu 서버 한 대, 도메인 있음. 이 저장소를 서버에 클론해서 Docker Compose로 운영. 운영용 구성은 개발용과 따로 둠 (Phase 1 끝에 만듦) |
+| 운영 서버 | Oracle Cloud의 Ubuntu 서버 한 대(VM.Standard3.Flex), 도메인 kimyangmin.me의 `metacode.` 아래 서브도메인 사용. 이 저장소를 서버에 클론해서 Docker Compose로 운영. 운영용 구성은 개발용과 따로 둠 |
 | 파일 저장소 | AWS S3를 쓰지 않음. 운영에서도 SeaweedFS를 셀프 호스팅하고, 코드는 S3 API로 접근 |
 | 광장 단위 | 커뮤니티마다 **분수 광장**(분수가 흐르는 넓은 광장) 하나, DM과 그룹 DM마다 **모닥불 캠프**(모닥불이 타오르는 좁은 야외 공간) 하나. 텍스트 채널마다 광장을 두지 않음 |
 | 광장에 보이는 사람 | 그 커뮤니티(또는 DM) 멤버 중 온라인인 사람 전부 |
@@ -117,7 +135,7 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
 11. **캐릭터·맵 에셋은 교체 가능해야 한다.** 에셋(도트)은 나중에 들어옵니다. 렌더링 코드는 특정 이미지에 의존하지 말고 스프라이트시트 + 매니페스트(애니메이션 이름, 프레임, 크기)와 타일셋을 읽는 구조로 만들고, 그때까지는 플레이스홀더를 씁니다. 첨부 모션도 매니페스트의 애니메이션 이름으로 참조해서, 에셋이 들어오면 임시 표시를 코드 수정 없이 교체할 수 있게 합니다.
 12. **이벤트 규격은 `packages/shared`에만 정의한다.** 소켓 이벤트 이름, 페이로드 타입, zod 스키마는 공용 패키지에 두고 클라이언트와 서버가 import합니다. 서버는 들어오는 모든 페이로드를 zod로 검증합니다.
 13. **웹 코드는 Electron을 모른다.**
-    - `apps/web`은 `electron`을 import하지 않습니다. 데스크톱 전용 기능(딥링크, 네이티브 알림, 트레이, 자동 업데이트)은 preload가 노출하는 브리지(`window.metacode`)를 통해서만 쓰고, 브리지 타입은 `packages/shared`에 둡니다.
+    - `apps/web`은 `electron`을 import하지 않습니다. 데스크톱 전용 기능(로그인, 네이티브 알림, 트레이, 자동 업데이트)은 preload가 노출하는 브리지(`window.metacode`)를 통해서만 쓰고, 브리지 타입은 `packages/shared`에 둡니다.
     - 브리지가 없으면(브라우저) 웹 대체 동작으로 돌아가야 합니다.
     - Electron 보안 설정: `contextIsolation: true`, `nodeIntegration: false`, `sandbox: true`. 원격 콘텐츠에 Node 권한을 주지 않습니다.
 
@@ -135,14 +153,34 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
 
 ## 인증 흐름
 
-- 웹: GitHub OAuth → 서버 콜백 → HttpOnly 쿠키로 세션 발급.
-- 데스크톱: 앱이 시스템 브라우저로 GitHub 인증 페이지를 엶 → 서버 콜백 → `metacode://auth?code=<일회용 코드>` 딥링크로 앱 복귀 → 앱이 일회용 코드를 토큰으로 교환. Electron 창 안에서 GitHub 로그인 페이지를 직접 띄우지 않습니다.
+구현: `apps/server/src/auth/`, `apps/desktop/src/main/auth.ts`, `apps/web/src/api/client.ts`
+
+- **토큰**
+  - 액세스 토큰: JWT(HS256), 15분
+  - 리프레시 토큰: 무작위 값, 30일. DB에는 SHA-256 해시만 저장합니다.
+  - 리프레시할 때마다 새 토큰으로 교체하고, 같은 로그인에서 나온 토큰은 `familyId`로 묶습니다.
+  - 교체된 지 30초가 지난 토큰이 다시 오면 탈취로 보고 family 전체를 폐기합니다. 30초 안이면 동시 요청(탭 두 개)으로 보고 401만 돌려줍니다.
+- **웹**
+  - `GET /auth/github?client=web` → GitHub → `/auth/github/callback` → HttpOnly 쿠키 발급 → `WEB_ORIGIN`으로 이동
+  - 쿠키: `mc_access`(path `/`), `mc_refresh`(path `/auth`), SameSite=Lax. `WEB_ORIGIN`이 https면 Secure를 붙입니다.
+  - login CSRF 방지: 로그인 시작 때 state를 `mc_oauth_state` 쿠키에도 심고, 콜백에서 쿼리 state와 같은지 확인합니다.
+  - 실패하면 `WEB_ORIGIN/?login_error=<사유>`로 돌려보냅니다.
+- **데스크톱**
+  - 메인 프로세스가 PKCE verifier를 만들고 `127.0.0.1`의 임의 포트에 일회용 수신 서버를 연 뒤, `GET /auth/github?client=desktop&code_challenge=...&redirect_port=<포트>`를 시스템 브라우저로 엽니다.
+  - 콜백은 일회용 코드(60초)를 붙여 브라우저를 `http://127.0.0.1:<포트>/callback?code=`로 보냅니다. 서버는 `127.0.0.1`로만 보내므로 임의 주소로 돌려보내는 데 악용될 수 없습니다.
+  - 앱은 결과를 한 번 받으면 수신 서버를 닫고, `POST /auth/desktop/token {code, codeVerifier}`로 토큰을 받습니다. code를 알아낸 다른 프로그램은 verifier가 없어서 토큰을 받을 수 없습니다.
+  - 로그인을 시작하고 5분 안에 결과가 오지 않으면 수신 서버를 닫습니다.
+  - 리프레시 토큰은 메인 프로세스가 `safeStorage`로 암호화해 보관합니다. 렌더러는 브리지로 액세스 토큰만 받아 `Authorization: Bearer`로 보냅니다.
+  - Electron 창 안에서 GitHub 로그인 페이지를 직접 띄우지 않습니다.
+- **WebSocket:** 핸드셰이크에서 인증합니다. 웹은 쿠키, 데스크톱은 `auth.token`을 씁니다. 실패하면 서버가 연결을 끊고, 웹은 세션을 갱신한 뒤 한 번 다시 연결합니다.
+- **보호된 API:** `@UseGuards(AuthGuard)` + `@CurrentUserId()`. `AuthGuard`는 전역 `AuthCoreModule`에 있어서 어느 모듈에서든 쓸 수 있습니다.
 
 ## 도메인 모델 (초안)
 
 Phase 1~2에서 Prisma 스키마로 구체화합니다. 바꿔도 되지만 바꾸면 여기도 고칩니다.
 
-- `User`: githubId, username, avatarUrl, characterId
+- `User` (구현됨): githubId, username, displayName, avatarUrl. characterId는 Phase 6에서 추가
+- `RefreshToken` (구현됨): userId, tokenHash, familyId, client, expiresAt, revokedAt
 - `Community`: name, ownerId / `CommunityMember`: userId, communityId, role
 - `Channel`: type(`TEXT` | `VOICE` | `DM` | `GROUP_DM`), communityId(DM이면 null), name, proximityVoice(`VOICE`, `DM`, `GROUP_DM`에서 사용)
   - `ChannelMember`: DM 참여자. 커뮤니티 채널의 접근은 커뮤니티 멤버십(추후 채널 권한)으로 판단
@@ -175,7 +213,7 @@ apps/web/src/
   layout/               # 사이드바, 분할 화면
   platform/             # 웹/데스크톱 차이를 감추는 계층 (window.metacode 브리지 사용)
 apps/desktop/src/
-  main/                 # Electron 메인 프로세스 (창, 딥링크, 알림, 자동 업데이트)
+  main/                 # Electron 메인 프로세스 (창, 로그인, 알림, 자동 업데이트)
   preload/              # window.metacode 브리지
 apps/server/src/
   auth/ community/ channel/ message/ upload/ plaza/ voice/ presence/
@@ -214,6 +252,8 @@ assets/
 | `pnpm lint` / `pnpm format:check` | 루트에서 ESLint / Prettier |
 | `pnpm --filter @metacode/<패키지> <스크립트>` | 패키지 하나만 실행 (예: `pnpm --filter @metacode/shared test`) |
 | `pnpm infra:up` / `pnpm infra:down` | 로컬 PostgreSQL, Redis, SeaweedFS(S3) |
+| `pnpm --filter @metacode/server db:migrate` | 스키마 변경 → 마이그레이션 생성 + 로컬 DB 적용 (`--name <이름>`) |
+| `pnpm --filter @metacode/server db:deploy` | 만들어 둔 마이그레이션만 적용 (운영, CI) |
 
 작업을 마치기 전에 `pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm build`가 통과하는지 확인합니다 (CI와 같은 순서).
 

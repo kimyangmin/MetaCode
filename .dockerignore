@@ -1,0 +1,16 @@
+# Docker 빌드에 필요 없는 파일. 특히 .env(비밀값)는 절대 이미지에 들어가면 안 된다.
+**/node_modules
+**/dist
+**/out
+**/coverage
+**/.turbo
+**/*.tsbuildinfo
+apps/server/src/generated
+.env
+.env.*
+!.env.example
+!.env.production.example
+.git
+.github
+backups
+*.log
