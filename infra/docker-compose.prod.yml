@@ -12,6 +12,7 @@ services:
       dockerfile: infra/caddy/Dockerfile
       args:
         VITE_API_URL: https://${API_DOMAIN:?API_DOMAIN을 .env.production에 적어 주세요}
+        VITE_WEB_URL: https://${APP_DOMAIN:?APP_DOMAIN을 .env.production에 적어 주세요}
     restart: unless-stopped
     ports:
       - '80:80'

@@ -233,15 +233,15 @@ MetaCode/
 - [x] 사용자 프로필 (GitHub 닉네임, 아바타 연동)
 - [x] 온라인 상태(Presence): WebSocket 연결 기준
 - [x] 운영용 구성 (Docker Compose + Caddy HTTPS, 백업 스크립트, 배포 안내서)
-- [ ] Oracle Cloud 서버에 첫 배포 ([docs/deploy.md](docs/deploy.md))
+- [x] Oracle Cloud 서버에 첫 배포 ([docs/deploy.md](docs/deploy.md)): https://metacode.kimyangmin.me
 
 ### Phase 2: 채팅 모드 MVP
-- [ ] 기본 레이아웃 (사이드바 + 채팅 패널)
-- [ ] 커뮤니티 생성, 초대 링크, 참여/탈퇴
-- [ ] 커뮤니티 안에 텍스트 채널 생성
-- [ ] 1:1 DM, 그룹 DM
-- [ ] 실시간 메시지 송수신, 기록 저장, 이전 기록 불러오기 (무한 스크롤)
-- [ ] 입력 중 표시, 읽음 처리
+- [x] 기본 레이아웃 (커뮤니티 막대 + 사이드바 + 채팅 패널 + 멤버 목록)
+- [x] 커뮤니티 생성, 초대 링크, 참여/탈퇴, 삭제
+- [x] 커뮤니티 안에 텍스트 채널 생성
+- [x] 1:1 DM, 그룹 DM, 사용자 검색
+- [x] 실시간 메시지 송수신, 기록 저장, 이전 기록 불러오기 (무한 스크롤)
+- [x] 입력 중 표시, 읽음 처리, 멤버 온라인 표시
 
 ### Phase 3: 파일·이미지 첨부
 - [ ] presigned URL 업로드 (S3 호환 스토리지)
@@ -388,6 +388,18 @@ pnpm dev
 
 ```bash
 pnpm dev:desktop
+```
+
+### 여러 사용자로 확인하기
+
+실제 GitHub 없이 여러 계정으로 로그인하려면 가짜 GitHub(`tools/fake-github.mjs`)를 띄우고 서버를 그쪽으로 연결합니다. 인증 화면에서 앨리스, 밥, 캐롤 중 하나를 고를 수 있습니다. 서로 다른 브라우저(또는 시크릿 창)에서 각각 로그인하면 됩니다.
+
+```bash
+node tools/fake-github.mjs
+```
+
+```bash
+GITHUB_OAUTH_URL=http://localhost:4010 GITHUB_API_URL=http://localhost:4010 GITHUB_CLIENT_ID=dev GITHUB_CLIENT_SECRET=dev pnpm dev
 ```
 
 ### 자주 쓰는 명령어

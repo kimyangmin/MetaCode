@@ -28,6 +28,16 @@ export class UsersService {
     return toProfile(user);
   }
 
+  /** DM 상대 찾기: GitHub 아이디 앞부분으로 검색한다 (나는 제외, 최대 10명). */
+  async search(userId: string, query: string): Promise<UserProfile[]> {
+    const users = await this.prisma.user.findMany({
+      where: { id: { not: userId }, username: { startsWith: query, mode: 'insensitive' } },
+      orderBy: { username: 'asc' },
+      take: 10,
+    });
+    return users.map(toProfile);
+  }
+
   async getProfile(userId: string): Promise<UserProfile> {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new NotFoundException('사용자를 찾을 수 없습니다.');
@@ -35,7 +45,7 @@ export class UsersService {
   }
 }
 
-function toProfile(user: {
+export function toProfile(user: {
   id: string;
   username: string;
   displayName: string | null;

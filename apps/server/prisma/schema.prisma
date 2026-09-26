@@ -1,9 +1,9 @@
 // Prisma 7: 접속 URL은 prisma.config.ts에 있다.
 generator client {
-  provider               = "prisma-client"
-  output                 = "../src/generated/prisma"
-  moduleFormat           = "esm"
-  importFileExtension    = "js"
+  provider            = "prisma-client"
+  output              = "../src/generated/prisma"
+  moduleFormat        = "esm"
+  importFileExtension = "js"
 }
 
 datasource db {
@@ -19,9 +19,136 @@ model User {
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
-  refreshTokens RefreshToken[]
+  refreshTokens      RefreshToken[]
+  ownedCommunities   Community[]
+  memberships        CommunityMember[]
+  invitesCreated     Invite[]
+  channelMemberships ChannelMember[]
+  messages           Message[]
+  readStates         ChannelReadState[]
 
+  @@index([username])
   @@map("users")
+}
+
+enum CommunityRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+enum ChannelType {
+  TEXT
+  VOICE
+  DM
+  GROUP_DM
+}
+
+model Community {
+  id        String   @id @default(uuid(7)) @db.Uuid
+  name      String
+  ownerId   String   @map("owner_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  owner    User              @relation(fields: [ownerId], references: [id])
+  members  CommunityMember[]
+  channels Channel[]
+  invites  Invite[]
+
+  @@map("communities")
+}
+
+model CommunityMember {
+  communityId String        @map("community_id") @db.Uuid
+  userId      String        @map("user_id") @db.Uuid
+  role        CommunityRole @default(MEMBER)
+  joinedAt    DateTime      @default(now()) @map("joined_at")
+
+  community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([communityId, userId])
+  @@index([userId])
+  @@map("community_members")
+}
+
+model Invite {
+  code        String    @id
+  communityId String    @map("community_id") @db.Uuid
+  createdById String    @map("created_by_id") @db.Uuid
+  expiresAt   DateTime? @map("expires_at")
+  uses        Int       @default(0)
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  createdBy User      @relation(fields: [createdById], references: [id], onDelete: Cascade)
+
+  @@index([communityId])
+  @@map("invites")
+}
+
+/// 커뮤니티 채널(TEXT, VOICE)은 communityId가 있고, DM/GROUP_DM은 없다.
+/// DM/GROUP_DM 참여자는 ChannelMember에, 커뮤니티 채널 접근은 CommunityMember로 판단한다.
+model Channel {
+  id             String      @id @default(uuid(7)) @db.Uuid
+  type           ChannelType
+  communityId    String?     @map("community_id") @db.Uuid
+  name           String?
+  position       Int         @default(0)
+  proximityVoice Boolean     @default(false) @map("proximity_voice")
+  /// 1:1 DM 중복 방지: 두 사용자 ID를 정렬해 이은 값
+  dmKey          String?     @unique @map("dm_key")
+  createdAt      DateTime    @default(now()) @map("created_at")
+
+  community  Community?         @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  members    ChannelMember[]
+  messages   Message[]
+  readStates ChannelReadState[]
+
+  @@index([communityId])
+  @@map("channels")
+}
+
+model ChannelMember {
+  channelId String   @map("channel_id") @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  joinedAt  DateTime @default(now()) @map("joined_at")
+
+  channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([channelId, userId])
+  @@index([userId])
+  @@map("channel_members")
+}
+
+/// id는 UUIDv7이라 생성 순서대로 정렬된다. 페이지네이션은 (channelId, id) 인덱스로 한다.
+model Message {
+  id        String   @id @default(uuid(7)) @db.Uuid
+  channelId String   @map("channel_id") @db.Uuid
+  authorId  String   @map("author_id") @db.Uuid
+  content   String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  author  User    @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@index([channelId, id(sort: Desc)])
+  @@map("messages")
+}
+
+model ChannelReadState {
+  channelId         String   @map("channel_id") @db.Uuid
+  userId            String   @map("user_id") @db.Uuid
+  lastReadMessageId String   @map("last_read_message_id") @db.Uuid
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([channelId, userId])
+  @@map("channel_read_states")
 }
 
 /// 리프레시 토큰은 해시만 저장한다. 같은 로그인에서 이어지는 토큰은 familyId를 공유하고,
