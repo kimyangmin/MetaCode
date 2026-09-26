@@ -1,14 +1,15 @@
 import { useState } from 'react';
+import { RouterProvider } from 'react-router';
 import { LoginScreen } from './features/auth/LoginScreen';
-import { ProfileHeader } from './features/auth/ProfileHeader';
 import { takeLoginError, useMe } from './features/auth/auth';
-import { useRealtimeConnection } from './features/realtime/useRealtimeConnection';
-import { getDesktopBridge } from './platform';
+import { rememberPendingInvite } from './pages';
+import { RealtimeProvider } from './realtime/RealtimeProvider';
+import { createAppRouter } from './router';
 
 export function App() {
   const [loginError] = useState(takeLoginError);
+  const [router] = useState(createAppRouter);
   const me = useMe();
-  const realtime = useRealtimeConnection(Boolean(me.data));
 
   if (me.isPending) return <main className="center">불러오는 중…</main>;
   if (me.isError) {
@@ -18,18 +19,14 @@ export function App() {
       </main>
     );
   }
-  if (!me.data) return <LoginScreen error={loginError} />;
+  if (!me.data) {
+    rememberPendingInvite();
+    return <LoginScreen error={loginError} />;
+  }
 
-  const desktop = getDesktopBridge();
   return (
-    <div className="app">
-      <ProfileHeader me={me.data} status={realtime} />
-      <main className="app__body">
-        <p>Phase 2에서 커뮤니티와 채팅이 이 자리에 들어옵니다.</p>
-        <p className="app__platform">
-          {desktop ? `데스크톱 (${desktop.os}, Electron ${desktop.versions.electron})` : '웹'}
-        </p>
-      </main>
-    </div>
+    <RealtimeProvider key={me.data.id} meId={me.data.id}>
+      <RouterProvider router={router} />
+    </RealtimeProvider>
   );
 }
