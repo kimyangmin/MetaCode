@@ -1,0 +1,19 @@
+{
+  "name": "@metacode/desktop",
+  "version": "0.0.0",
+  "private": true,
+  "type": "commonjs",
+  "main": "dist/main/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsc -p tsconfig.json && wait-on tcp:localhost:5173 && electron .",
+    "start": "electron .",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@metacode/shared": "workspace:*",
+    "@types/node": "^24.19.0",
+    "electron": "^44.4.5",
+    "wait-on": "^9.1.0"
+  }
+}
