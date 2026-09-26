@@ -1,34 +1,35 @@
-import { useEffect, useState } from 'react';
-import { API_URL } from './config';
+import { useState } from 'react';
+import { LoginScreen } from './features/auth/LoginScreen';
+import { ProfileHeader } from './features/auth/ProfileHeader';
+import { takeLoginError, useMe } from './features/auth/auth';
+import { useRealtimeConnection } from './features/realtime/useRealtimeConnection';
 import { getDesktopBridge } from './platform';
 
-type ServerStatus = 'checking' | 'ok' | 'unreachable';
-
 export function App() {
-  const [serverStatus, setServerStatus] = useState<ServerStatus>('checking');
+  const [loginError] = useState(takeLoginError);
+  const me = useMe();
+  const realtime = useRealtimeConnection(Boolean(me.data));
+
+  if (me.isPending) return <main className="center">불러오는 중…</main>;
+  if (me.isError) {
+    return (
+      <main className="center" role="alert">
+        서버에 연결하지 못했습니다.
+      </main>
+    );
+  }
+  if (!me.data) return <LoginScreen error={loginError} />;
+
   const desktop = getDesktopBridge();
-
-  useEffect(() => {
-    const controller = new AbortController();
-    fetch(`${API_URL}/health`, { signal: controller.signal })
-      .then((res) => setServerStatus(res.ok ? 'ok' : 'unreachable'))
-      .catch(() => {
-        if (!controller.signal.aborted) setServerStatus('unreachable');
-      });
-    return () => controller.abort();
-  }, []);
-
   return (
-    <main className="app">
-      <h1>MetaCode</h1>
-      <dl>
-        <dt>플랫폼</dt>
-        <dd>
+    <div className="app">
+      <ProfileHeader me={me.data} status={realtime} />
+      <main className="app__body">
+        <p>Phase 2에서 커뮤니티와 채팅이 이 자리에 들어옵니다.</p>
+        <p className="app__platform">
           {desktop ? `데스크톱 (${desktop.os}, Electron ${desktop.versions.electron})` : '웹'}
-        </dd>
-        <dt>서버</dt>
-        <dd data-status={serverStatus}>{serverStatus}</dd>
-      </dl>
-    </main>
+        </p>
+      </main>
+    </div>
   );
 }

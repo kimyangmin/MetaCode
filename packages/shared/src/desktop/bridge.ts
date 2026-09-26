@@ -9,6 +9,21 @@ export interface MetaCodeDesktopBridge {
     electron: string;
     chrome: string;
   };
+  auth: DesktopAuthBridge;
+}
+
+/**
+ * 데스크톱 로그인. 토큰은 메인 프로세스가 보관하고(리프레시 토큰은 OS 암호화 저장소),
+ * 렌더러는 필요할 때 액세스 토큰만 받아 간다.
+ */
+export interface DesktopAuthBridge {
+  /** 시스템 브라우저로 GitHub 로그인을 연다. 완료되면 onChanged가 호출된다. */
+  login(): Promise<void>;
+  logout(): Promise<void>;
+  /** 유효한 액세스 토큰. 만료가 가까우면 갱신해서 준다. 로그인 전이면 null */
+  getAccessToken(): Promise<string | null>;
+  /** 로그인/로그아웃 상태가 바뀌면 호출된다. 반환값을 호출하면 구독이 해제된다. */
+  onChanged(listener: () => void): () => void;
 }
 
 declare global {

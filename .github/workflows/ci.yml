@@ -9,6 +9,32 @@ on:
 jobs:
   check:
     runs-on: ubuntu-latest
+
+    # 서버 e2e 테스트가 쓰는 DB와 Redis. 포트는 로컬 개발 환경(infra/docker-compose.yml)과 같게 맞춘다.
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: metacode
+          POSTGRES_PASSWORD: metacode
+          POSTGRES_DB: metacode
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U metacode"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
     steps:
       - uses: actions/checkout@v4
 
