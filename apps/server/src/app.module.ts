@@ -2,10 +2,12 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { AuthCoreModule } from './auth/auth-core.module.js';
 import { AuthModule } from './auth/auth.module.js';
+import { ChatModule } from './chat/chat.module.js';
 import { validateEnv } from './config/env.js';
 import { HealthController } from './health/health.controller.js';
 import { PresenceModule } from './presence/presence.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
+import { RealtimeModule } from './realtime/realtime.module.js';
 import { RedisModule } from './redis/redis.module.js';
 import { UsersModule } from './users/users.module.js';
 
@@ -21,10 +23,12 @@ import { UsersModule } from './users/users.module.js';
     }),
     PrismaModule,
     RedisModule,
+    RealtimeModule,
     AuthCoreModule,
     AuthModule,
     UsersModule,
     PresenceModule,
+    ChatModule,
   ],
   controllers: [HealthController],
 })
