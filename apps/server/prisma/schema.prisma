@@ -1,0 +1,44 @@
+// Prisma 7: 접속 URL은 prisma.config.ts에 있다.
+generator client {
+  provider               = "prisma-client"
+  output                 = "../src/generated/prisma"
+  moduleFormat           = "esm"
+  importFileExtension    = "js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id          String   @id @default(uuid(7)) @db.Uuid
+  githubId    BigInt   @unique @map("github_id")
+  username    String
+  displayName String?  @map("display_name")
+  avatarUrl   String   @map("avatar_url")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  refreshTokens RefreshToken[]
+
+  @@map("users")
+}
+
+/// 리프레시 토큰은 해시만 저장한다. 같은 로그인에서 이어지는 토큰은 familyId를 공유하고,
+/// 이미 교체된 토큰이 다시 쓰이면(탈취 의심) 그 family 전체를 폐기한다.
+model RefreshToken {
+  id        String    @id @default(uuid(7)) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  tokenHash String    @unique @map("token_hash")
+  familyId  String    @map("family_id") @db.Uuid
+  client    String
+  expiresAt DateTime  @map("expires_at")
+  revokedAt DateTime? @map("revoked_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([familyId])
+  @@map("refresh_tokens")
+}

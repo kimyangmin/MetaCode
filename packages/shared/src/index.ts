@@ -1,4 +1,7 @@
 export * from './domain/channel.js';
 export * from './domain/plaza.js';
 export * from './domain/limits.js';
+export * from './api/auth.js';
+export * from './api/user.js';
+export * from './api/presence.js';
 export * from './desktop/bridge.js';
