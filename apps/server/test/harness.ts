@@ -1,6 +1,14 @@
+import { createHash, randomBytes } from 'node:crypto';
 import type { AddressInfo } from 'node:net';
 import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
+import type {
+  AuthTokens,
+  ClientToServerEvents,
+  ServerToClientEvents,
+  UserProfile,
+} from '@metacode/shared';
+import { type Socket, io } from 'socket.io-client';
 import { testEnv } from './env.js';
 import { type FakeGithubUser, startFakeGithub } from './fake-github.js';
 
@@ -75,4 +83,109 @@ export async function eventually(check: () => Promise<boolean>, timeoutMs = 3000
     await new Promise((r) => setTimeout(r, 50));
   }
   throw new Error('시간 안에 조건을 만족하지 못했습니다.');
+}
+
+export type ClientSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
+
+export interface TestUser {
+  me: UserProfile;
+  tokens: AuthTokens;
+  /** Bearer 토큰을 붙인 요청 */
+  fetch(path: string, init?: RequestInit): Promise<Response>;
+  json<T>(path: string, init?: RequestInit): Promise<T>;
+}
+
+/** 데스크톱 방식(루프백 + PKCE)으로 새 사용자를 로그인시킨다. */
+export async function loginUser(
+  t: TestApp,
+  overrides: Partial<FakeGithubUser> = {},
+): Promise<TestUser> {
+  const verifier = randomBytes(32).toString('base64url');
+  const challenge = createHash('sha256').update(verifier).digest('base64url');
+  const start = await t.fetch(
+    `/auth/github?client=desktop&code_challenge=${challenge}&redirect_port=51234`,
+  );
+  const state = new URL(start.headers.get('location')!).searchParams.get('state')!;
+  const user = makeGithubUser(overrides);
+  t.github.addCode(`login-${user.id}`, user);
+  const callback = await t.fetch(`/auth/github/callback?code=login-${user.id}&state=${state}`);
+  const code = new URL(callback.headers.get('location')!).searchParams.get('code')!;
+  const tokens = (await (
+    await t.fetch('/auth/desktop/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code, codeVerifier: verifier }),
+    })
+  ).json()) as AuthTokens;
+
+  const authed = (path: string, init: RequestInit = {}) => {
+    const headers = new Headers(init.headers);
+    headers.set('authorization', `Bearer ${tokens.accessToken}`);
+    if (init.body) headers.set('Content-Type', 'application/json');
+    return t.fetch(path, { ...init, headers });
+  };
+  const json = async <T>(path: string, init?: RequestInit): Promise<T> => {
+    const res = await authed(path, init);
+    if (!res.ok)
+      throw new Error(`${init?.method ?? 'GET'} ${path} → ${res.status} ${await res.text()}`);
+    return (await res.json()) as T;
+  };
+  return { me: await json<UserProfile>('/users/me'), tokens, fetch: authed, json };
+}
+
+/** 이 사용자로 실시간 연결을 연다. 연결이 끝나고 방에 들어갈 때까지 기다린다. */
+export async function connectSocket(t: TestApp, user: TestUser): Promise<ClientSocket> {
+  const socket: ClientSocket = io(t.baseUrl, {
+    transports: ['websocket'],
+    forceNew: true,
+    auth: { token: user.tokens.accessToken },
+  });
+  await new Promise<void>((resolve, reject) => {
+    socket.once('connect', () => resolve());
+    socket.once('connect_error', reject);
+  });
+  // 서버의 handleConnection(방 참가)이 끝날 시간을 준다.
+  await new Promise((r) => setTimeout(r, 150));
+  return socket;
+}
+
+type EventArgs<E extends keyof ServerToClientEvents> = Parameters<ServerToClientEvents[E]>[0];
+
+/** 조건에 맞는 이벤트가 올 때까지 기다린다. */
+export function nextEvent<E extends keyof ServerToClientEvents>(
+  socket: ClientSocket,
+  event: E,
+  predicate: (payload: EventArgs<E>) => boolean = () => true,
+  timeoutMs = 3000,
+): Promise<EventArgs<E>> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      socket.off(event, handler as never);
+      reject(new Error(`${String(event)} 이벤트가 오지 않았습니다.`));
+    }, timeoutMs);
+    const handler = (payload: EventArgs<E>) => {
+      if (!predicate(payload)) return;
+      clearTimeout(timer);
+      socket.off(event, handler as never);
+      resolve(payload);
+    };
+    socket.on(event, handler as never);
+  });
+}
+
+/** 일정 시간 동안 조건에 맞는 이벤트가 오지 않는지 확인한다. */
+export async function expectNoEvent<E extends keyof ServerToClientEvents>(
+  socket: ClientSocket,
+  event: E,
+  predicate: (payload: EventArgs<E>) => boolean = () => true,
+  waitMs = 400,
+): Promise<void> {
+  let received = false;
+  const handler = (payload: EventArgs<E>) => {
+    if (predicate(payload)) received = true;
+  };
+  socket.on(event, handler as never);
+  await new Promise((r) => setTimeout(r, waitMs));
+  socket.off(event, handler as never);
+  if (received) throw new Error(`${String(event)} 이벤트가 오면 안 됩니다.`);
 }
