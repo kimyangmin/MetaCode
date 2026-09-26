@@ -1,0 +1,14 @@
+{
+  "identities": [
+    {
+      "name": "metacode",
+      "credentials": [
+        {
+          "accessKey": "metacode",
+          "secretKey": "metacode-secret"
+        }
+      ],
+      "actions": ["Admin", "Read", "List", "Tagging", "Write"]
+    }
+  ]
+}

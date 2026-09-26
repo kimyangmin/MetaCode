@@ -1,0 +1,8 @@
+packages:
+  - apps/*
+  - packages/*
+
+# pnpm 10은 의존성의 설치 스크립트를 기본으로 막는다. 필요한 것만 허용한다.
+onlyBuiltDependencies:
+  - electron
+  - esbuild

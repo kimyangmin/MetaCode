@@ -1,0 +1,64 @@
+# 로컬 개발용 인프라. 계정/비밀번호는 로컬 전용 값이다.
+# 포트는 127.0.0.1에만 연다. Linux에서 Docker가 연 포트는 방화벽(ufw)을 우회하므로 0.0.0.0으로 열지 않는다.
+# LiveKit은 Phase 5(음성 통화)에서 추가한다.
+name: metacode
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: metacode
+      POSTGRES_PASSWORD: metacode
+      POSTGRES_DB: metacode
+    ports:
+      - '127.0.0.1:5433:5432' # 호스트 5432는 로컬에 설치된 PostgreSQL과 겹치기 쉬워서 5433을 쓴다
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U metacode']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - '127.0.0.1:6379:6379'
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # S3 호환 파일 저장소. MinIO는 Docker 이미지 배포를 중단해서 SeaweedFS를 쓴다.
+  # 계정은 seaweedfs/s3.json에 있다.
+  seaweedfs:
+    image: chrislusf/seaweedfs:latest
+    command: >
+      server -dir=/data -ip=seaweedfs -ip.bind=0.0.0.0
+      -master.volumeSizeLimitMB=1024
+      -s3 -s3.port=9000 -s3.config=/etc/seaweedfs/s3.json
+    ports:
+      - '127.0.0.1:9000:9000' # S3 API
+    volumes:
+      - seaweedfs-data:/data
+      - ./seaweedfs/s3.json:/etc/seaweedfs/s3.json:ro
+
+  # 첨부 파일 버킷을 만들고 끝나는 일회성 컨테이너
+  seaweedfs-init:
+    image: chrislusf/seaweedfs:latest
+    depends_on:
+      - seaweedfs
+    entrypoint: >
+      /bin/sh -c "
+      until echo 's3.bucket.list' | weed shell -master=seaweedfs:9333 >/dev/null 2>&1; do sleep 1; done;
+      echo 's3.bucket.list' | weed shell -master=seaweedfs:9333 | grep -q metacode-uploads ||
+      echo 's3.bucket.create -name metacode-uploads' | weed shell -master=seaweedfs:9333
+      "
+
+volumes:
+  postgres-data:
+  redis-data:
+  seaweedfs-data:

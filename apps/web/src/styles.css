@@ -1,0 +1,35 @@
+:root {
+  color-scheme: light dark;
+  font-family:
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    'Malgun Gothic',
+    sans-serif;
+}
+
+body {
+  margin: 0;
+}
+
+.app {
+  padding: 24px;
+}
+
+.app dl {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 8px 16px;
+}
+
+.app dd {
+  margin: 0;
+}
+
+.app dd[data-status='ok'] {
+  color: #1a7f37;
+}
+
+.app dd[data-status='unreachable'] {
+  color: #cf222e;
+}
