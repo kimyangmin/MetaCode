@@ -1434,7 +1434,7 @@ h3 {
 
 .voice-panel__controls {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   gap: 4px;
 }
 
@@ -1583,4 +1583,138 @@ h3 {
 
 .plaza-actor--speaking .plaza-actor__name {
   box-shadow: 0 0 0 2px #3fb950;
+}
+
+/* ── 화면 공유 ─────────────── */
+
+.live-badge {
+  flex: none;
+  padding: 0 5px;
+  border: 0;
+  border-radius: 4px;
+  background: var(--danger);
+  color: #fff;
+  font: inherit;
+  font-size: 0.65rem;
+  font-weight: 700;
+  line-height: 1.6;
+  cursor: pointer;
+}
+
+.live-badge:hover {
+  filter: brightness(1.15);
+}
+
+/* 보기 창: 앱 위에 크게 띄운다 */
+.screen-viewer {
+  position: fixed;
+  inset: 24px;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #000;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+}
+
+.screen-viewer__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--bg-sidebar);
+  color: var(--fg);
+}
+
+.screen-viewer__header strong {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.screen-viewer__live {
+  padding: 0 6px;
+  border-radius: 4px;
+  background: var(--danger);
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.screen-viewer__stage {
+  position: relative;
+  display: grid;
+  flex: 1;
+  place-items: center;
+  min-height: 0;
+}
+
+.screen-viewer__stage video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.screen-viewer__status {
+  color: #ccc;
+}
+
+/* 데스크톱: 공유할 화면 고르기 */
+.screen-picker {
+  display: grid;
+  gap: 12px;
+  max-height: 60vh;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.screen-picker::-webkit-scrollbar {
+  display: none;
+}
+
+.screen-picker__title {
+  margin: 0 0 6px;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.screen-picker__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 8px;
+}
+
+.screen-picker__item {
+  display: grid;
+  gap: 4px;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--fg);
+  font: inherit;
+  font-size: 0.75rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.screen-picker__item:hover {
+  border-color: var(--accent);
+}
+
+.screen-picker__item img {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border-radius: 4px;
+  background: #000;
+  object-fit: contain;
+}
+
+.screen-picker__item span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }

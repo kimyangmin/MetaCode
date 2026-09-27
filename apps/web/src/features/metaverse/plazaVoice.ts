@@ -12,7 +12,12 @@ export function plazaVoiceStates(
   const states = new Map<string, ActorVoice>();
   for (const [channelId, label] of channelLabels) {
     for (const member of calls[channelId]?.members ?? []) {
-      states.set(member.user.id, { label, speaking: member.speaking, muted: member.muted });
+      states.set(member.user.id, {
+        // 화면을 공유 중이면 광장에서도 알 수 있게 표시한다.
+        label: member.sharing ? `${label} 🖥️` : label,
+        speaking: member.speaking,
+        muted: member.muted,
+      });
     }
   }
   return states;

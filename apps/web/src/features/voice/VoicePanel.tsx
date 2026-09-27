@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
+import { getDesktopBridge, isDesktop } from '../../platform';
 import { Dialog } from '../../ui/Dialog';
 import { useChannelLabel } from './hooks';
+import { ScreenPicker } from './ScreenPicker';
 import { useCall, useVoiceStore } from './store';
 import { useVoice } from './VoiceProvider';
 
@@ -21,6 +23,18 @@ export function VoicePanel({ meId }: { meId: string }) {
   const call = useCall(session?.channelId ?? '');
   const label = useChannelLabel(session?.channelId, meId);
   const [devicesOpen, setDevicesOpen] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const sharing = useVoiceStore((s) => s.sharing);
+
+  const toggleScreen = () => {
+    if (sharing) return void voice.stopScreenShare();
+    if (!isDesktop()) return void voice.startScreenShare();
+    // 데스크톱 앱은 화면을 직접 골라야 한다. 0.1.0 앱에는 그 기능이 없다.
+    if (getDesktopBridge()?.screen) return setPickerOpen(true);
+    useVoiceStore.getState().patch({
+      error: '화면 공유를 쓰려면 데스크톱 앱을 새 버전으로 설치해 주세요.',
+    });
+  };
 
   if (!session && !error) return null;
   const micOff = muted || deafened || !!session?.listenOnly;
@@ -98,6 +112,16 @@ export function VoicePanel({ meId }: { meId: string }) {
             <button
               type="button"
               className="voice-toggle"
+              aria-pressed={sharing}
+              disabled={session.status !== 'connected'}
+              onClick={toggleScreen}
+              title={sharing ? '화면 공유 중지' : '화면 공유'}
+            >
+              🖥️<span>화면</span>
+            </button>
+            <button
+              type="button"
+              className="voice-toggle"
               onClick={() => setDevicesOpen(true)}
               title="입출력 장치"
             >
@@ -120,6 +144,15 @@ export function VoicePanel({ meId }: { meId: string }) {
         </p>
       )}
       {devicesOpen && <DeviceDialog onClose={() => setDevicesOpen(false)} />}
+      {pickerOpen && (
+        <ScreenPicker
+          onClose={() => setPickerOpen(false)}
+          onPick={() => {
+            setPickerOpen(false);
+            void voice.startScreenShare();
+          }}
+        />
+      )}
     </section>
   );
 }
