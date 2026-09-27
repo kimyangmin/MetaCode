@@ -31,6 +31,8 @@ export const SocketEvent = {
   TypingStart: 'typing:start',
   TypingStarted: 'typing:started',
   ChannelCreated: 'channel:created',
+  /** 채널이 삭제됐다 (볼 수 있던 사람에게) */
+  ChannelDeleted: 'channel:deleted',
   DmCreated: 'dm:created',
   CommunityMemberJoined: 'community:member-joined',
   CommunityMemberLeft: 'community:member-left',
@@ -93,6 +95,7 @@ export interface ServerToClientEvents {
   [SocketEvent.MessageCreated]: (message: MessageDto) => void;
   [SocketEvent.TypingStarted]: (payload: { channelId: string; userId: string }) => void;
   [SocketEvent.ChannelCreated]: (channel: ChannelSummary) => void;
+  [SocketEvent.ChannelDeleted]: (payload: { channelId: string; communityId: string }) => void;
   [SocketEvent.DmCreated]: (dm: DmSummary) => void;
   [SocketEvent.CommunityMemberJoined]: (payload: {
     communityId: string;

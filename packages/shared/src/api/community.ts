@@ -68,6 +68,17 @@ export const roleIdsSchema = z
 /** 멤버의 역할을 이 목록으로 바꾼다 */
 export const setMemberRolesSchema = z.object({ roleIds: roleIdsSchema });
 
+/** 순서 바꾸기: 전체 목록을 새 순서대로 보낸다 (역할, 채널). 빠지거나 남는 항목이 있으면 거절한다 */
+export const reorderSchema = z.object({
+  ids: z
+    .array(z.uuid())
+    .min(1)
+    .max(500)
+    .refine((ids) => new Set(ids).size === ids.length, '같은 항목이 두 번 있습니다.'),
+});
+
+export type ReorderRequest = z.infer<typeof reorderSchema>;
+
 /** 관리자로 올리거나 내린다 (소유자만) */
 export const setAdminSchema = z.object({ admin: z.boolean() });
 

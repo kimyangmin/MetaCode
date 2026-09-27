@@ -19,6 +19,14 @@ import { VoiceService } from '../voice/voice.service.js';
 import { AccessService } from './access.service.js';
 import { ChannelSummaryService } from './channel-summary.service.js';
 
+/** 순서 바꾸기 요청이 지금 목록과 같은 항목인지 (빠지거나 남는 것 없이) */
+export function assertSameSet(current: string[], requested: string[]): void {
+  const set = new Set(current);
+  if (current.length !== requested.length || !requested.every((id) => set.has(id))) {
+    throw new BadRequestException('목록이 바뀌었습니다. 새로 고친 뒤 다시 시도해 주세요.');
+  }
+}
+
 export const toRoleDto = ({ id, name, color, position }: Role): RoleDto => ({
   id,
   name,
@@ -73,6 +81,20 @@ export class RolesService {
     );
     this.notify(communityId);
     return toRoleDto(role);
+  }
+
+  /** 역할 순서 바꾸기 (목록의 위가 이름 색에서 우선) */
+  async reorderRoles(userId: string, communityId: string, ids: string[]): Promise<void> {
+    await this.access.requireManager(userId, communityId, '역할 순서 바꾸기');
+    const roles = await this.prisma.role.findMany({ where: { communityId }, select: { id: true } });
+    assertSameSet(
+      roles.map((r) => r.id),
+      ids,
+    );
+    await this.prisma.$transaction(
+      ids.map((id, position) => this.prisma.role.update({ where: { id }, data: { position } })),
+    );
+    this.notify(communityId);
   }
 
   /** 역할을 지우면 그 역할로 볼 수 있던 비공개 채널도 볼 수 없게 된다 */
@@ -181,7 +203,7 @@ export class RolesService {
     this.notify(communityId);
   }
 
-  private notify(communityId: string) {
+  notify(communityId: string) {
     this.realtime.emit(room.community(communityId), SocketEvent.CommunityUpdated, { communityId });
   }
 

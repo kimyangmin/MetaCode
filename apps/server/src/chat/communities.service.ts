@@ -1,5 +1,11 @@
 import { randomInt } from 'node:crypto';
-import { ForbiddenException, GoneException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  GoneException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import {
   type ChannelSummary,
   type CommunityMember,
@@ -17,7 +23,7 @@ import { toProfile } from '../users/users.service.js';
 import { VoiceService } from '../voice/voice.service.js';
 import { AccessService } from './access.service.js';
 import { ChannelSummaryService } from './channel-summary.service.js';
-import { RolesService, toRoleDto } from './roles.service.js';
+import { RolesService, assertSameSet, toRoleDto } from './roles.service.js';
 
 export const DEFAULT_CHANNEL_NAME = '일반';
 const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -141,11 +147,78 @@ export class CommunitiesService {
     return summary!;
   }
 
+  /**
+   * 채널 삭제 (소유자, 관리자). 메시지와 첨부(저장소 파일 포함)도 지우고, 그 채널의 통화를 끝낸다.
+   * 텍스트 채널은 하나는 남아야 한다 (커뮤니티를 열면 첫 텍스트 채널을 보여 준다).
+   */
+  async deleteChannel(userId: string, channelId: string): Promise<void> {
+    const channel = await this.access.getChannel(userId, channelId);
+    if (!channel.communityId) throw new NotFoundException('채널을 찾을 수 없습니다.');
+    const communityId = channel.communityId;
+    await this.access.requireManager(userId, communityId, '채널 삭제');
+    if (channel.type === 'TEXT') {
+      const texts = await this.prisma.channel.count({ where: { communityId, type: 'TEXT' } });
+      if (texts <= 1) throw new BadRequestException('텍스트 채널은 하나 이상 있어야 합니다.');
+    }
+    const fileKeys = await this.attachments.keysInChannel(channelId);
+    await this.voice.channelDeleted(channelId);
+    await this.prisma.channel.delete({ where: { id: channelId } });
+    void this.attachments.removeObjects(fileKeys);
+    this.realtime.emit(room.channel(channelId), SocketEvent.ChannelDeleted, {
+      channelId,
+      communityId,
+    });
+    this.realtime.clearRoom(room.channel(channelId));
+  }
+
+  /** 채널 순서 바꾸기 (소유자, 관리자). 커뮤니티의 모든 채널을 새 순서대로 보낸다 */
+  async reorderChannels(userId: string, communityId: string, ids: string[]): Promise<void> {
+    await this.access.requireManager(userId, communityId, '채널 순서 바꾸기');
+    const channels = await this.prisma.channel.findMany({
+      where: { communityId },
+      select: { id: true },
+    });
+    assertSameSet(
+      channels.map((c) => c.id),
+      ids,
+    );
+    await this.prisma.$transaction(
+      ids.map((id, position) => this.prisma.channel.update({ where: { id }, data: { position } })),
+    );
+    this.roles.notify(communityId);
+  }
+
   async leave(userId: string, communityId: string): Promise<void> {
     const membership = await this.access.getMembership(userId, communityId);
     if (membership.role === CommunityRole.Owner) {
       throw new ForbiddenException('소유자는 나갈 수 없습니다. 커뮤니티를 삭제해 주세요.');
     }
+    await this.removeMember(communityId, userId);
+  }
+
+  /**
+   * 멤버 내보내기 (소유자, 관리자). 소유자는 내보낼 수 없고, 관리자는 소유자만 내보낼 수 있다.
+   * 나간 것과 같이 처리하므로 본인 화면에서도 커뮤니티가 사라진다.
+   */
+  async kick(userId: string, communityId: string, targetId: string): Promise<void> {
+    const actor = await this.access.requireManager(userId, communityId, '멤버 내보내기');
+    if (targetId === userId)
+      throw new BadRequestException('나가려면 커뮤니티 나가기를 눌러 주세요.');
+    const target = await this.prisma.communityMember.findUnique({
+      where: { communityId_userId: { communityId, userId: targetId } },
+    });
+    if (!target) throw new NotFoundException('멤버를 찾을 수 없습니다.');
+    if (target.role === CommunityRole.Owner) {
+      throw new ForbiddenException('소유자는 내보낼 수 없습니다.');
+    }
+    if (target.role === CommunityRole.Admin && actor.role !== CommunityRole.Owner) {
+      throw new ForbiddenException('관리자는 소유자만 내보낼 수 있습니다.');
+    }
+    await this.removeMember(communityId, targetId);
+  }
+
+  /** 멤버를 뺀다 (나가기, 내보내기): 방에서 빼고, 통화에서 빼고, 광장에서 없애고, 알린다 */
+  private async removeMember(communityId: string, userId: string): Promise<void> {
     const channels = await this.prisma.channel.findMany({
       where: { communityId },
       select: { id: true },

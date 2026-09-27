@@ -236,6 +236,14 @@ export class VoiceService implements OnModuleDestroy {
     }
   }
 
+  /** 채널이 삭제됐다: 그 채널의 통화를 끝낸다 */
+  async channelDeleted(channelId: string): Promise<void> {
+    const call = this.calls.get(channelId);
+    for (const userId of [...(call?.members.keys() ?? [])]) {
+      await this.removeMember(userId, channelId, true);
+    }
+  }
+
   /** 커뮤니티가 삭제됐다: 그 커뮤니티의 통화를 모두 끝낸다 */
   async communityDeleted(communityId: string): Promise<void> {
     for (const call of [...this.calls.values()]) {

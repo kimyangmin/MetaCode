@@ -1,8 +1,10 @@
 import { Body, Controller, Delete, HttpCode, Patch, Post, Put, UseGuards } from '@nestjs/common';
 import {
   type ChannelSummary,
+  type ReorderRequest,
   type RoleDto,
   createRoleSchema,
+  reorderSchema,
   setAdminSchema,
   setMemberRolesSchema,
   updateChannelSchema,
@@ -28,6 +30,16 @@ export class RolesController {
     @Body(new ZodValidationPipe(createRoleSchema)) body: z.infer<typeof createRoleSchema>,
   ): Promise<RoleDto> {
     return this.roles.createRole(userId, id, body);
+  }
+
+  @Put('communities/:id/roles/order')
+  @HttpCode(204)
+  reorderRoles(
+    @CurrentUserId() userId: string,
+    @UuidParam('id') id: string,
+    @Body(new ZodValidationPipe(reorderSchema)) body: ReorderRequest,
+  ): Promise<void> {
+    return this.roles.reorderRoles(userId, id, body.ids);
   }
 
   @Patch('communities/:id/roles/:roleId')

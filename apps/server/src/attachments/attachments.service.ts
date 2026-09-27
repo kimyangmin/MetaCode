@@ -231,6 +231,14 @@ export class AttachmentsService implements OnModuleInit, OnModuleDestroy {
     return attachments.flatMap((a) => [a.objectKey, ...(a.thumbnailKey ? [a.thumbnailKey] : [])]);
   }
 
+  async keysInChannel(channelId: string): Promise<string[]> {
+    const attachments = await this.prisma.attachment.findMany({
+      where: { channelId },
+      select: { objectKey: true, thumbnailKey: true },
+    });
+    return attachments.flatMap((a) => [a.objectKey, ...(a.thumbnailKey ? [a.thumbnailKey] : [])]);
+  }
+
   removeObjects(keys: string[]): Promise<void> {
     return this.storage.remove(keys);
   }

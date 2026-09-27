@@ -273,3 +273,135 @@ describe('관리자', () => {
     expect(await channelIds(carol, community.id)).not.toContain(secret.id);
   });
 });
+
+describe('채널 삭제', () => {
+  it('관리자가 지우면 볼 수 있던 사람에게 알리고, 기록과 통화도 없어진다', async () => {
+    const { alice, bob, carol, community, design, secret } = await setup();
+    expect((await bob.fetch(`/channels/${secret.id}`, send('DELETE'))).status).toBe(403);
+
+    const voice = await alice.json<ChannelSummary>(
+      `/communities/${community.id}/channels`,
+      post({ name: '회의', type: 'VOICE', private: true, roleIds: [design.id] }),
+    );
+    const bobSocket = await connect(bob);
+    const carolSocket = await connect(carol);
+    await new Promise((resolve) =>
+      bobSocket.emit(SocketEvent.VoiceJoin, { channelId: voice.id }, resolve),
+    );
+
+    const left = nextEvent(bobSocket, SocketEvent.VoiceLeft);
+    const deleted = nextEvent(bobSocket, SocketEvent.ChannelDeleted);
+    const notDeleted = expectNoEvent(carolSocket, SocketEvent.ChannelDeleted);
+    expect((await alice.fetch(`/channels/${voice.id}`, send('DELETE'))).status).toBe(204);
+    expect(await left).toEqual({ channelId: voice.id, userId: bob.me.id });
+    expect(await deleted).toEqual({ channelId: voice.id, communityId: community.id });
+    await notDeleted;
+
+    await alice.fetch(`/channels/${secret.id}`, send('DELETE'));
+    expect((await alice.fetch(`/channels/${secret.id}/messages`)).status).toBe(404);
+    expect(await channelIds(alice, community.id)).toEqual([community.channels[0]!.id]);
+  });
+
+  it('마지막 텍스트 채널은 지울 수 없다', async () => {
+    const { alice, community, secret } = await setup();
+    expect((await alice.fetch(`/channels/${secret.id}`, send('DELETE'))).status).toBe(204);
+    const res = await alice.fetch(`/channels/${community.channels[0]!.id}`, send('DELETE'));
+    expect(res.status).toBe(400);
+  });
+});
+
+describe('멤버 내보내기', () => {
+  it('내보내면 커뮤니티에서 빠지고 본인에게도 알린다', async () => {
+    const { alice, bob, carol, community } = await setup();
+    expect(
+      (await carol.fetch(`/communities/${community.id}/members/${bob.me.id}`, send('DELETE')))
+        .status,
+    ).toBe(403);
+
+    const bobSocket = await connect(bob);
+    const left = nextEvent(bobSocket, SocketEvent.CommunityMemberLeft);
+    expect(
+      (await alice.fetch(`/communities/${community.id}/members/${bob.me.id}`, send('DELETE')))
+        .status,
+    ).toBe(204);
+    expect(await left).toEqual({ communityId: community.id, userId: bob.me.id });
+    const notReceived = expectNoEvent(bobSocket, SocketEvent.MessageCreated);
+    await say(await connect(alice), community.channels[0]!.id, '내보낸 뒤');
+    await notReceived;
+    expect((await bob.json<CommunitySummary[]>('/communities')).map((c) => c.id)).not.toContain(
+      community.id,
+    );
+  });
+
+  it('소유자는 내보낼 수 없고, 관리자는 소유자만 내보낼 수 있다', async () => {
+    const { alice, bob, carol, community } = await setup();
+    for (const target of [bob, carol]) {
+      await alice.fetch(
+        `/communities/${community.id}/members/${target.me.id}/admin`,
+        send('PUT', { admin: true }),
+      );
+    }
+    expect(
+      (await bob.fetch(`/communities/${community.id}/members/${alice.me.id}`, send('DELETE')))
+        .status,
+    ).toBe(403);
+    expect(
+      (await bob.fetch(`/communities/${community.id}/members/${carol.me.id}`, send('DELETE')))
+        .status,
+    ).toBe(403);
+    expect(
+      (await alice.fetch(`/communities/${community.id}/members/${carol.me.id}`, send('DELETE')))
+        .status,
+    ).toBe(204);
+  });
+});
+
+describe('순서 바꾸기', () => {
+  it('역할과 채널의 순서를 바꾸면 그 순서로 보인다', async () => {
+    const { alice, community, design, secret } = await setup();
+    const ops = await alice.json<RoleDto>(
+      `/communities/${community.id}/roles`,
+      post({ name: '운영' }),
+    );
+    expect(
+      (
+        await alice.fetch(
+          `/communities/${community.id}/roles/order`,
+          send('PUT', { ids: [ops.id, design.id] }),
+        )
+      ).status,
+    ).toBe(204);
+
+    const general = community.channels[0]!.id;
+    await alice.fetch(
+      `/communities/${community.id}/channels/order`,
+      send('PUT', { ids: [secret.id, general] }),
+    );
+    const summary = (await alice.json<CommunitySummary[]>('/communities')).find(
+      (c) => c.id === community.id,
+    )!;
+    expect(summary.roles.map((r) => r.name)).toEqual(['운영', '디자인']);
+    expect(summary.channels.map((c) => c.id)).toEqual([secret.id, general]);
+  });
+
+  it('빠지거나 남는 항목이 있으면 거절하고, 멤버는 바꿀 수 없다', async () => {
+    const { alice, bob, community, design } = await setup();
+    const general = community.channels[0]!.id;
+    expect(
+      (
+        await alice.fetch(
+          `/communities/${community.id}/channels/order`,
+          send('PUT', { ids: [general] }),
+        )
+      ).status,
+    ).toBe(400);
+    expect(
+      (
+        await bob.fetch(
+          `/communities/${community.id}/roles/order`,
+          send('PUT', { ids: [design.id] }),
+        )
+      ).status,
+    ).toBe(403);
+  });
+});

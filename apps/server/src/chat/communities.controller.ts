@@ -1,4 +1,14 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, Post, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  Param,
+  Post,
+  Put,
+  UseGuards,
+} from '@nestjs/common';
 import {
   type ChannelSummary,
   type CommunityMember,
@@ -6,8 +16,10 @@ import {
   type CreateChannelRequest,
   type CreateCommunityRequest,
   type InviteInfo,
+  type ReorderRequest,
   createChannelSchema,
   createCommunitySchema,
+  reorderSchema,
 } from '@metacode/shared';
 import { z } from 'zod';
 import { AuthGuard } from '../auth/auth.guard.js';
@@ -51,6 +63,32 @@ export class CommunitiesController {
     @Body(new ZodValidationPipe(createChannelSchema)) body: CreateChannelRequest,
   ): Promise<ChannelSummary> {
     return this.communities.createChannel(userId, id, body);
+  }
+
+  @Delete('channels/:id')
+  @HttpCode(204)
+  deleteChannel(@CurrentUserId() userId: string, @UuidParam('id') id: string): Promise<void> {
+    return this.communities.deleteChannel(userId, id);
+  }
+
+  @Put('communities/:id/channels/order')
+  @HttpCode(204)
+  reorderChannels(
+    @CurrentUserId() userId: string,
+    @UuidParam('id') id: string,
+    @Body(new ZodValidationPipe(reorderSchema)) body: ReorderRequest,
+  ): Promise<void> {
+    return this.communities.reorderChannels(userId, id, body.ids);
+  }
+
+  @Delete('communities/:id/members/:userId')
+  @HttpCode(204)
+  kick(
+    @CurrentUserId() userId: string,
+    @UuidParam('id') id: string,
+    @UuidParam('userId') targetId: string,
+  ): Promise<void> {
+    return this.communities.kick(userId, id, targetId);
   }
 
   @Post('communities/:id/leave')
