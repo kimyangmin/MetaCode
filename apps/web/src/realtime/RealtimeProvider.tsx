@@ -13,7 +13,10 @@ import { addMessageToCache, queryKeys } from '../api/queries';
 import { API_URL } from '../config';
 import { getDesktopBridge } from '../platform';
 import { usePresenceStore } from '../stores/presence';
+import { useProfileStore } from '../stores/profile';
 import { useTypingStore } from '../stores/typing';
+import { useVoiceStore } from '../features/voice/store';
+import { withUserProfile } from './userUpdates';
 
 export type AppSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
 export type RealtimeStatus = 'connecting' | 'connected' | 'disconnected';
@@ -118,6 +121,17 @@ export function RealtimeProvider({ meId, children }: { meId: string; children: R
     socket.on(SocketEvent.PresenceChanged, ({ userId, online }) => {
       usePresenceStore.getState().set(userId, online);
     });
+    // 누군가 닉네임이나 프로필 사진을 바꿨다: 들고 있는 곳(메시지 작성자, 멤버, DM, 통화 참여자 등)을 모두 고친다.
+    socket.on(SocketEvent.UserUpdated, (user) => {
+      for (const query of queryClient.getQueryCache().getAll()) {
+        const data = query.state.data;
+        if (data === undefined) continue;
+        const next = withUserProfile(data, user);
+        if (next !== data) queryClient.setQueryData(query.queryKey, next);
+      }
+      useVoiceStore.setState((s) => ({ calls: withUserProfile(s.calls, user) }));
+      useProfileStore.setState((s) => ({ target: withUserProfile(s.target, user) }));
+    });
 
     socket.connect();
     return () => {
@@ -140,7 +154,11 @@ function createSocket(): AppSocket {
     // 연결(재연결)할 때마다 새 토큰을 받는다.
     auth: desktop
       ? (cb) => {
-          void desktop.auth.getAccessToken().then((token) => cb({ token }));
+          // 서버에 닿지 않아 토큰을 못 받으면 빈 토큰으로 시도한다 (서버가 끊고, 다시 연결할 때 새로 받는다).
+          void desktop.auth
+            .getAccessToken()
+            .catch(() => null)
+            .then((token) => cb({ token }));
         }
       : undefined,
   });

@@ -1,4 +1,4 @@
-import { AuthClient, type UserProfile } from '@metacode/shared';
+import { AuthClient, type UserDetail } from '@metacode/shared';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
 import { ApiError, apiFetch } from '../../api/client';
@@ -20,15 +20,18 @@ export function useMe() {
 
   return useQuery({
     queryKey: meQueryKey,
-    queryFn: async (): Promise<UserProfile | null> => {
+    queryFn: async (): Promise<UserDetail | null> => {
       try {
-        return await apiFetch<UserProfile>('/users/me');
+        return await apiFetch<UserDetail>('/users/me');
       } catch (error) {
         if (error instanceof ApiError && error.status === 401) return null;
         throw error;
       }
     },
-    retry: false,
+    // 로그인이 안 된 것(401)은 바로 로그인 화면으로, 서버에 닿지 않은 것은 몇 번 더 시도한다
+    // (앱을 막 켜서 네트워크가 아직 없을 때 등). 그래도 안 되면 "연결하지 못했습니다"와 다시 시도 버튼을 보여 준다.
+    retry: (failures, error) =>
+      failures < 3 && !(error instanceof ApiError && error.status >= 400 && error.status < 500),
     staleTime: 5 * 60 * 1000,
   });
 }

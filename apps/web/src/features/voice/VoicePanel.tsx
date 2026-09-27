@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { type MouseEvent, useEffect, useRef, useState } from 'react';
 import { getDesktopBridge, isDesktop } from '../../platform';
-import { Dialog } from '../../ui/Dialog';
+import { useSettingsStore } from '../../stores/settings';
+import { DeviceSelect, InputGainSlider, OutputVolumeSlider } from './devices';
 import { useChannelLabel } from './hooks';
 import { ScreenPicker } from './ScreenPicker';
 import { useCall, useVoiceStore } from './store';
@@ -12,7 +13,13 @@ const STATUS_LABEL = {
   reconnecting: '다시 연결 중…',
 } as const;
 
-/** 사이드바 아래: 지금 통화와 마이크·헤드셋·근접 음성·장치 설정, 나가기 */
+type MenuKind = 'mic' | 'headset';
+
+/**
+ * 사이드바 아래: 지금 통화, 나가기, 마이크·헤드셋·화면 공유 버튼.
+ * 마이크·헤드셋 버튼을 우클릭하거나 옆의 ˄를 누르면 팝업이 뜬다
+ * (마이크: 입력 장치와 증폭, 헤드셋: 출력 장치와 음량, 근접 음성).
+ */
 export function VoicePanel({ meId }: { meId: string }) {
   const voice = useVoice();
   const session = useVoiceStore((s) => s.session);
@@ -22,7 +29,7 @@ export function VoicePanel({ meId }: { meId: string }) {
   const playbackBlocked = useVoiceStore((s) => s.playbackBlocked);
   const call = useCall(session?.channelId ?? '');
   const label = useChannelLabel(session?.channelId, meId);
-  const [devicesOpen, setDevicesOpen] = useState(false);
+  const [menu, setMenu] = useState<MenuKind | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const sharing = useVoiceStore((s) => s.sharing);
 
@@ -38,6 +45,11 @@ export function VoicePanel({ meId }: { meId: string }) {
 
   if (!session && !error) return null;
   const micOff = muted || deafened || !!session?.listenOnly;
+  const toggleMenu = (kind: MenuKind) => setMenu((current) => (current === kind ? null : kind));
+  const openMenuOnRightClick = (kind: MenuKind) => (e: MouseEvent) => {
+    e.preventDefault();
+    setMenu(kind);
+  };
 
   return (
     <section className="voice-panel" aria-label="음성 통화">
@@ -79,36 +91,42 @@ export function VoicePanel({ meId }: { meId: string }) {
             </button>
           )}
           <div className="voice-panel__controls">
-            <button
-              type="button"
-              className="voice-toggle"
-              aria-pressed={micOff}
-              onClick={() => void voice.toggleMute()}
-              title={micOff ? '마이크 켜기' : '마이크 음소거'}
-            >
-              {micOff ? '🔇' : '🎙️'}
-              <span>마이크</span>
-            </button>
-            <button
-              type="button"
-              className="voice-toggle"
-              aria-pressed={deafened}
-              onClick={() => void voice.toggleDeafen()}
-              title={deafened ? '헤드셋 켜기' : '헤드셋 끄기 (아무것도 듣지 않음)'}
-            >
-              {deafened ? '🔕' : '🎧'}
-              <span>헤드셋</span>
-            </button>
-            <button
-              type="button"
-              className="voice-toggle"
-              aria-pressed={call?.proximity ?? false}
-              disabled={session.status === 'connecting'}
-              onClick={() => void voice.setProximity(!call?.proximity)}
-              title="근접 음성: 켜면 광장에서 가까운 사람끼리만 들립니다. 참여자 누구나 바꿀 수 있습니다."
-            >
-              📍<span>근접</span>
-            </button>
+            <div className="voice-split">
+              <button
+                type="button"
+                className="voice-toggle"
+                aria-pressed={micOff}
+                onClick={() => void voice.toggleMute()}
+                onContextMenu={openMenuOnRightClick('mic')}
+                title={
+                  micOff
+                    ? '마이크 켜기 (우클릭: 마이크 설정)'
+                    : '마이크 음소거 (우클릭: 마이크 설정)'
+                }
+              >
+                {micOff ? '🔇' : '🎙️'}
+                <span>마이크</span>
+              </button>
+              <MenuCaret kind="mic" open={menu === 'mic'} onToggle={toggleMenu} />
+            </div>
+            <div className="voice-split">
+              <button
+                type="button"
+                className="voice-toggle"
+                aria-pressed={deafened}
+                onClick={() => void voice.toggleDeafen()}
+                onContextMenu={openMenuOnRightClick('headset')}
+                title={
+                  deafened
+                    ? '헤드셋 켜기 (우클릭: 헤드셋 설정)'
+                    : '헤드셋 끄기, 아무것도 듣지 않음 (우클릭: 헤드셋 설정)'
+                }
+              >
+                {deafened ? '🔕' : '🎧'}
+                <span>헤드셋</span>
+              </button>
+              <MenuCaret kind="headset" open={menu === 'headset'} onToggle={toggleMenu} />
+            </div>
             <button
               type="button"
               className="voice-toggle"
@@ -119,14 +137,15 @@ export function VoicePanel({ meId }: { meId: string }) {
             >
               🖥️<span>화면</span>
             </button>
-            <button
-              type="button"
-              className="voice-toggle"
-              onClick={() => setDevicesOpen(true)}
-              title="입출력 장치"
-            >
-              ⚙️<span>장치</span>
-            </button>
+            {menu && (
+              <VoiceMenu
+                kind={menu}
+                proximity={call?.proximity ?? false}
+                canToggleProximity={session.status !== 'connecting'}
+                onProximity={(enabled) => void voice.setProximity(enabled)}
+                onClose={() => setMenu(null)}
+              />
+            )}
           </div>
         </>
       )}
@@ -143,7 +162,6 @@ export function VoicePanel({ meId }: { meId: string }) {
           </button>
         </p>
       )}
-      {devicesOpen && <DeviceDialog onClose={() => setDevicesOpen(false)} />}
       {pickerOpen && (
         <ScreenPicker
           onClose={() => setPickerOpen(false)}
@@ -157,69 +175,106 @@ export function VoicePanel({ meId }: { meId: string }) {
   );
 }
 
-/** 마이크와 스피커 고르기. 고른 장치는 기억해서 다음 통화에도 쓴다 */
-function DeviceDialog({ onClose }: { onClose(): void }) {
-  const voice = useVoice();
-  const inputDeviceId = useVoiceStore((s) => s.inputDeviceId);
-  const outputDeviceId = useVoiceStore((s) => s.outputDeviceId);
-  const [devices, setDevices] = useState<MediaDeviceInfo[] | null>(null);
+const MENU_LABEL = { mic: '마이크 설정', headset: '헤드셋 설정' } as const;
+
+/** 마이크·헤드셋 옆의 ˄: 누르면 그 설정 팝업을 열고 닫는다 */
+function MenuCaret({
+  kind,
+  open,
+  onToggle,
+}: {
+  kind: MenuKind;
+  open: boolean;
+  onToggle(kind: MenuKind): void;
+}) {
+  return (
+    <button
+      type="button"
+      className="voice-caret"
+      aria-expanded={open}
+      aria-label={MENU_LABEL[kind]}
+      title={MENU_LABEL[kind]}
+      // 팝업 바깥 누르기로 닫히는 것과 겹쳐 곧바로 다시 열리지 않게 한다.
+      onMouseDown={(e) => e.stopPropagation()}
+      onClick={() => onToggle(kind)}
+    >
+      <svg viewBox="0 0 10 6" width="10" height="6" aria-hidden="true">
+        <path d="M1 5l4-4 4 4" fill="none" stroke="currentColor" strokeWidth="1.5" />
+      </svg>
+    </button>
+  );
+}
+
+/**
+ * 마이크·헤드셋 설정 팝업 (버튼 위에 뜬다). 바깥을 누르거나 Esc를 누르면 닫힌다.
+ * 마이크: 입력 장치, 증폭. 헤드셋: 출력 장치, 음량, 근접 음성.
+ */
+function VoiceMenu({
+  kind,
+  proximity,
+  canToggleProximity,
+  onProximity,
+  onClose,
+}: {
+  kind: MenuKind;
+  proximity: boolean;
+  canToggleProximity: boolean;
+  onProximity(enabled: boolean): void;
+  onClose(): void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    let cancelled = false;
-    const load = () =>
-      navigator.mediaDevices
-        .enumerateDevices()
-        .then((list) => !cancelled && setDevices(list))
-        .catch(() => !cancelled && setDevices([]));
-    void load();
-    navigator.mediaDevices.addEventListener('devicechange', load);
-    return () => {
-      cancelled = true;
-      navigator.mediaDevices.removeEventListener('devicechange', load);
+    const onDown = (e: globalThis.MouseEvent) => {
+      if (!ref.current?.contains(e.target as Node)) onClose();
     };
-  }, []);
-
-  const inputs = devices?.filter((d) => d.kind === 'audioinput') ?? [];
-  const outputs = devices?.filter((d) => d.kind === 'audiooutput') ?? [];
-  // 권한을 받기 전에는 장치 이름이 비어 있다.
-  const name = (d: MediaDeviceInfo, i: number) =>
-    d.label || (d.kind === 'audioinput' ? `마이크 ${i + 1}` : `스피커 ${i + 1}`);
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+    window.addEventListener('mousedown', onDown);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('mousedown', onDown);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [onClose]);
 
   return (
-    <Dialog title="입출력 장치" onClose={onClose}>
-      <div className="form">
-        <label>
-          마이크
-          <select
-            value={inputDeviceId ?? 'default'}
-            onChange={(e) => void voice.switchDevice('audioinput', e.target.value)}
-            disabled={inputs.length === 0}
-          >
-            {inputs.length === 0 && <option>마이크를 찾지 못했습니다</option>}
-            {inputs.map((d, i) => (
-              <option key={d.deviceId} value={d.deviceId}>
-                {name(d, i)}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          스피커
-          <select
-            value={outputDeviceId ?? 'default'}
-            onChange={(e) => void voice.switchDevice('audiooutput', e.target.value)}
-            disabled={outputs.length === 0}
-          >
-            {outputs.length === 0 && <option>이 환경에서는 스피커를 고를 수 없습니다</option>}
-            {outputs.map((d, i) => (
-              <option key={d.deviceId} value={d.deviceId}>
-                {name(d, i)}
-              </option>
-            ))}
-          </select>
-        </label>
-        <p className="form__hint">통화 중이면 바로 바뀌고, 다음 통화에도 이 장치를 씁니다.</p>
-      </div>
-    </Dialog>
+    <div ref={ref} className="voice-menu" role="dialog" aria-label={MENU_LABEL[kind]}>
+      {kind === 'mic' ? (
+        <>
+          <DeviceSelect kind="audioinput" />
+          <InputGainSlider />
+        </>
+      ) : (
+        <>
+          <DeviceSelect kind="audiooutput" />
+          <OutputVolumeSlider />
+          <label className="voice-menu__switch">
+            <input
+              type="checkbox"
+              role="switch"
+              checked={proximity}
+              disabled={!canToggleProximity}
+              onChange={(e) => onProximity(e.target.checked)}
+            />
+            <span>
+              <strong>📍 근접 음성</strong>
+              <small>
+                켜면 광장에서 가까운 사람끼리만 들립니다. 통화 참여자 누구나 바꿀 수 있습니다.
+              </small>
+            </span>
+          </label>
+        </>
+      )}
+      <button
+        type="button"
+        className="voice-menu__more"
+        onClick={() => {
+          onClose();
+          useSettingsStore.getState().open('voice');
+        }}
+      >
+        음성 설정 열기 ›
+      </button>
+    </div>
   );
 }

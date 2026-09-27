@@ -60,7 +60,8 @@ describe('웹 GitHub 로그인', () => {
     expect(me.status).toBe(200);
     expect((await me.json()) as UserProfile).toMatchObject({
       username: 'alice',
-      displayName: 'Alice',
+      // 보이는 이름은 닉네임이고 처음에는 없다 (GitHub 이름을 쓰지 않는다).
+      displayName: null,
       avatarUrl: user.avatar_url,
     });
   });
@@ -69,7 +70,7 @@ describe('웹 GitHub 로그인', () => {
     expect((await t.fetch('/users/me')).status).toBe(401);
   });
 
-  it('다시 로그인하면 GitHub의 바뀐 이름/아바타로 갱신되고 같은 사용자로 유지된다', async () => {
+  it('다시 로그인하면 GitHub의 바뀐 아이디/사진으로 갱신되고 같은 사용자로 유지된다', async () => {
     const user = makeGithubUser({ name: '옛 이름' });
     const first = await loginWithGithub(user);
     const firstMe = (await (
@@ -78,7 +79,12 @@ describe('웹 GitHub 로그인', () => {
       })
     ).json()) as UserProfile;
 
-    const second = await loginWithGithub({ ...user, name: '새 이름', login: 'renamed' });
+    const second = await loginWithGithub({
+      ...user,
+      name: '새 이름',
+      login: 'renamed',
+      avatar_url: 'https://avatars.githubusercontent.com/u/new',
+    });
     const secondMe = (await (
       await t.fetch('/users/me', {
         headers: { cookie: cookieHeader(readSetCookies(second.callback)) },
@@ -86,7 +92,11 @@ describe('웹 GitHub 로그인', () => {
     ).json()) as UserProfile;
 
     expect(secondMe.id).toBe(firstMe.id);
-    expect(secondMe).toMatchObject({ displayName: '새 이름', username: 'renamed' });
+    expect(secondMe).toMatchObject({
+      displayName: null,
+      username: 'renamed',
+      avatarUrl: 'https://avatars.githubusercontent.com/u/new',
+    });
   });
 
   it('state 쿠키가 없는 콜백(다른 브라우저에서 만든 링크)은 로그인시키지 않는다', async () => {

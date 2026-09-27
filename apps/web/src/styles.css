@@ -71,6 +71,15 @@ h3 {
   color: var(--muted);
 }
 
+.center--column {
+  align-content: center;
+  gap: 12px;
+}
+
+.center--column p {
+  margin: 0;
+}
+
 /* ── 공용 ─────────────────────────────── */
 
 .button {
@@ -1434,10 +1443,100 @@ h3 {
   color: var(--danger);
 }
 
+/* 마이크(˄), 헤드셋(˄), 화면. 팝업은 이 줄 위에 뜬다 */
 .voice-panel__controls {
+  position: relative;
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  gap: 4px;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 6px;
+}
+
+/* 버튼 + ˄를 한 덩어리로 */
+.voice-split {
+  display: flex;
+  min-width: 0;
+}
+
+.voice-split .voice-toggle {
+  flex: 1;
+  min-width: 0;
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.voice-caret {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-left: 0;
+  border-radius: 0 6px 6px 0;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.voice-caret:hover,
+.voice-caret[aria-expanded='true'] {
+  background: var(--bg-hover);
+  color: var(--fg);
+}
+
+.voice-caret[aria-expanded='true'] svg {
+  transform: rotate(180deg);
+}
+
+.voice-menu {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 260px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.25);
+}
+
+.voice-menu__switch {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.voice-menu__switch input {
+  margin-top: 3px;
+  accent-color: var(--accent);
+}
+
+.voice-menu__switch span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 0.85rem;
+}
+
+.voice-menu__switch small {
+  color: var(--muted);
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
+
+.voice-menu__more {
+  align-self: flex-start;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
 }
 
 .voice-toggle {
@@ -1981,6 +2080,8 @@ body {
 .message__reply-text,
 .forward-preview,
 .profile-popup__names,
+.profile-popup__bio,
+.settings-id code,
 input,
 textarea {
   user-select: text;
@@ -2437,4 +2538,282 @@ a {
   flex: none;
   padding: 4px 12px;
   text-decoration: none;
+}
+
+.form__ok {
+  margin: 0;
+  color: var(--ok);
+  font-size: 0.875rem;
+}
+
+.profile-popup__bio {
+  margin: 0;
+  color: var(--fg);
+  font-size: 0.85rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* ── 설정 창: 화면의 80%, 바깥은 어둡게 (누르면 닫힘) ── */
+
+.settings-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 110;
+  display: grid;
+  place-items: center;
+  background: rgb(0 0 0 / 0.6);
+}
+
+.settings-window {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  width: 80vw;
+  height: 80vh;
+  max-width: calc(100vw - 32px);
+  max-height: calc(100vh - 32px);
+  border-radius: 12px;
+  background: var(--bg);
+  box-shadow: 0 12px 40px rgb(0 0 0 / 0.35);
+  overflow: hidden;
+}
+
+.settings-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 16px 12px;
+  background: var(--bg-sidebar);
+  overflow-y: auto;
+}
+
+.settings-nav__me {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 8px 12px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 8px;
+}
+
+.settings-nav__me > div {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.settings-nav__me strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-nav__me button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.8rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.settings-nav__me button:hover {
+  color: var(--fg);
+}
+
+.settings-nav__group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 8px;
+}
+
+.settings-nav__group p {
+  margin: 8px 8px 4px;
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.settings-nav__group button,
+.settings-nav__logout {
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--fg);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.settings-nav__group button:hover {
+  background: var(--bg-hover);
+}
+
+.settings-nav__group button[aria-current='page'] {
+  background: var(--bg-active);
+  font-weight: 600;
+}
+
+.settings-nav .settings-nav__logout {
+  margin-top: auto;
+  color: var(--danger);
+}
+
+.settings-nav .settings-nav__logout:hover {
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+}
+
+.settings-content {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.settings-content__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--border);
+}
+
+.settings-content__header h2 {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.settings-content__body {
+  flex: 1;
+  min-height: 0;
+  padding: 24px;
+  overflow-y: auto;
+}
+
+.settings-form {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  max-width: 560px;
+}
+
+.settings-form__title {
+  margin: 8px 0 -8px;
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.settings-form__footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.settings-form__footer p {
+  margin-right: auto;
+}
+
+.settings-profile {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.settings-profile__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.settings-profile__actions .form__hint {
+  flex-basis: 100%;
+}
+
+.settings-field,
+.voice-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.settings-field__label,
+.voice-field__label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.settings-field__label output,
+.voice-field__label output {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.settings-field input,
+.settings-field textarea,
+.voice-field select {
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-input);
+  color: var(--fg);
+  font: inherit;
+}
+
+.settings-field textarea {
+  resize: vertical;
+}
+
+.voice-field input[type='range'] {
+  width: 100%;
+  accent-color: var(--accent);
+}
+
+.settings-id {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.settings-id code {
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: var(--bg-input);
+  font-size: 0.95rem;
+}
+
+@media (max-width: 640px) {
+  .settings-window {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .settings-nav {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+
+  .settings-nav__me,
+  .settings-nav__group p {
+    display: none;
+  }
+
+  .settings-nav__group {
+    flex-direction: row;
+    margin: 0;
+  }
+
+  .settings-nav .settings-nav__logout {
+    margin: 0 0 0 auto;
+  }
 }

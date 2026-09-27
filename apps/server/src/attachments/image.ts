@@ -67,3 +67,19 @@ export async function processImage(input: Buffer): Promise<ProcessedImage | null
     return null;
   }
 }
+
+/**
+ * 프로필 사진: 가운데를 기준으로 정사각형(size px)으로 잘라 WebP로 만든다.
+ * 움직이는 이미지는 첫 프레임으로 만든다. 읽을 수 없는 파일이면 null
+ */
+export async function makeAvatar(input: Buffer, size: number): Promise<Buffer | null> {
+  try {
+    return await sharp(input, { limitInputPixels: MAX_INPUT_PIXELS, animated: false })
+      .rotate()
+      .resize(size, size, { fit: 'cover' })
+      .webp({ quality: 85 })
+      .toBuffer();
+  } catch {
+    return null;
+  }
+}

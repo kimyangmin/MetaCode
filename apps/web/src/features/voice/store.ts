@@ -33,6 +33,10 @@ interface VoiceState {
   previewScreen: MediaStream | null;
   inputDeviceId: string | null;
   outputDeviceId: string | null;
+  /** 마이크 증폭 (0~2, 1이 원래 크기) */
+  inputGain: number;
+  /** 들리는 소리 전체의 크기 (0~1) */
+  outputVolume: number;
 
   setCalls(list: VoiceCall[]): void;
   upsertMember(channelId: string, member: VoiceCall['members'][number]): void;
@@ -57,6 +61,8 @@ interface VoiceState {
     >,
   ): void;
   setDevice(kind: 'audioinput' | 'audiooutput', deviceId: string): void;
+  setInputGain(value: number): void;
+  setOutputVolume(value: number): void;
 }
 
 const DEVICE_KEYS = {
@@ -64,11 +70,36 @@ const DEVICE_KEYS = {
   audiooutput: 'metacode:voice-output',
 } as const;
 
+const LEVEL_KEYS = {
+  inputGain: 'metacode:voice-input-gain',
+  outputVolume: 'metacode:voice-output-volume',
+} as const;
+
+export const INPUT_GAIN_MAX = 2;
+
 function readDevice(kind: keyof typeof DEVICE_KEYS): string | null {
   try {
     return localStorage.getItem(DEVICE_KEYS[kind]);
   } catch {
     return null;
+  }
+}
+
+/** 기억한 음량. 없거나 범위를 벗어나면 1 */
+function readLevel(key: keyof typeof LEVEL_KEYS, max: number): number {
+  try {
+    const value = Number(localStorage.getItem(LEVEL_KEYS[key]) ?? 'NaN');
+    return Number.isFinite(value) && value >= 0 && value <= max ? value : 1;
+  } catch {
+    return 1;
+  }
+}
+
+function saveLevel(key: keyof typeof LEVEL_KEYS, value: number) {
+  try {
+    localStorage.setItem(LEVEL_KEYS[key], String(value));
+  } catch {
+    // 기억하지 못해도 이번 실행에서는 적용된다.
   }
 }
 
@@ -87,6 +118,8 @@ export const useVoiceStore = create<VoiceState>((set) => ({
   previewScreen: null,
   inputDeviceId: readDevice('audioinput'),
   outputDeviceId: readDevice('audiooutput'),
+  inputGain: readLevel('inputGain', INPUT_GAIN_MAX),
+  outputVolume: readLevel('outputVolume', 1),
 
   setCalls: (list) => set({ calls: callsFromList(list) }),
   upsertMember: (channelId, member) =>
@@ -104,6 +137,16 @@ export const useVoiceStore = create<VoiceState>((set) => ({
       // 기억하지 못해도 이번 실행에서는 적용된다.
     }
     set(kind === 'audioinput' ? { inputDeviceId: deviceId } : { outputDeviceId: deviceId });
+  },
+  setInputGain: (value) => {
+    const inputGain = Math.min(INPUT_GAIN_MAX, Math.max(0, value));
+    saveLevel('inputGain', inputGain);
+    set({ inputGain });
+  },
+  setOutputVolume: (value) => {
+    const outputVolume = Math.min(1, Math.max(0, value));
+    saveLevel('outputVolume', outputVolume);
+    set({ outputVolume });
   },
 }));
 
