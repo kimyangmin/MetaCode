@@ -2,6 +2,7 @@ import type { VoiceMember } from '@metacode/shared';
 import { Avatar } from '../../ui/Avatar';
 import { openProfile } from '../../stores/profile';
 import { displayName } from '../../ui/format';
+import { useSharePreview } from './SharePreview';
 import { useVoice } from './VoiceProvider';
 
 /**
@@ -19,25 +20,34 @@ export function VoiceMembers({
   return (
     <ul className="voice-members" aria-label="통화 참여자">
       {members.map((member) => (
-        <li
-          key={member.user.id}
-          className="voice-members__item"
-          data-speaking={member.speaking && !member.muted}
-        >
-          <button
-            type="button"
-            className="voice-members__who"
-            onClick={(e) => openProfile(member.user, e)}
-            title={`${displayName(member.user)} 정보`}
-          >
-            <Avatar user={member.user} size={22} />
-            <span className="voice-members__name">{displayName(member.user)}</span>
-          </button>
-          {member.sharing && <LiveButton channelId={channelId} member={member} />}
-          <MemberFlags member={member} />
-        </li>
+        <MemberRow key={member.user.id} channelId={channelId} member={member} />
       ))}
     </ul>
+  );
+}
+
+/** 참여자 한 명. 화면을 공유 중이면 마우스를 올려 미리 본다 */
+function MemberRow({ channelId, member }: { channelId: string; member: VoiceMember }) {
+  const { hoverProps, popup } = useSharePreview(channelId, member);
+  return (
+    <li
+      className="voice-members__item"
+      data-speaking={member.speaking && !member.muted}
+      {...hoverProps}
+    >
+      <button
+        type="button"
+        className="voice-members__who"
+        onClick={(e) => openProfile(member.user, e)}
+        title={`${displayName(member.user)} 정보`}
+      >
+        <Avatar user={member.user} size={22} />
+        <span className="voice-members__name">{displayName(member.user)}</span>
+      </button>
+      {member.sharing && <LiveButton channelId={channelId} member={member} />}
+      <MemberFlags member={member} />
+      {popup}
+    </li>
   );
 }
 

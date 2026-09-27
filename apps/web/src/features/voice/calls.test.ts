@@ -81,6 +81,12 @@ describe('trackVolume', () => {
     expect(trackVolume('b', 'screen-audio', { ...base, watching: 'b' })).toBe(1);
   });
 
+  it('마우스를 올린 미리보기는 화면만 받고 소리는 받지 않는다', () => {
+    const state = { ...base, previewing: 'a' };
+    expect(trackVolume('a', 'screen', state)).toBe(1);
+    expect(trackVolume('a', 'screen-audio', state)).toBe(0);
+  });
+
   it('헤드셋을 끄면 화면 공유 소리도 들리지 않지만 화면은 보인다', () => {
     const state = { ...base, deafened: true, watching: 'a' };
     expect(trackVolume('a', 'screen-audio', state)).toBe(0);

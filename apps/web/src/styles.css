@@ -2369,3 +2369,47 @@ a {
   margin: auto;
   color: var(--muted);
 }
+
+/* 화면 공유 미리보기: 공유 중인 참여자 위에 마우스를 올리면 옆에 작게 */
+.share-preview {
+  position: fixed;
+  z-index: 55;
+  display: grid;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  box-shadow: 0 10px 28px rgb(0 0 0 / 0.35);
+  pointer-events: none;
+}
+
+.share-preview__title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 0.8rem;
+}
+
+.share-preview__stage {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border-radius: 6px;
+  background: #000;
+  color: #bbb;
+  font-size: 0.75rem;
+  text-align: center;
+}
+
+.share-preview__stage video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.live-wrap {
+  display: inline-flex;
+}
