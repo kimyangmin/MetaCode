@@ -46,3 +46,27 @@ export function volumeFor(
   if (!state.proximity) return 1;
   return state.gains[identity] ?? 0;
 }
+
+/** 참여자가 올리는 트랙 종류: 마이크, 화면 공유 영상, 화면 공유 소리 */
+export type TrackKind = 'microphone' | 'screen' | 'screen-audio';
+
+/**
+ * 트랙마다 구독 여부와 음량 (0이면 구독하지 않는다).
+ * 마이크는 volumeFor를 따르고, 화면 공유는 지금 보고 있는 사람의 것만 받는다 (대역폭을 아끼려고).
+ * 화면 공유 소리는 헤드셋을 끄면 들리지 않고, 근접 음성과는 상관없다 (보겠다고 고른 것이므로).
+ */
+export function trackVolume(
+  identity: string,
+  kind: TrackKind,
+  state: {
+    deafened: boolean;
+    proximity: boolean;
+    gains: Record<string, number>;
+    watching: string | null;
+  },
+): number {
+  if (kind === 'microphone') return volumeFor(identity, state);
+  if (identity !== state.watching) return 0;
+  if (kind === 'screen') return 1;
+  return state.deafened ? 0 : 1;
+}

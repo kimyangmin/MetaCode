@@ -8,7 +8,7 @@ import {
   type VoiceProximityChanged,
 } from '@metacode/shared';
 import type { AppSocket } from '../../realtime/RealtimeProvider';
-import { volumeFor } from './calls';
+import { trackVolume } from './calls';
 import type { VoiceConnection } from './connection';
 import { useVoiceStore } from './store';
 
@@ -80,6 +80,7 @@ export class VoiceController {
   dispose(): void {
     void this.dropConnection();
     useVoiceStore.setState({ session: null, calls: {}, gains: {}, error: null });
+    this.closeScreens();
   }
 
   /**
@@ -172,6 +173,43 @@ export class VoiceController {
     await this.connection?.switchDevice(kind, deviceId);
   }
 
+  /**
+   * 내 화면 공유 시작. 브라우저는 고르는 창을 띄우고, 데스크톱 앱은 미리 고른 화면을 쓴다.
+   * 취소했거나 실패하면 false
+   */
+  async startScreenShare(): Promise<boolean> {
+    const conn = this.connection;
+    if (!conn || store().sharing) return false;
+    const ok = await conn.setScreenShareEnabled(true);
+    if (!ok || this.connection !== conn) return false;
+    store().patch({ sharing: true });
+    this.sendState();
+    return true;
+  }
+
+  async stopScreenShare(): Promise<void> {
+    if (!store().sharing) return;
+    store().patch({ sharing: false });
+    await this.connection?.setScreenShareEnabled(false);
+    if (store().watching === this.meId) store().patch({ watching: null, screen: null });
+    this.sendState();
+  }
+
+  /**
+   * 누군가의 화면 공유 보기. 그 통화에 없으면 먼저 들어간다 (Discord처럼 통화 참여자만 볼 수 있다).
+   * null이면 보기를 닫는다 (영상 구독도 끊는다).
+   */
+  async watch(channelId: string | null, userId: string | null): Promise<void> {
+    if (channelId && userId && store().session?.channelId !== channelId) {
+      await this.join(channelId);
+      if (store().session?.channelId !== channelId) return;
+    }
+    store().patch({ watching: userId, screen: null });
+    // 내 화면은 받을 필요 없이 올리고 있는 것을 그대로 보여 준다.
+    if (userId === this.meId) store().patch({ screen: this.connection?.localScreen() ?? null });
+    this.applyVolumes();
+  }
+
   /** 브라우저가 소리 재생을 막았을 때 사용자가 누른 버튼에서 부른다 */
   startAudio(): void {
     void this.connection?.startAudio().then(() => store().patch({ playbackBlocked: false }));
@@ -229,6 +267,17 @@ export class VoiceController {
         });
       },
       onPlaybackBlocked: (blocked) => store().patch({ playbackBlocked: blocked }),
+      onScreen: (identity, stream) => {
+        if (this.connection === conn && store().watching === identity) {
+          store().patch({ screen: stream });
+        }
+      },
+      onScreenShareEnded: () => {
+        if (this.connection !== conn || !store().sharing) return;
+        store().patch({ sharing: false });
+        if (store().watching === this.meId) store().patch({ watching: null, screen: null });
+        this.sendState();
+      },
     });
     this.connection = conn;
     const { muted, deafened, inputDeviceId, outputDeviceId } = store();
@@ -257,7 +306,12 @@ export class VoiceController {
     this.speaking = false;
     clearTimeout(this.speakingTimer);
     store().patch({ playbackBlocked: false });
+    this.closeScreens();
     await current?.disconnect();
+  }
+
+  private closeScreens() {
+    store().patch({ sharing: false, watching: null, screen: null });
   }
 
   private onSpeaking(value: boolean) {
@@ -278,21 +332,22 @@ export class VoiceController {
 
   /** 내 상태를 서버에 알린다 (다른 사람의 목록과 광장에 보인다) */
   private sendState() {
-    const { session, muted, deafened } = store();
+    const { session, muted, deafened, sharing } = store();
     if (!session || session.status === 'connecting') return;
     this.socket?.emit(SocketEvent.VoiceUpdate, {
       muted: muted || session.listenOnly,
       deafened,
       speaking: this.speaking,
+      sharing,
     });
   }
 
   private applyVolumes() {
-    const { session, calls, deafened, gains } = store();
+    const { session, calls, deafened, gains, watching } = store();
     if (!session) return;
     const proximity = calls[session.channelId]?.proximity ?? false;
-    this.connection?.applyVolumes((identity) =>
-      volumeFor(identity, { deafened, proximity, gains }),
+    this.connection?.applyVolumes((identity, kind) =>
+      trackVolume(identity, kind, { deafened, proximity, gains, watching }),
     );
   }
 

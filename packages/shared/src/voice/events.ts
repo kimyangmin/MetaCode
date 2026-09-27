@@ -4,14 +4,19 @@ import type { UserProfile } from '../api/user.js';
 /** 음성 채널이나 DM의 통화에 들어간다 */
 export const voiceJoinSchema = z.object({ channelId: z.uuid() });
 
-/** 내 통화 상태 (마이크 음소거, 헤드셋 끄기, 말하는 중). 지금 들어가 있는 통화에 적용된다 */
+/** 내 통화 상태 (마이크 음소거, 헤드셋 끄기, 말하는 중, 화면 공유 중). 지금 들어가 있는 통화에 적용된다 */
 export const voiceUpdateSchema = z.object({
   muted: z.boolean(),
   deafened: z.boolean(),
   speaking: z.boolean(),
+  // 화면 공유가 없던 클라이언트(이전 버전)는 보내지 않는다.
+  sharing: z.boolean().default(false),
 });
 
-export type VoiceUpdateRequest = z.infer<typeof voiceUpdateSchema>;
+/** 클라이언트가 보내는 형태 (sharing은 빠질 수 있음) */
+export type VoiceUpdateRequest = z.input<typeof voiceUpdateSchema>;
+/** 서버가 검증한 뒤의 형태 */
+export type VoiceUpdateState = z.infer<typeof voiceUpdateSchema>;
 
 /** 근접 음성 켜기/끄기. 그 통화의 참여자 누구나 바꿀 수 있다 */
 export const voiceSetProximitySchema = z.object({
@@ -27,6 +32,8 @@ export interface VoiceMember {
   muted: boolean;
   deafened: boolean;
   speaking: boolean;
+  /** 화면을 공유하는 중. 같은 통화 참여자가 눌러서 볼 수 있다 */
+  sharing: boolean;
 }
 
 /** 진행 중인 통화 하나 (참여자가 있는 음성 채널 또는 DM) */

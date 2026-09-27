@@ -1,6 +1,13 @@
 import type { UserProfile, VoiceMember } from '@metacode/shared';
 import { describe, expect, it } from 'vitest';
-import { callsFromList, volumeFor, withMember, withProximity, withoutMember } from './calls';
+import {
+  callsFromList,
+  trackVolume,
+  volumeFor,
+  withMember,
+  withProximity,
+  withoutMember,
+} from './calls';
 
 const user = (id: string): UserProfile => ({
   id,
@@ -13,6 +20,7 @@ const member = (id: string, patch: Partial<VoiceMember> = {}): VoiceMember => ({
   muted: false,
   deafened: false,
   speaking: false,
+  sharing: false,
   ...patch,
 });
 
@@ -56,5 +64,26 @@ describe('volumeFor', () => {
     const state = { ...base, proximity: true, gains: { a: 0.4 } };
     expect(volumeFor('a', state)).toBe(0.4);
     expect(volumeFor('b', state)).toBe(0);
+  });
+});
+
+describe('trackVolume', () => {
+  const base = { deafened: false, proximity: true, gains: { a: 0.3 }, watching: null };
+
+  it('마이크는 근접 음성 음량을 따른다', () => {
+    expect(trackVolume('a', 'microphone', base)).toBe(0.3);
+  });
+
+  it('화면 공유는 보고 있는 사람의 것만 받는다 (거리와 상관없이)', () => {
+    expect(trackVolume('a', 'screen', base)).toBe(0);
+    expect(trackVolume('a', 'screen', { ...base, watching: 'a' })).toBe(1);
+    expect(trackVolume('b', 'screen', { ...base, watching: 'a' })).toBe(0);
+    expect(trackVolume('b', 'screen-audio', { ...base, watching: 'b' })).toBe(1);
+  });
+
+  it('헤드셋을 끄면 화면 공유 소리도 들리지 않지만 화면은 보인다', () => {
+    const state = { ...base, deafened: true, watching: 'a' };
+    expect(trackVolume('a', 'screen-audio', state)).toBe(0);
+    expect(trackVolume('a', 'screen', state)).toBe(1);
   });
 });

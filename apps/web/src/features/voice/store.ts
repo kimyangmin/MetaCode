@@ -22,6 +22,12 @@ interface VoiceState {
   error: string | null;
   /** 브라우저가 소리 재생을 막았다 (사용자가 한 번 눌러야 들린다) */
   playbackBlocked: boolean;
+  /** 내 화면을 공유하는 중 */
+  sharing: boolean;
+  /** 보고 있는 화면 공유 (사용자 ID). 없으면 보는 창이 닫혀 있다 */
+  watching: string | null;
+  /** 보고 있는 화면 공유의 영상. 받기 전이거나 공유가 끝났으면 null */
+  screen: MediaStream | null;
   inputDeviceId: string | null;
   outputDeviceId: string | null;
 
@@ -31,7 +37,19 @@ interface VoiceState {
   setProximity(channelId: string, enabled: boolean): void;
   setSession(session: VoiceSession | null): void;
   patch(
-    values: Partial<Pick<VoiceState, 'muted' | 'deafened' | 'gains' | 'error' | 'playbackBlocked'>>,
+    values: Partial<
+      Pick<
+        VoiceState,
+        | 'muted'
+        | 'deafened'
+        | 'gains'
+        | 'error'
+        | 'playbackBlocked'
+        | 'sharing'
+        | 'watching'
+        | 'screen'
+      >
+    >,
   ): void;
   setDevice(kind: 'audioinput' | 'audiooutput', deviceId: string): void;
 }
@@ -57,6 +75,9 @@ export const useVoiceStore = create<VoiceState>((set) => ({
   gains: {},
   error: null,
   playbackBlocked: false,
+  sharing: false,
+  watching: null,
+  screen: null,
   inputDeviceId: readDevice('audioinput'),
   outputDeviceId: readDevice('audiooutput'),
 
