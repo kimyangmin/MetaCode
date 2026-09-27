@@ -35,6 +35,8 @@ export const SocketEvent = {
   CommunityMemberJoined: 'community:member-joined',
   CommunityMemberLeft: 'community:member-left',
   CommunityDeleted: 'community:deleted',
+  /** 역할, 채널 권한, 관리자가 바뀌었다: 커뮤니티 정보(볼 수 있는 채널 등)를 다시 받는다 */
+  CommunityUpdated: 'community:updated',
   PresenceChanged: 'presence:changed',
   /** 광장 화면을 열 때: 광장 방에 들어가고 현재 상태(스냅숏)를 받는다 */
   PlazaWatch: 'plaza:watch',
@@ -98,6 +100,7 @@ export interface ServerToClientEvents {
   }) => void;
   [SocketEvent.CommunityMemberLeft]: (payload: { communityId: string; userId: string }) => void;
   [SocketEvent.CommunityDeleted]: (payload: { communityId: string }) => void;
+  [SocketEvent.CommunityUpdated]: (payload: { communityId: string }) => void;
   [SocketEvent.PresenceChanged]: (payload: { userId: string; online: boolean }) => void;
   [SocketEvent.PlazaMoved]: (payload: PlazaMoved) => void;
   [SocketEvent.PlazaMember]: (payload: PlazaMemberChange) => void;

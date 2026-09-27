@@ -224,6 +224,18 @@ export class VoiceService implements OnModuleDestroy {
     }
   }
 
+  /** 채널 권한이 바뀌었다: 볼 수 없게 된 음성 채널의 통화에서 뺀다 */
+  async revalidateCommunity(communityId: string): Promise<void> {
+    for (const call of [...this.calls.values()]) {
+      if (call.communityId !== communityId) continue;
+      for (const userId of [...call.members.keys()]) {
+        if (!(await this.canSee(userId, call.channelId))) {
+          await this.removeMember(userId, call.channelId, true);
+        }
+      }
+    }
+  }
+
   /** 커뮤니티가 삭제됐다: 그 커뮤니티의 통화를 모두 끝낸다 */
   async communityDeleted(communityId: string): Promise<void> {
     for (const call of [...this.calls.values()]) {

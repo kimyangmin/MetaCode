@@ -17,6 +17,7 @@ import { toProfile } from '../users/users.service.js';
 import { VoiceService } from '../voice/voice.service.js';
 import { AccessService } from './access.service.js';
 import { ChannelSummaryService } from './channel-summary.service.js';
+import { RolesService, toRoleDto } from './roles.service.js';
 
 export const DEFAULT_CHANNEL_NAME = '일반';
 const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -33,6 +34,7 @@ export class CommunitiesService {
     private readonly attachments: AttachmentsService,
     private readonly plaza: PlazaService,
     private readonly voice: VoiceService,
+    private readonly roles: RolesService,
   ) {}
 
   /** 커뮤니티를 만들고 만든 사람을 OWNER로, 기본 텍스트 채널 하나를 함께 만든다. */
@@ -55,6 +57,7 @@ export class CommunitiesService {
       name: community.name,
       myRole: CommunityRole.Owner,
       channels: await this.summaries.summarize(userId, community.channels),
+      roles: [],
     };
   }
 
@@ -64,7 +67,14 @@ export class CommunitiesService {
       orderBy: { joinedAt: 'asc' },
       include: {
         community: {
-          include: { channels: { orderBy: [{ position: 'asc' }, { createdAt: 'asc' }] } },
+          include: {
+            // 볼 수 있는 채널만 (비공개 채널은 권한이 있을 때만)
+            channels: {
+              where: await this.access.visibleChannelsWhere(userId),
+              orderBy: [{ position: 'asc' }, { createdAt: 'asc' }],
+            },
+            roles: { orderBy: [{ position: 'asc' }, { createdAt: 'asc' }] },
+          },
         },
       },
     });
@@ -77,6 +87,7 @@ export class CommunitiesService {
       name: m.community.name,
       myRole: m.role,
       channels: m.community.channels.map((c) => summaries.get(c.id)!),
+      roles: m.community.roles.map(toRoleDto),
     }));
   }
 
@@ -84,13 +95,14 @@ export class CommunitiesService {
     await this.access.getMembership(userId, communityId);
     const members = await this.prisma.communityMember.findMany({
       where: { communityId },
-      include: { user: true },
+      include: { user: true, roles: { select: { roleId: true } } },
       orderBy: { joinedAt: 'asc' },
     });
     const online = await this.presence.getOnline(members.map((m) => m.userId));
     return members.map((m) => ({
       user: toProfile(m.user),
       role: m.role,
+      roleIds: m.roles.map((r) => r.roleId),
       online: online[m.userId] ?? false,
     }));
   }
@@ -98,22 +110,31 @@ export class CommunitiesService {
   async createChannel(
     userId: string,
     communityId: string,
-    name: string,
-    type: 'TEXT' | 'VOICE',
+    request: { name: string; type: 'TEXT' | 'VOICE'; private: boolean; roleIds: string[] },
   ): Promise<ChannelSummary> {
-    const membership = await this.access.getMembership(userId, communityId);
-    if (membership.role === CommunityRole.Member) {
-      throw new ForbiddenException('채널은 관리자만 만들 수 있습니다.');
-    }
+    await this.access.requireManager(userId, communityId, '채널 만들기');
+    await this.roles.assertRoles(communityId, request.roleIds);
     const last = await this.prisma.channel.findFirst({
       where: { communityId },
       orderBy: { position: 'desc' },
       select: { position: true },
     });
     const channel = await this.prisma.channel.create({
-      data: { type, communityId, name, position: (last?.position ?? 0) + 1 },
+      data: {
+        type: request.type,
+        communityId,
+        name: request.name,
+        private: request.private,
+        position: (last?.position ?? 0) + 1,
+        roleAccess: { create: request.roleIds.map((roleId) => ({ roleId })) },
+      },
     });
     const [summary] = await this.summaries.summarize(userId, [channel]);
+    // 비공개 채널은 볼 수 있는 사람만 방에 넣고, 커뮤니티 정보를 다시 불러오게 한다.
+    if (channel.private) {
+      await this.roles.syncAccess(communityId);
+      return summary!;
+    }
     // 커뮤니티 멤버 전원의 연결을 새 채널 방에 넣고 알린다.
     this.realtime.joinRoom(room.community(communityId), [room.channel(channel.id)]);
     this.realtime.emit(room.community(communityId), SocketEvent.ChannelCreated, summary!);
@@ -232,18 +253,21 @@ export class CommunitiesService {
         }),
         this.prisma.invite.update({ where: { code }, data: { uses: { increment: 1 } } }),
       ]);
-      const channels = await this.prisma.channel.findMany({
-        where: { communityId },
-        select: { id: true },
-      });
+      // 새 멤버는 역할이 없으므로 공개 채널만 본다.
+      const channelIds = await this.access.visibleChannelIds(userId, communityId);
       this.realtime.joinUser(userId, [
         room.community(communityId),
-        ...channels.map((c) => room.channel(c.id)),
+        ...channelIds.map(room.channel),
       ]);
       const [online] = Object.values(await this.presence.getOnline([userId]));
       this.realtime.emit(room.community(communityId), SocketEvent.CommunityMemberJoined, {
         communityId,
-        member: { user: toProfile(member.user), role: member.role, online: online ?? false },
+        member: {
+          user: toProfile(member.user),
+          role: member.role,
+          roleIds: [],
+          online: online ?? false,
+        },
       });
       // 접속 중이면 광장에도 바로 나타난다.
       if (online) {

@@ -50,7 +50,7 @@ export class CommunitiesController {
     @UuidParam('id') id: string,
     @Body(new ZodValidationPipe(createChannelSchema)) body: CreateChannelRequest,
   ): Promise<ChannelSummary> {
-    return this.communities.createChannel(userId, id, body.name, body.type);
+    return this.communities.createChannel(userId, id, body);
   }
 
   @Post('communities/:id/leave')
