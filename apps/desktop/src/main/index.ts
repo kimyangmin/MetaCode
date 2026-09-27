@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { BrowserWindow, type IpcMainInvokeEvent, app, ipcMain, shell } from 'electron';
+import { BrowserWindow, type IpcMainInvokeEvent, app, ipcMain, session, shell } from 'electron';
 import { AuthManager } from './auth';
 import { createTokenStorage } from './token-storage';
 
@@ -14,7 +14,11 @@ const IPC = {
   logout: 'metacode:auth:logout',
   getAccessToken: 'metacode:auth:get-access-token',
   changed: 'metacode:auth:changed',
+  download: 'metacode:download',
 } as const;
+
+/** 인증이 필요한 첨부 파일 주소 */
+const ATTACHMENTS_URL = `${API_URL}/attachments/`;
 
 let mainWindow: BrowserWindow | null = null;
 let auth: AuthManager | null = null;
@@ -73,7 +77,34 @@ function fromApp(event: IpcMainInvokeEvent): boolean {
 function registerIpc(manager: AuthManager) {
   ipcMain.handle(IPC.login, (event) => (fromApp(event) ? manager.login() : undefined));
   ipcMain.handle(IPC.logout, (event) => (fromApp(event) ? manager.logout() : undefined));
+  // 첨부 파일 주소만 내려받는다 (렌더러가 임의의 주소를 내려받게 하지 않는다).
+  ipcMain.handle(IPC.download, (event, url: unknown) => {
+    if (!fromApp(event) || typeof url !== 'string' || !url.startsWith(ATTACHMENTS_URL)) return;
+    mainWindow?.webContents.downloadURL(url);
+  });
   ipcMain.handle(IPC.getAccessToken, (event) => (fromApp(event) ? manager.getAccessToken() : null));
+}
+
+/**
+ * <img>나 다운로드는 Authorization 헤더를 직접 붙일 수 없다. 데스크톱은 쿠키 대신 Bearer 토큰을 쓰므로,
+ * 첨부 파일 요청에 한해 메인 프로세스가 토큰을 붙여 준다.
+ */
+function attachAuthHeader(manager: AuthManager) {
+  const { protocol, hostname } = new URL(API_URL);
+  session.defaultSession.webRequest.onBeforeSendHeaders(
+    { urls: [`${protocol}//${hostname}/attachments/*`] },
+    (details, callback) => {
+      // 필터는 포트를 가리지 않으므로 정확한 주소인지 한 번 더 본다.
+      if (!details.url.startsWith(ATTACHMENTS_URL)) {
+        callback({ requestHeaders: details.requestHeaders });
+        return;
+      }
+      void manager.getAccessToken().then((token) => {
+        if (token) details.requestHeaders.Authorization = `Bearer ${token}`;
+        callback({ requestHeaders: details.requestHeaders });
+      });
+    },
+  );
 }
 
 function main() {
@@ -94,6 +125,7 @@ function main() {
       log: (message) => console.log(`[auth] ${message}`),
     });
     registerIpc(auth);
+    attachAuthHeader(auth);
     mainWindow = createMainWindow();
 
     app.on('activate', () => {

@@ -6,13 +6,14 @@ import {
   hasUnread,
 } from '@metacode/shared';
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { type DragEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { addMessageToCache, fetchMessages, markChannelRead, queryKeys } from '../../api/queries';
 import { useRealtime } from '../../realtime/RealtimeProvider';
 import { useTypingUsers } from '../../stores/typing';
 import { displayName } from '../../ui/format';
 import { Composer } from './Composer';
 import { MessageList, type PendingMessage } from './MessageList';
+import { useAttachmentDrafts } from './uploads';
 
 const SEND_TIMEOUT_MS = 10_000;
 
@@ -40,6 +41,8 @@ export function ChatView({
   const { socket } = useRealtime();
   const [pending, setPending] = useState<PendingMessage[]>([]);
   const lastTypingSent = useRef(0);
+  const drafts = useAttachmentDrafts(channelId);
+  const [dragging, setDragging] = useState(false);
 
   const history = useInfiniteQuery({
     queryKey: queryKeys.messages(channelId),
@@ -71,11 +74,11 @@ export function ChatView({
     };
   }, [channelId, latestId, lastReadMessageId, queryClient]);
 
-  const send = useCallback(
-    (content: string, clientId: string = crypto.randomUUID()) => {
+  const deliver = useCallback(
+    (content: string, attachmentIds: string[], clientId: string) => {
       setPending((list) => [
         ...list.filter((p) => p.clientId !== clientId),
-        { clientId, content, status: 'sending' },
+        { clientId, content, attachmentIds, status: 'sending' },
       ]);
       const fail = () =>
         setPending((list) =>
@@ -84,7 +87,7 @@ export function ChatView({
       if (!socket) return fail();
       socket
         .timeout(SEND_TIMEOUT_MS)
-        .emit(SocketEvent.MessageSend, { channelId, content }, (err, result) => {
+        .emit(SocketEvent.MessageSend, { channelId, content, attachmentIds }, (err, result) => {
           if (err || !result.ok) return fail();
           addMessageToCache(queryClient, result.data as MessageDto);
           setPending((list) => list.filter((p) => p.clientId !== clientId));
@@ -93,13 +96,42 @@ export function ChatView({
     [channelId, queryClient, socket],
   );
 
+  /** 입력창의 글과, 올라간 첨부를 함께 보낸다. */
+  const send = useCallback(
+    (content: string) => {
+      deliver(
+        content,
+        drafts.readyAttachments.map((a) => a.id),
+        crypto.randomUUID(),
+      );
+      drafts.clear();
+    },
+    [deliver, drafts],
+  );
+
   const retry = useCallback(
     (clientId: string) => {
       const target = pending.find((p) => p.clientId === clientId);
-      if (target) send(target.content, clientId);
+      if (target) deliver(target.content, target.attachmentIds, clientId);
     },
-    [pending, send],
+    [pending, deliver],
   );
+
+  // 채팅 영역에 파일을 끌어 놓으면 첨부한다.
+  const onDragOver = (e: DragEvent) => {
+    if (!e.dataTransfer.types.includes('Files')) return;
+    e.preventDefault();
+    setDragging(true);
+  };
+  const onDragLeave = (e: DragEvent) => {
+    if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDragging(false);
+  };
+  const onDrop = (e: DragEvent) => {
+    if (!e.dataTransfer.types.includes('Files')) return;
+    e.preventDefault();
+    setDragging(false);
+    drafts.add([...e.dataTransfer.files]);
+  };
 
   const onTyping = useCallback(() => {
     const now = Date.now();
@@ -111,7 +143,20 @@ export function ChatView({
   const loadMore = useCallback(() => void history.fetchNextPage(), [history]);
 
   return (
-    <section className="chat" aria-label={`${prefix}${title}`}>
+    <section
+      className="chat"
+      aria-label={`${prefix}${title}`}
+      data-dragging={dragging}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
+    >
+      {dragging && (
+        <div className="chat__drop" aria-hidden>
+          여기에 놓으면 {prefix}
+          {title}에 첨부합니다
+        </div>
+      )}
       <header className="chat__header">
         <span className="chat__prefix">{prefix}</span>
         <h1>{title}</h1>
@@ -135,8 +180,15 @@ export function ChatView({
       <TypingIndicator channelId={channelId} people={people} />
       <Composer
         placeholder={`${prefix}${title}에 메시지 보내기`}
+        drafts={drafts.drafts}
+        notice={drafts.notice}
+        uploading={drafts.uploading}
+        hasReadyAttachments={drafts.readyAttachments.length > 0}
         onSend={send}
         onTyping={onTyping}
+        onAddFiles={drafts.add}
+        onRemoveDraft={drafts.remove}
+        onRetryDraft={drafts.retry}
       />
     </section>
   );
