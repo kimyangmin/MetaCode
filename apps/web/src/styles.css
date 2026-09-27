@@ -460,6 +460,30 @@ h3 {
   overflow-anchor: auto;
 }
 
+/*
+ * 앱의 스크롤 영역은 스크롤바를 그리지 않는다. 휠, 터치패드, 키보드로는 그대로 스크롤된다.
+ * 새 스크롤 영역을 만들면 여기에 추가한다.
+ */
+.rail,
+.sidebar__list,
+.members,
+.message-list,
+.composer__input,
+.search-results,
+.dialog {
+  scrollbar-width: none;
+}
+
+.rail::-webkit-scrollbar,
+.sidebar__list::-webkit-scrollbar,
+.members::-webkit-scrollbar,
+.message-list::-webkit-scrollbar,
+.composer__input::-webkit-scrollbar,
+.search-results::-webkit-scrollbar,
+.dialog::-webkit-scrollbar {
+  display: none;
+}
+
 .message-list__top {
   flex: none;
   min-height: 24px;
