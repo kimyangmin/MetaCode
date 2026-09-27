@@ -4,10 +4,18 @@ import { AuthManager } from './auth';
 import { allowPermission } from './permissions';
 import { createTokenStorage } from './token-storage';
 
-// 개발 모드에서는 web 개발 서버를, 그 외에는 web 빌드 결과를 띄운다.
-const DEV_SERVER_URL = process.env.METACODE_WEB_URL ?? 'http://localhost:5173';
-const API_URL = process.env.METACODE_API_URL ?? 'http://localhost:3000';
+/**
+ * 앱 창은 웹 화면을 연다. 개발 중에는 web 개발 서버, 설치 파일로 배포한 앱은 운영 사이트다
+ * (Slack, Discord처럼. 서버를 배포하면 앱 화면도 바로 최신이 된다). 환경변수로 바꿀 수 있다.
+ */
+const PRODUCTION = {
+  web: 'https://metacode.kimyangmin.me',
+  api: 'https://api.metacode.kimyangmin.me',
+} as const;
 const isDev = !app.isPackaged;
+const WEB_URL = process.env.METACODE_WEB_URL ?? (isDev ? 'http://localhost:5173' : PRODUCTION.web);
+const API_URL = process.env.METACODE_API_URL ?? (isDev ? 'http://localhost:3000' : PRODUCTION.api);
+const WEB_ORIGIN = new URL(WEB_URL).origin;
 
 // preload와 같은 이름을 써야 한다 (sandbox preload는 이 파일을 import할 수 없다).
 const IPC = {
@@ -24,8 +32,13 @@ const ATTACHMENTS_URL = `${API_URL}/attachments/`;
 let mainWindow: BrowserWindow | null = null;
 let auth: AuthManager | null = null;
 
+/** 앱 화면(웹 주소와 같은 출처)인지. 브리지 호출, 권한, 창 이동을 이 기준으로 막는다 */
 function isAppUrl(url: string): boolean {
-  return isDev ? url.startsWith(DEV_SERVER_URL) : url.startsWith('file://');
+  try {
+    return new URL(url).origin === WEB_ORIGIN;
+  } catch {
+    return false;
+  }
 }
 
 function focusMainWindow() {
@@ -58,11 +71,7 @@ function createMainWindow(): BrowserWindow {
     if (!isAppUrl(url)) event.preventDefault();
   });
 
-  if (isDev) {
-    void win.loadURL(DEV_SERVER_URL);
-  } else {
-    void win.loadFile(path.join(__dirname, '../../../web/dist/index.html'));
-  }
+  void win.loadURL(WEB_URL);
 
   win.on('closed', () => {
     mainWindow = null;

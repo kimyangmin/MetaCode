@@ -35,3 +35,6 @@ apps/server/src/generated/
 
 # 운영 서버 DB 백업 (infra/backup.sh)
 backups/
+
+# 데스크톱 설치 파일
+apps/desktop/release/

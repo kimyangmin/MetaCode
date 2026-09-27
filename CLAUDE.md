@@ -105,6 +105,10 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
   - 로컬: `infra/docker-compose.yml`의 `livekit` (키 `devkey`, NODE_IP 127.0.0.1). 운영: `COMPOSE_PROFILES=voice`일 때만 뜨고, 신호는 Caddy가 `https://<API_DOMAIN>/livekit`으로 넘깁니다 (livekit-client가 주소의 경로를 유지함). 키가 비어 있으면 서버는 음성만 끈 채로 뜹니다.
   - 데스크톱: Electron은 권한 처리기가 없으면 모든 권한을 허락하므로, 앱 화면에만 마이크·스피커 선택·클립보드 쓰기를 허락하고 나머지(카메라 포함)는 거절합니다 (`apps/desktop/src/main/permissions.ts`).
   - 로컬에서 두 사람 음성 확인: 브라우저 패널은 마이크를 막으므로, 두 번째 사용자는 `@livekit/rtc-node`로 음을 보내는 스크립트로 확인했습니다. 실제 마이크로 말하는 확인은 사람이 해야 합니다.
+- **데스크톱 설치 파일:** `apps/desktop/electron-builder.yml`, `pnpm --filter @metacode/desktop dist:win` (NSIS, 현재 사용자에 설치, 서명 없음).
+  - 설치한 앱은 운영 사이트(`https://metacode.kimyangmin.me`)를 앱 창에서 엽니다 (웹 빌드를 앱에 넣지 않음). 개발 중(`app.isPackaged`가 아님)에는 `localhost:5173`, 둘 다 `METACODE_WEB_URL`/`METACODE_API_URL`로 바꿀 수 있습니다. 앱 안에는 메인 프로세스와 preload만 들어갑니다.
+  - 브리지 호출, 권한, 창 이동은 웹 주소와 **같은 출처**인지로 판단합니다 (`isAppUrl`). 다른 사이트로 이동하지 못하고, 외부 링크는 시스템 브라우저로 엽니다.
+  - 설치한 앱은 이름(productName)이 MetaCode라 사용자 데이터가 `%APPDATA%\MetaCode`에 따로 생깁니다. 개발용 앱(`@metacode/desktop`)과 로그인, 한 번에 하나만 실행 잠금(`requestSingleInstanceLock`)이 섞이지 않습니다 (처음엔 이름이 같아서 개발용 앱이 켜져 있으면 설치한 앱이 바로 꺼졌음).
 - **Windows에서 파일 수정:** Windows PowerShell 5.1의 `Get-Content`/`Set-Content`는 UTF-8 한글을 깨뜨립니다. 파일 수정은 편집 도구나 bash를 씁니다.
 
 ## 확정된 결정
