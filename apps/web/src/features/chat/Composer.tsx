@@ -1,5 +1,12 @@
 import { MESSAGE_MAX_LENGTH } from '@metacode/shared';
-import { type ClipboardEvent, type KeyboardEvent, useLayoutEffect, useRef, useState } from 'react';
+import {
+  type ClipboardEvent,
+  type KeyboardEvent,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react';
 import { type AttachmentDraft, formatBytes } from './uploads';
 
 const MAX_HEIGHT_PX = 200;
@@ -41,6 +48,15 @@ export function Composer(props: ComposerProps) {
     const border = el.offsetHeight - el.clientHeight;
     el.style.height = `${Math.min(el.scrollHeight + border, MAX_HEIGHT_PX)}px`;
   }, [value]);
+
+  // 첨부를 붙이면(📎 버튼, 끌어 놓기, 붙여넣기) 입력창으로 돌아온다. 📎 버튼에 포커스가 남아 있으면
+  // Enter가 보내기 대신 파일 선택 창을 다시 연다.
+  const draftCount = drafts.length;
+  const previousDraftCount = useRef(draftCount);
+  useEffect(() => {
+    if (draftCount > previousDraftCount.current) ref.current?.focus();
+    previousDraftCount.current = draftCount;
+  }, [draftCount]);
 
   const submit = () => {
     const content = value.trim();
