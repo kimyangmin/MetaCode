@@ -83,6 +83,15 @@ export function RealtimeProvider({ meId, children }: { meId: string; children: R
         ),
       );
     });
+    socket.on(SocketEvent.ChannelDeleted, ({ channelId, communityId }) => {
+      queryClient.setQueryData<CommunitySummary[]>(queryKeys.communities, (communities) =>
+        communities?.map((c) =>
+          c.id === communityId
+            ? { ...c, channels: c.channels.filter((ch) => ch.id !== channelId) }
+            : c,
+        ),
+      );
+    });
     socket.on(SocketEvent.DmCreated, (dm) => {
       queryClient.setQueryData<DmSummary[]>(queryKeys.dms, (dms) =>
         dms && !dms.some((d) => d.id === dm.id) ? [dm, ...dms] : dms,
@@ -101,6 +110,11 @@ export function RealtimeProvider({ meId, children }: { meId: string; children: R
       else void queryClient.invalidateQueries({ queryKey: queryKeys.members(communityId) });
     });
     socket.on(SocketEvent.CommunityDeleted, ({ communityId }) => removeCommunity(communityId));
+    // 역할, 채널 권한, 관리자가 바뀌었다: 볼 수 있는 채널과 멤버 역할을 다시 받는다.
+    socket.on(SocketEvent.CommunityUpdated, ({ communityId }) => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.communities });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.members(communityId) });
+    });
     socket.on(SocketEvent.PresenceChanged, ({ userId, online }) => {
       usePresenceStore.getState().set(userId, online);
     });

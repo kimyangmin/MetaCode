@@ -28,6 +28,9 @@ interface VoiceState {
   watching: string | null;
   /** 보고 있는 화면 공유의 영상. 받기 전이거나 공유가 끝났으면 null */
   screen: MediaStream | null;
+  /** 마우스를 올려 작게 미리 보는 화면 공유 (사용자 ID)와 그 영상 */
+  previewing: string | null;
+  previewScreen: MediaStream | null;
   inputDeviceId: string | null;
   outputDeviceId: string | null;
 
@@ -48,6 +51,8 @@ interface VoiceState {
         | 'sharing'
         | 'watching'
         | 'screen'
+        | 'previewing'
+        | 'previewScreen'
       >
     >,
   ): void;
@@ -78,6 +83,8 @@ export const useVoiceStore = create<VoiceState>((set) => ({
   sharing: false,
   watching: null,
   screen: null,
+  previewing: null,
+  previewScreen: null,
   inputDeviceId: readDevice('audioinput'),
   outputDeviceId: readDevice('audiooutput'),
 

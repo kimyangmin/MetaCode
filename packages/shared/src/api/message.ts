@@ -15,12 +15,33 @@ export const sendMessageSchema = z
       .max(MAX_ATTACHMENTS_PER_MESSAGE)
       .default([])
       .transform((ids) => [...new Set(ids)]),
+    /** 답장할 메시지 (같은 채널) */
+    replyToId: z.uuid().optional(),
   })
   .refine((m) => m.content.length > 0 || m.attachmentIds.length > 0, {
     message: '메시지나 첨부 파일이 필요합니다.',
   });
 
 export type SendMessageRequest = z.input<typeof sendMessageSchema>;
+
+/** 메시지 전달: 볼 수 있는 메시지를 쓸 수 있는 다른 채널(또는 DM)로. 첨부도 함께 복사된다 */
+export const forwardMessageSchema = z.object({
+  messageId: z.uuid(),
+  channelId: z.uuid(),
+});
+
+export type ForwardMessageRequest = z.infer<typeof forwardMessageSchema>;
+
+/** 답장한 원래 메시지를 짧게 보여 주는 정보 */
+export interface MessageReference {
+  id: string;
+  author: UserProfile;
+  /** 앞부분만 (REPLY_PREVIEW_LENGTH자) */
+  content: string;
+  attachmentCount: number;
+}
+
+export const REPLY_PREVIEW_LENGTH = 120;
 
 export const messagesQuerySchema = z.object({
   /** 이 메시지보다 오래된 것을 가져온다 (없으면 최신부터) */
@@ -38,6 +59,10 @@ export interface MessageDto {
   /** 첨부만 보내면 빈 문자열 */
   content: string;
   attachments: AttachmentDto[];
+  /** 답장이면 원래 메시지 (지워졌으면 null) */
+  replyTo: MessageReference | null;
+  /** 다른 곳에서 전달한 메시지 */
+  forwarded: boolean;
   createdAt: string;
 }
 

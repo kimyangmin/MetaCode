@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { ChannelSummary, DmSummary } from '../api/channel.js';
 import type { CommunityMember } from '../api/community.js';
-import type { MessageDto, SendMessageRequest } from '../api/message.js';
+import type { ForwardMessageRequest, MessageDto, SendMessageRequest } from '../api/message.js';
 import type {
   PlazaCorrection,
   PlazaMemberChange,
@@ -28,13 +28,19 @@ import type {
 export const SocketEvent = {
   MessageSend: 'message:send',
   MessageCreated: 'message:created',
+  /** 메시지 전달 (ack로 새 메시지) */
+  MessageForward: 'message:forward',
   TypingStart: 'typing:start',
   TypingStarted: 'typing:started',
   ChannelCreated: 'channel:created',
+  /** 채널이 삭제됐다 (볼 수 있던 사람에게) */
+  ChannelDeleted: 'channel:deleted',
   DmCreated: 'dm:created',
   CommunityMemberJoined: 'community:member-joined',
   CommunityMemberLeft: 'community:member-left',
   CommunityDeleted: 'community:deleted',
+  /** 역할, 채널 권한, 관리자가 바뀌었다: 커뮤니티 정보(볼 수 있는 채널 등)를 다시 받는다 */
+  CommunityUpdated: 'community:updated',
   PresenceChanged: 'presence:changed',
   /** 광장 화면을 열 때: 광장 방에 들어가고 현재 상태(스냅숏)를 받는다 */
   PlazaWatch: 'plaza:watch',
@@ -67,6 +73,10 @@ export interface ClientToServerEvents {
     payload: SendMessageRequest,
     ack: (result: SocketAck<MessageDto>) => void,
   ) => void;
+  [SocketEvent.MessageForward]: (
+    payload: ForwardMessageRequest,
+    ack: (result: SocketAck<MessageDto>) => void,
+  ) => void;
   [SocketEvent.TypingStart]: (payload: { channelId: string }) => void;
   [SocketEvent.PlazaWatch]: (
     payload: { plazaId: string },
@@ -91,6 +101,7 @@ export interface ServerToClientEvents {
   [SocketEvent.MessageCreated]: (message: MessageDto) => void;
   [SocketEvent.TypingStarted]: (payload: { channelId: string; userId: string }) => void;
   [SocketEvent.ChannelCreated]: (channel: ChannelSummary) => void;
+  [SocketEvent.ChannelDeleted]: (payload: { channelId: string; communityId: string }) => void;
   [SocketEvent.DmCreated]: (dm: DmSummary) => void;
   [SocketEvent.CommunityMemberJoined]: (payload: {
     communityId: string;
@@ -98,6 +109,7 @@ export interface ServerToClientEvents {
   }) => void;
   [SocketEvent.CommunityMemberLeft]: (payload: { communityId: string; userId: string }) => void;
   [SocketEvent.CommunityDeleted]: (payload: { communityId: string }) => void;
+  [SocketEvent.CommunityUpdated]: (payload: { communityId: string }) => void;
   [SocketEvent.PresenceChanged]: (payload: { userId: string; online: boolean }) => void;
   [SocketEvent.PlazaMoved]: (payload: PlazaMoved) => void;
   [SocketEvent.PlazaMember]: (payload: PlazaMemberChange) => void;

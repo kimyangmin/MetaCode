@@ -10,13 +10,16 @@ interface PlazaPanelProps extends PlazaViewProps {
   icon: string;
   /** 머리글 오른쪽 (보기 전환 버튼) */
   actions?: ReactNode;
+  /** 머리글 왼쪽의 옮기기·분리 손잡이 */
+  handle?: ReactNode;
 }
 
 /** 메타버스 모드 패널: 머리글 + 광장 */
-export function PlazaPanel({ title, icon, actions, ...view }: PlazaPanelProps) {
+export function PlazaPanel({ title, icon, actions, handle, ...view }: PlazaPanelProps) {
   return (
     <section className="plaza-panel" aria-label={title}>
       <header className="chat__header">
+        {handle}
         <span className="chat__prefix" aria-hidden>
           {icon}
         </span>

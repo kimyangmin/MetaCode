@@ -1,5 +1,7 @@
+import type { VoiceMember } from '@metacode/shared';
 import { Avatar } from '../../ui/Avatar';
 import { useCall, useVoiceStore } from './store';
+import { useSharePreview } from './SharePreview';
 import { LiveButton } from './VoiceMembers';
 import { useVoice } from './VoiceProvider';
 
@@ -18,7 +20,17 @@ function LiveButtons({ channelId }: { channelId: string }) {
   const call = useCall(channelId);
   return (call?.members ?? [])
     .filter((m) => m.sharing)
-    .map((m) => <LiveButton key={m.user.id} channelId={channelId} member={m} />);
+    .map((m) => <PreviewableLive key={m.user.id} channelId={channelId} member={m} />);
+}
+
+function PreviewableLive({ channelId, member }: { channelId: string; member: VoiceMember }) {
+  const { hoverProps, popup } = useSharePreview(channelId, member);
+  return (
+    <span className="live-wrap" {...hoverProps}>
+      <LiveButton channelId={channelId} member={member} />
+      {popup}
+    </span>
+  );
 }
 
 function CallToggle({ channelId }: { channelId: string }) {

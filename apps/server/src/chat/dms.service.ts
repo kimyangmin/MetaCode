@@ -72,6 +72,7 @@ export class DmsService {
       type: DmSummary['type'];
       communityId: string | null;
       name: string | null;
+      private: boolean;
       members: Array<{ user: Parameters<typeof toProfile>[0] }>;
     }>,
   ): Promise<DmSummary[]> {
