@@ -1,6 +1,8 @@
 {
   "name": "@metacode/desktop",
-  "version": "0.0.0",
+  "version": "0.1.0",
+  "description": "MetaCode 데스크톱 앱",
+  "author": "kimyangmin",
   "private": true,
   "type": "commonjs",
   "main": "dist/main/index.js",
@@ -9,12 +11,14 @@
     "dev": "tsc -p tsconfig.build.json && wait-on tcp:localhost:5173 && electron .",
     "start": "electron .",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "vitest run"
+    "test": "vitest run",
+    "dist:win": "tsc -p tsconfig.build.json && electron-builder --win --publish never"
   },
   "devDependencies": {
     "@metacode/shared": "workspace:*",
     "@types/node": "^24.19.0",
     "electron": "^44.4.5",
+    "electron-builder": "^26.15.3",
     "vitest": "^5.0.2",
     "wait-on": "^9.1.0"
   }

@@ -402,6 +402,18 @@ node tools/fake-github.mjs
 GITHUB_OAUTH_URL=http://localhost:4010 GITHUB_API_URL=http://localhost:4010 GITHUB_CLIENT_ID=dev GITHUB_CLIENT_SECRET=dev pnpm dev
 ```
 
+### 데스크톱 설치 파일 만들기 (Windows)
+
+```bash
+pnpm --filter @metacode/desktop dist:win
+```
+
+`apps/desktop/release/MetaCode-Setup-<버전>.exe`가 만들어집니다. 설치한 앱은 운영 사이트(`https://metacode.kimyangmin.me`)를 앱 창에서 열므로, 서버를 배포하면 앱 화면도 바로 최신이 됩니다. 앱을 다시 설치해야 하는 것은 데스크톱 기능(로그인, 권한, 첨부 받기 등)을 바꿨을 때뿐입니다.
+
+- 코드 서명 인증서가 없어서 처음 실행할 때 Windows가 "Windows의 PC 보호" 창을 띄웁니다. **추가 정보 → 실행**을 누르면 됩니다.
+- 관리자 권한 없이 현재 사용자 계정에 설치됩니다 (`%LOCALAPPDATA%ProgramsMetaCode`). 제거는 Windows 설정의 앱 목록에서 합니다.
+- macOS 설치 파일은 Mac에서만 만들 수 있습니다. 자동 업데이트와 코드 서명은 Phase 7에서 합니다.
+
 ### 자주 쓰는 명령어
 
 | 명령어 | 설명 |

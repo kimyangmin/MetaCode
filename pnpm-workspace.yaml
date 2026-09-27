@@ -9,3 +9,8 @@ onlyBuiltDependencies:
   - electron
   - esbuild
   - prisma
+
+# 설치 스크립트가 필요 없어 막아 둔 것 (경고를 끄기 위해 적어 둔다).
+#   electron-winstaller: electron-builder의 Squirrel 설치 파일용. 우리는 NSIS를 쓴다.
+ignoredBuiltDependencies:
+  - electron-winstaller

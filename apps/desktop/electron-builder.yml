@@ -1,0 +1,23 @@
+# 데스크톱 설치 파일 설정 (electron-builder). 만들기: pnpm --filter @metacode/desktop dist:win
+# 앱 안에는 메인 프로세스와 preload만 들어간다. 화면은 운영 사이트를 연다 (src/main/index.ts).
+appId: me.kimyangmin.metacode
+productName: MetaCode
+# 설치한 앱의 이름. 사용자 데이터(로그인 등)가 %APPDATA%\MetaCode에 따로 생겨서 개발용 앱(@metacode/desktop)과 섞이지 않는다.
+extraMetadata:
+  productName: MetaCode
+directories:
+  output: release
+files:
+  - dist/**/*.js
+  - package.json
+# 런타임 의존성이 없어서 다시 빌드할 네이티브 모듈이 없다.
+npmRebuild: false
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+nsis:
+  # 누르면 바로 현재 사용자 계정에 설치된다 (관리자 권한 필요 없음).
+  oneClick: true
+  perMachine: false
+  artifactName: MetaCode-Setup-${version}.${ext}
