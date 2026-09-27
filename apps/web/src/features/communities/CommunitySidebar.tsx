@@ -12,11 +12,14 @@ import { jsonBody, queryKeys } from '../../api/queries';
 import { webUrl } from '../../config';
 import { Dialog } from '../../ui/Dialog';
 import { UserPanel } from '../auth/UserPanel';
+import { useCall, useVoiceStore } from '../voice/store';
+import { VoiceMembers } from '../voice/VoiceMembers';
+import { useVoice } from '../voice/VoiceProvider';
 import { useMeRequired } from './hooks';
 
 type Modal = 'invite' | 'channel' | null;
 
-/** 커뮤니티 화면 왼쪽: 이름과 메뉴, 텍스트 채널 목록, 내 프로필 */
+/** 커뮤니티 화면 왼쪽: 이름과 메뉴, 텍스트 채널과 음성 채널 목록, 내 프로필 */
 export function CommunitySidebar({
   community,
   activeChannelId,
@@ -31,6 +34,7 @@ export function CommunitySidebar({
   const [modal, setModal] = useState<Modal>(null);
   const isOwner = community.myRole === CommunityRole.Owner;
   const canManage = community.myRole !== CommunityRole.Member;
+  const voiceChannels = community.channels.filter((c) => c.type === 'VOICE');
 
   const leaveOrDelete = async () => {
     setMenuOpen(false);
@@ -92,6 +96,10 @@ export function CommunitySidebar({
               active={channel.id === activeChannelId}
             />
           ))}
+        {voiceChannels.length > 0 && <h3 className="sidebar__section">음성 채널</h3>}
+        {voiceChannels.map((channel) => (
+          <VoiceChannelItem key={channel.id} channel={channel} />
+        ))}
       </nav>
 
       <UserPanel me={me} />
@@ -121,6 +129,30 @@ function ChannelLink({
       <span className="sidebar__hash">#</span>
       <span className="sidebar__label">{channel.name}</span>
     </NavLink>
+  );
+}
+
+/** 음성 채널: 누르면 통화에 들어간다 (보던 텍스트 채널은 그대로). 아래에 참여자를 보여 준다 */
+function VoiceChannelItem({ channel }: { channel: ChannelSummary }) {
+  const voice = useVoice();
+  const call = useCall(channel.id);
+  const joined = useVoiceStore((s) => s.session?.channelId === channel.id);
+  return (
+    <div className="voice-channel">
+      <button
+        type="button"
+        className="sidebar__item sidebar__item--voice"
+        data-joined={joined}
+        onClick={() => void voice.join(channel.id)}
+        title={joined ? '통화 중' : '눌러서 통화에 들어가기'}
+      >
+        <span className="sidebar__hash" aria-hidden>
+          🔊
+        </span>
+        <span className="sidebar__label">{channel.name}</span>
+      </button>
+      <VoiceMembers members={call?.members ?? []} />
+    </div>
   );
 }
 
@@ -174,6 +206,7 @@ function CreateChannelDialog({ communityId, onClose }: { communityId: string; on
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [name, setName] = useState('');
+  const [type, setType] = useState<'TEXT' | 'VOICE'>('TEXT');
   const [error, setError] = useState<string | null>(null);
 
   const submit = async (e: FormEvent) => {
@@ -181,7 +214,7 @@ function CreateChannelDialog({ communityId, onClose }: { communityId: string; on
     try {
       const channel = await apiFetch<ChannelSummary>(`/communities/${communityId}/channels`, {
         method: 'POST',
-        ...jsonBody({ name }),
+        ...jsonBody({ name, type }),
       });
       queryClient.setQueryData<CommunitySummary[]>(queryKeys.communities, (list) =>
         list?.map((c) =>
@@ -191,19 +224,43 @@ function CreateChannelDialog({ communityId, onClose }: { communityId: string; on
         ),
       );
       onClose();
-      navigate(`/c/${communityId}/${channel.id}`);
+      // 음성 채널은 만들어도 보던 텍스트 채널에 그대로 있는다.
+      if (channel.type === 'TEXT') navigate(`/c/${communityId}/${channel.id}`);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : '채널을 만들지 못했습니다.');
     }
   };
 
   return (
-    <Dialog title="텍스트 채널 만들기" onClose={onClose}>
+    <Dialog title="채널 만들기" onClose={onClose}>
       <form className="form" onSubmit={submit}>
+        <fieldset className="channel-type">
+          <legend>종류</legend>
+          <label>
+            <input
+              type="radio"
+              name="channel-type"
+              checked={type === 'TEXT'}
+              onChange={() => setType('TEXT')}
+            />
+            <span># 텍스트</span>
+            <small>메시지, 파일, 대화 기록</small>
+          </label>
+          <label>
+            <input
+              type="radio"
+              name="channel-type"
+              checked={type === 'VOICE'}
+              onChange={() => setType('VOICE')}
+            />
+            <span>🔊 음성</span>
+            <small>누르면 바로 들어가는 통화</small>
+          </label>
+        </fieldset>
         <label>
           채널 이름
           <div className="input-prefix">
-            <span>#</span>
+            <span>{type === 'TEXT' ? '#' : '🔊'}</span>
             <input value={name} onChange={(e) => setName(e.target.value)} maxLength={30} required />
           </div>
         </label>

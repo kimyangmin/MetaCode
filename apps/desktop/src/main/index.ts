@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { BrowserWindow, type IpcMainInvokeEvent, app, ipcMain, session, shell } from 'electron';
 import { AuthManager } from './auth';
+import { allowPermission } from './permissions';
 import { createTokenStorage } from './token-storage';
 
 // 개발 모드에서는 web 개발 서버를, 그 외에는 web 빌드 결과를 띄운다.
@@ -107,6 +108,22 @@ function attachAuthHeader(manager: AuthManager) {
   );
 }
 
+/** 권한은 앱 화면에만, 통화에 필요한 것만 준다 (permissions.ts) */
+function restrictPermissions() {
+  session.defaultSession.setPermissionRequestHandler(
+    (webContents, permission, callback, details) => {
+      const url = details.requestingUrl || webContents.getURL();
+      const mediaTypes = 'mediaTypes' in details ? (details.mediaTypes ?? []) : [];
+      callback(allowPermission(permission, isAppUrl(url), mediaTypes));
+    },
+  );
+  session.defaultSession.setPermissionCheckHandler((_webContents, permission, origin, details) => {
+    const mediaType = details.mediaType;
+    const mediaTypes = mediaType && mediaType !== 'unknown' ? [mediaType] : [];
+    return allowPermission(permission, isAppUrl(origin), mediaTypes);
+  });
+}
+
 function main() {
   // 앱을 한 번 더 실행하면 새 창을 띄우지 않고 기존 창을 앞으로 가져온다.
   if (!app.requestSingleInstanceLock()) {
@@ -125,6 +142,7 @@ function main() {
       log: (message) => console.log(`[auth] ${message}`),
     });
     registerIpc(auth);
+    restrictPermissions();
     attachAuthHeader(auth);
     mainWindow = createMainWindow();
 

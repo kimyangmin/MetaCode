@@ -241,9 +241,56 @@ production 환경의 **Required reviewers**를 켜면 배포 전에 GitHub에서
 
 Actions 탭에서 `main`의 CI를 **Re-run all jobs**로 다시 돌리거나 `main`에 새 커밋을 올리면 `deploy` 작업의 로그에 `배포 완료: <커밋>`이 나옵니다. 키를 없애려면 `~/.ssh/authorized_keys`에서 `github-actions-deploy` 줄을 지웁니다.
 
+## 10. 음성 통화 켜기 (LiveKit)
+
+음성 통화 서버(LiveKit)는 따로 켭니다. 켜기 전에는 음성 통화만 "음성 서버가 설정되지 않아 통화할 수 없습니다"로 막히고, 나머지는 그대로 동작합니다.
+
+신호(WebSocket)는 Caddy가 `https://<API_DOMAIN>/livekit`으로 넘겨 주므로 DNS를 추가할 필요는 없습니다. 음성은 서버의 아래 포트로 직접 오가므로, 2단계처럼 **두 군데 모두** 엽니다.
+
+| Source CIDR | IP Protocol | Destination Port | 용도 |
+| --- | --- | --- | --- |
+| `0.0.0.0/0` | UDP | `7882` | 음성 (기본) |
+| `0.0.0.0/0` | TCP | `7881` | 음성 (UDP가 막힌 네트워크) |
+
+```bash
+sudo iptables -I INPUT 6 -m state --state NEW -p udp --dport 7882 -j ACCEPT
+```
+
+```bash
+sudo iptables -I INPUT 6 -m state --state NEW -p tcp --dport 7881 -j ACCEPT
+```
+
+```bash
+sudo netfilter-persistent save
+```
+
+`.env.production`에 세 줄을 넣습니다. 키 이름은 영문·숫자 아무거나, 비밀값은 무작위로 만듭니다.
+
+```bash
+openssl rand -hex 32
+```
+
+```
+COMPOSE_PROFILES=voice
+LIVEKIT_API_KEY=metacode
+LIVEKIT_API_SECRET=<위에서 만든 값>
+```
+
+다시 띄웁니다 (`COMPOSE_PROFILES=voice`라서 `livekit` 컨테이너도 뜹니다).
+
+```bash
+bash infra/deploy.sh
+```
+
+신호 경로가 열렸는지 확인합니다. `OK`가 나오면 됩니다.
+
+```bash
+curl https://api.metacode.kimyangmin.me/livekit/
+```
+
 ## 문제 해결
 
-로그 보기 (서비스 이름: `caddy`, `server`, `migrate`, `postgres`, `redis`, `seaweedfs`):
+로그 보기 (서비스 이름: `caddy`, `server`, `migrate`, `postgres`, `redis`, `seaweedfs`, `livekit`):
 
 ```bash
 docker compose -f infra/docker-compose.prod.yml --env-file .env.production logs --tail 100 caddy
@@ -254,4 +301,6 @@ docker compose -f infra/docker-compose.prod.yml --env-file .env.production logs 
 | 사이트 접속이 안 됨 / 인증서 발급 실패 | DNS가 서버 IP를 가리키는지, 2단계 포트 두 군데가 모두 열렸는지. Caddy 로그의 `challenge failed` 메시지 |
 | `migrate`가 `Exited (1)` | `logs migrate`. `POSTGRES_PASSWORD`를 첫 실행 뒤에 바꿨는지 |
 | GitHub 로그인 후 오류 | 운영용 OAuth App의 콜백 URL이 `https://<API_DOMAIN>/auth/github/callback`과 정확히 같은지 |
+| 통화에 들어가면 "음성 서버에 연결하지 못했습니다" | `curl https://<API_DOMAIN>/livekit/`가 `OK`인지(아니면 `livekit`이 떠 있는지, `COMPOSE_PROFILES=voice`), `logs livekit` |
+| 통화에 들어가지만 서로 안 들림 | 10단계 포트(7882/udp, 7881/tcp)가 두 군데 모두 열렸는지. 회사망처럼 이 포트들이 모두 막힌 곳은 TURN(443) 설정이 따로 필요합니다 |
 | 로그인은 되는데 새로고침하면 풀림 | `.env.production`의 `APP_DOMAIN`, `API_DOMAIN`이 실제 주소와 같은지 (쿠키와 CORS가 이 값을 씀) |

@@ -1324,3 +1324,263 @@ h3 {
     transform: translateY(-3px);
   }
 }
+
+/* ── 음성 통화 ─────────────── */
+
+/* 사이드바의 음성 채널: 누르면 통화에 들어간다 */
+.sidebar__item--voice {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.sidebar__item--voice[data-joined='true'] {
+  color: var(--ok);
+}
+
+.sidebar__live {
+  margin-left: auto;
+  font-size: 0.8rem;
+}
+
+.voice-members {
+  display: grid;
+  gap: 2px;
+  margin: 0 0 4px 28px;
+  padding: 0;
+  list-style: none;
+}
+
+.voice-members__item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 4px;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.voice-members__item .avatar {
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px transparent;
+  transition: box-shadow 0.1s;
+}
+
+/* 말하는 사람: 아바타에 초록 테두리 */
+.voice-members__item[data-speaking='true'] {
+  color: var(--fg);
+}
+
+.voice-members__item[data-speaking='true'] .avatar {
+  box-shadow: 0 0 0 2px var(--ok);
+}
+
+.voice-members__name {
+  overflow: hidden;
+  min-width: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.voice-flag {
+  margin-left: auto;
+  font-size: 0.75rem;
+}
+
+/* 사이드바 아래 음성 패널 */
+.voice-panel {
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-sidebar);
+}
+
+.voice-panel__head {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.voice-panel__where {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+  font-size: 0.8rem;
+}
+
+.voice-panel__status {
+  color: var(--ok);
+}
+
+.voice-panel__status[data-status='connecting'],
+.voice-panel__status[data-status='reconnecting'] {
+  color: var(--warn);
+}
+
+.voice-panel__channel {
+  overflow: hidden;
+  color: var(--muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.voice-panel__leave:hover {
+  color: var(--danger);
+}
+
+.voice-panel__controls {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+}
+
+.voice-toggle {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  padding: 4px 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--fg);
+  font: inherit;
+  font-size: 1rem;
+  cursor: pointer;
+}
+
+.voice-toggle span {
+  color: var(--muted);
+  font-size: 0.65rem;
+}
+
+.voice-toggle:hover {
+  background: var(--bg-hover);
+}
+
+.voice-toggle[aria-pressed='true'] {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+}
+
+.voice-toggle:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.voice-panel__notice,
+.voice-panel__error {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0;
+  color: var(--warn);
+  font-size: 0.75rem;
+}
+
+.voice-panel__error {
+  color: var(--danger);
+}
+
+.voice-panel__error .icon-button {
+  margin-left: auto;
+}
+
+.voice-panel__unmute {
+  padding: 4px 8px;
+  font-size: 0.8rem;
+}
+
+/* DM 머리글의 통화 버튼 */
+.call-button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--fg);
+  font: inherit;
+  font-size: 0.8rem;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.call-button:hover {
+  background: var(--bg-hover);
+}
+
+.call-button[data-live='true'] {
+  border-color: var(--ok);
+  color: var(--ok);
+}
+
+.call-button--active {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.call-button__avatars {
+  display: flex;
+}
+
+.call-button__avatars .avatar + .avatar {
+  margin-left: -6px;
+}
+
+/* 채널 만들기: 종류 고르기 */
+.channel-type {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.channel-type legend {
+  margin-bottom: 6px;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.form .channel-type label {
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  column-gap: 8px;
+  row-gap: 2px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--fg);
+  cursor: pointer;
+}
+
+.channel-type label:has(input:checked) {
+  border-color: var(--accent);
+}
+
+.channel-type small {
+  grid-column: 2;
+  color: var(--muted);
+}
+
+/* 광장: 캐릭터 위 참여 중인 음성 채널, 말하는 중 */
+.plaza-actor__voice {
+  margin-bottom: 2px;
+  padding: 0 4px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.45);
+  color: #b4f0bd;
+  font-size: 10px;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.plaza-actor--speaking .plaza-actor__name {
+  box-shadow: 0 0 0 2px #3fb950;
+}

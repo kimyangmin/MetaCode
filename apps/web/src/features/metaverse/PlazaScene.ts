@@ -18,6 +18,7 @@ import {
   drawGround,
   drawProps,
   drawShadow,
+  drawSpeakingRing,
   drawTargetMarker,
   paletteOf,
 } from './art';
@@ -34,6 +35,13 @@ export interface MoveState extends Position {
   moving: boolean;
 }
 
+/** 통화 중인 캐릭터에 보일 것: 참여 중인 음성 채널, 말하는 중, 음소거 */
+export interface ActorVoice {
+  label: string;
+  speaking: boolean;
+  muted: boolean;
+}
+
 export interface PlazaSceneOptions {
   meId: string;
   /** 캐릭터 위의 이름표와 말풍선을 올릴 DOM 층 (글자는 화면 해상도로 그린다) */
@@ -47,6 +55,8 @@ interface Actor {
   user: UserProfile;
   sprite: Phaser.GameObjects.Image;
   shadow: Phaser.GameObjects.Image;
+  /** 말하는 중이면 보이는 발밑 고리 */
+  ring: Phaser.GameObjects.Image;
   textureKey: string;
   position: Position;
   dir: Direction;
@@ -57,7 +67,7 @@ interface Actor {
   renderedBubbles: string;
   bubblesWidth: number;
   hopUntil: number;
-  dom: { root: HTMLDivElement; bubbles: HTMLOListElement };
+  dom: { root: HTMLDivElement; bubbles: HTMLOListElement; voice: HTMLSpanElement };
 }
 
 /**
@@ -75,6 +85,7 @@ export class PlazaScene extends Phaser.Scene {
   private actors = new Map<string, Actor>();
   private path: Position[] = [];
   private marker: Phaser.GameObjects.Image | null = null;
+  private voice: ReadonlyMap<string, ActorVoice> = new Map();
   private lastSent: (MoveState & { at: number }) | null = null;
   private zoomLevel = 2;
   /** 눌려 있는 방향키. PlazaView가 광장 패널에 포커스가 있을 때만 넣는다 */
@@ -96,6 +107,7 @@ export class PlazaScene extends Phaser.Scene {
   create(): void {
     this.textures.addCanvas('shadow', drawShadow());
     this.textures.addCanvas('target', drawTargetMarker());
+    this.textures.addCanvas('speaking-ring', drawSpeakingRing());
     this.cameras.main.setRoundPixels(true);
     this.scale.on(Phaser.Scale.Events.RESIZE, () => this.updateZoom());
     this.updateZoom();
@@ -140,6 +152,10 @@ export class PlazaScene extends Phaser.Scene {
     const actor: Actor = {
       user: occupant.user,
       shadow: this.add.image(position.x, position.y, 'shadow').setOrigin(0.5, 0.6),
+      ring: this.add
+        .image(position.x, position.y, 'speaking-ring')
+        .setOrigin(0.5, 0.6)
+        .setVisible(false),
       sprite: this.add
         .image(position.x, position.y, `${palette.key}-${occupant.dir}`)
         .setOrigin(0.5, 1),
@@ -155,6 +171,7 @@ export class PlazaScene extends Phaser.Scene {
       dom: this.createActorDom(occupant.user, isMe),
     };
     this.actors.set(occupant.user.id, actor);
+    this.applyVoice(actor);
   }
 
   remove(userId: string): void {
@@ -183,6 +200,21 @@ export class PlazaScene extends Phaser.Scene {
   }
 
   /** 메시지 → 작성자 캐릭터 위 말풍선 (또는 첨부 임시 표시) */
+  /** 통화 상태: 광장을 보는 모든 사람에게 캐릭터마다 참여 중인 음성 채널과 말하는 중을 보여 준다 */
+  setVoice(states: ReadonlyMap<string, ActorVoice>): void {
+    this.voice = states;
+    for (const actor of this.actors.values()) this.applyVoice(actor);
+  }
+
+  private applyVoice(actor: Actor): void {
+    const state = this.voice.get(actor.user.id);
+    const speaking = !!state?.speaking && !state.muted;
+    actor.dom.voice.hidden = !state;
+    actor.dom.voice.textContent = state ? `${state.label}${state.muted ? ' 🔇' : ''}` : '';
+    actor.dom.root.classList.toggle('plaza-actor--speaking', speaking);
+    actor.ring.setVisible(speaking);
+  }
+
   say(userId: string, bubble: Bubble): void {
     const actor = this.actors.get(userId);
     if (!actor) return;
@@ -301,6 +333,10 @@ export class PlazaScene extends Phaser.Scene {
     actor.sprite.setTexture(`${actor.textureKey}-${actor.dir}`);
     actor.sprite.setPosition(x, y - lift).setDepth(y);
     actor.shadow.setPosition(x, y).setDepth(1);
+    if (actor.ring.visible) {
+      actor.ring.setPosition(x, y + 1).setDepth(1.5);
+      actor.ring.setAlpha(0.6 + 0.4 * Math.sin(now / 150));
+    }
   }
 
   // ── 화면 ──
@@ -405,9 +441,12 @@ export class PlazaScene extends Phaser.Scene {
     const name = document.createElement('span');
     name.className = 'plaza-actor__name';
     name.textContent = this.options.nameOf(user);
-    root.append(bubbles, name);
+    const voice = document.createElement('span');
+    voice.className = 'plaza-actor__voice';
+    voice.hidden = true;
+    root.append(bubbles, voice, name);
     this.options.overlay.append(root);
-    return { root, bubbles };
+    return { root, bubbles, voice };
   }
 
   private updateOverlay(now: number): void {
@@ -474,6 +513,7 @@ export class PlazaScene extends Phaser.Scene {
   private destroyActor(actor: Actor): void {
     actor.sprite.destroy();
     actor.shadow.destroy();
+    actor.ring.destroy();
     actor.dom.root.remove();
   }
 

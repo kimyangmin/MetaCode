@@ -14,6 +14,8 @@ export const channelNameSchema = z
 
 export const createChannelSchema = z.object({
   name: channelNameSchema,
+  /** 텍스트 채널(대화 기록) 또는 음성 채널(통화) */
+  type: z.enum(['TEXT', 'VOICE']).default('TEXT'),
 });
 
 export type CreateChannelRequest = z.infer<typeof createChannelSchema>;

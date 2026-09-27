@@ -353,3 +353,16 @@ export function drawTargetMarker(): HTMLCanvasElement {
   }
   return el;
 }
+
+/** 말하는 중 표시: 발밑의 초록 고리 */
+export function drawSpeakingRing(): HTMLCanvasElement {
+  const { el, ctx } = canvas(18, 8);
+  ctx.fillStyle = '#3fb950';
+  for (let y = 0; y < 8; y++) {
+    for (let x = 0; x < 18; x++) {
+      const d = ((x + 0.5 - 9) / 9) ** 2 + ((y + 0.5 - 4) / 4) ** 2;
+      if (d <= 1 && d >= 0.5) ctx.fillRect(x, y, 1, 1);
+    }
+  }
+  return el;
+}
