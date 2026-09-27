@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { AuthManager, type TokenStorage } from './auth';
+import { AuthManager, SessionUnavailableError, type TokenStorage } from './auth';
 
 const API = 'http://api.test';
 
@@ -36,7 +36,15 @@ describe('AuthManager', () => {
   let onReturned: ReturnType<typeof vi.fn<() => void>>;
 
   const create = () =>
-    new AuthManager({ apiUrl: API, storage, fetch, openExternal, onChanged, onReturned });
+    new AuthManager({
+      apiUrl: API,
+      storage,
+      fetch,
+      openExternal,
+      onChanged,
+      onReturned,
+      refreshRetryDelaysMs: [1, 1],
+    });
 
   const bodyOf = (call: number) =>
     JSON.parse(fetch.mock.calls[call]![1]!.body as string) as Record<string, string>;
@@ -159,14 +167,28 @@ describe('AuthManager', () => {
     expect(onChanged).toHaveBeenCalledTimes(1);
   });
 
-  it('네트워크 오류로 갱신에 실패하면 토큰을 지우지 않는다', async () => {
+  it('서버에 닿지 않으면 두 번 더 시도하고, 그래도 안 되면 토큰을 지우지 않고 "연결할 수 없음"으로 거절한다', async () => {
     storage = memoryStorage('refresh-0');
     const auth = create();
-    fetch.mockRejectedValueOnce(new TypeError('fetch failed'));
+    fetch.mockRejectedValue(new TypeError('fetch failed'));
 
-    expect(await auth.getAccessToken()).toBeNull();
+    await expect(auth.getAccessToken()).rejects.toBeInstanceOf(SessionUnavailableError);
+    expect(fetch).toHaveBeenCalledTimes(3);
     expect(storage.value).toBe('refresh-0');
     expect(auth.isLoggedIn()).toBe(true);
+    expect(onChanged).not.toHaveBeenCalled();
+  });
+
+  it('앱을 막 켜서 잠깐 서버에 닿지 않아도, 다시 시도해서 되면 그대로 로그인 상태다', async () => {
+    storage = memoryStorage('refresh-0');
+    const auth = create();
+    fetch
+      .mockRejectedValueOnce(new TypeError('fetch failed'))
+      .mockResolvedValueOnce(json(502))
+      .mockResolvedValueOnce(json(200, tokens(1)));
+
+    expect(await auth.getAccessToken()).toBe('access-1');
+    expect(storage.value).toBe('refresh-1');
   });
 
   it('로그아웃하면 서버에 리프레시 토큰을 보내 세션을 끊고 저장소를 비운다', async () => {
