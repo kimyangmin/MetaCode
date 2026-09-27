@@ -138,6 +138,12 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
   - 데스크톱: `setWindowOpenHandler`가 앱 출처의 `/popout/` 주소만 같은 보안 설정(preload, sandbox)의 앱 창으로 열고, 그 창에도 같은 규칙을 겁니다 (`main/windows.ts`). 다른 http(s) 주소는 시스템 브라우저로 엽니다.
   - **dragstart에서 화면을 바꾸지 않는다:** Chromium은 dragstart 직후 누른 자리에 끄는 요소가 그대로 있는지 확인하고, 다른 요소가 덮으면 드래그를 취소합니다. 처음에는 dragstart에서 놓을 자리 덮개를 그려서 실제 마우스로는 전혀 끌리지 않았습니다 (JS로 만든 DragEvent 확인으로는 못 잡음). 지금은 끄는 패널을 ref에만 두고, `.split-host`가 dragover/drop을 받으며, 미리보기는 `pointer-events: none`입니다.
   - **그리드 행 높이 고정:** `.app`은 `grid-template-rows: minmax(0, 1fr)`입니다. `.split-host` 래퍼를 넣었을 때 긴 채팅이 행을 늘려서 입력창이 화면 밖으로 밀리고 광장이 확대된 것처럼 보였습니다 (예전엔 react-resizable-panels의 Group이 `overflow: hidden`이라 드러나지 않았음).
+- **프로필 (닉네임, 자기소개, 사진):** `apps/server/src/users/`
+  - 사용자 ID는 GitHub 로그인 이름(`username`)이고 바꿀 수 없습니다. 다른 사람에게 보이는 이름은 `nickname`(없으면 username), 자기소개는 `bio`입니다. DTO의 `displayName`은 닉네임입니다 (GitHub 이름은 DB의 `displayName`에 남지만 화면에는 쓰지 않음).
+  - GitHub로 다시 로그인하면 username, GitHub 이름, GitHub 사진만 맞추고 닉네임·자기소개·올린 사진은 건드리지 않습니다.
+  - 프로필 사진: `POST /users/me/avatar/upload`(크기를 서명에 넣은 presigned PUT, 원본은 `avatar-uploads/<userId>` 한 칸) → 브라우저가 PUT → `PUT /users/me/avatar`(매직 바이트 확인, 256px 정사각형 WebP로 바꿔 `avatars/<userId>/<무작위>.webp`에 저장, 원본과 이전 사진 삭제). `DELETE /users/me/avatar`면 GitHub 사진으로 돌아갑니다.
+  - 사진은 `GET /avatars/<userId>/<file>`로 **인증 없이** 줍니다 (데스크톱 `<img>`는 토큰을 못 붙이고, 주소에 무작위 ID가 있어 추측할 수 없음). 바꾸면 주소가 바뀌므로 1년 캐시(immutable)합니다. 주소는 `PUBLIC_SERVER_URL` 기준입니다.
+  - 닉네임이나 사진이 바뀌면 `user:updated`(UserProfile)를 본인, 속한 커뮤니티, DM 방에 보냅니다.
 - **Windows에서 파일 수정:** Windows PowerShell 5.1의 `Get-Content`/`Set-Content`는 UTF-8 한글을 깨뜨립니다. 파일 수정은 편집 도구나 bash를 씁니다.
 
 ## 확정된 결정
@@ -224,10 +230,11 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
 
 ## 실시간 이벤트 규칙
 
-- 이름은 `도메인:동작` 형식입니다. 도메인: `message`, `channel`, `plaza`, `presence`, `voice`, `typing`
+- 이름은 `도메인:동작` 형식입니다. 도메인: `message`, `channel`, `plaza`, `presence`, `voice`, `typing`, `user`
 - 클라이언트 → 서버는 명령형, 서버 → 클라이언트는 과거형으로 짓습니다.
   - `message:send` → `message:created`
   - `typing:start` → `typing:started` (보낸 연결 제외)
+  - 닉네임·프로필 사진 변경 → `user:updated`
   - `channel:created`, `dm:created`, `community:member-joined` / `member-left` / `deleted`, `presence:changed`
   - `plaza:watch` / `plaza:unwatch`: 광장 화면을 열고 닫을 때 (위치 업데이트 구독)
   - `plaza:move` → `plaza:moved`
@@ -266,7 +273,7 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
 
 `apps/server/prisma/schema.prisma`가 기준입니다. 바꾸면 여기도 고칩니다.
 
-- `User` (구현됨): githubId, username, displayName, avatarUrl. characterId는 Phase 6에서 추가
+- `User` (구현됨): githubId, username(사용자 ID), displayName(GitHub 이름), avatarUrl(GitHub 사진), nickname, bio, avatarKey(올린 사진). characterId는 Phase 6에서 추가
 - `RefreshToken` (구현됨): userId, tokenHash, familyId, client, expiresAt, revokedAt
 - `Community` (구현됨): name, ownerId / `CommunityMember`: userId, communityId, role(`OWNER` | `ADMIN` | `MEMBER`) / `Invite`: code(8자), expiresAt(7일), uses
 - `Role` (구현됨): communityId, name(커뮤니티 안에서 고유), color(#rrggbb), position / `MemberRole`: 멤버 ↔ 역할 / `ChannelRoleAccess`: 비공개 채널 ↔ 볼 수 있는 역할

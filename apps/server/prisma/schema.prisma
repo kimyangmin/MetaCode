@@ -14,8 +14,16 @@ model User {
   id          String   @id @default(uuid(7)) @db.Uuid
   githubId    BigInt   @unique @map("github_id")
   username    String
+  /// GitHub 프로필 이름 (로그인마다 GitHub 기준으로 맞춤, 화면에는 쓰지 않음)
   displayName String?  @map("display_name")
+  /// GitHub 프로필 사진 (로그인마다 맞춤)
   avatarUrl   String   @map("avatar_url")
+  /// 다른 사람에게 보이는 닉네임. null이면 username
+  nickname    String?
+  /// 자기소개
+  bio         String?
+  /// 직접 올린 프로필 사진의 저장소 키 (avatars/<userId>/<id>.webp). null이면 GitHub 사진
+  avatarKey   String?  @map("avatar_key")
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
