@@ -16,6 +16,7 @@ import {
 } from './features/communities/hooks';
 import { DmSidebar } from './features/dms/DmSidebar';
 import { PlazaPanel } from './features/metaverse/PlazaPanel';
+import { CallButton } from './features/voice/CallButton';
 import { SplitView } from './layout/SplitView';
 import { dmTitle } from './ui/format';
 
@@ -66,6 +67,7 @@ export function CommunityPage() {
             icon="⛲"
             me={me}
             channelLabels={textChannelLabels(community)}
+            voiceLabels={voiceChannelLabels(community)}
             actions={actions}
           />
         )}
@@ -97,7 +99,12 @@ export function DmPage() {
               me={me}
               lastReadMessageId={dm.lastReadMessageId}
               people={dm.participants}
-              actions={actions}
+              actions={
+                <>
+                  <CallButton channelId={dm.id} />
+                  {actions}
+                </>
+              }
             />
           )}
           plaza={(actions) => (
@@ -107,6 +114,7 @@ export function DmPage() {
               icon="🔥"
               me={me}
               channelLabels={new Map([[dm.id, null]])}
+              voiceLabels={new Map([[dm.id, '📞 통화 중']])}
               actions={actions}
             />
           )}
@@ -189,6 +197,13 @@ export function InvitePage() {
 function textChannelLabels(community: CommunitySummary): Map<string, string> {
   return new Map(
     community.channels.filter((c) => c.type === 'TEXT').map((c) => [c.id, `#${c.name}`]),
+  );
+}
+
+/** 광장 캐릭터 위에 참여 중인 음성 채널을 보여 준다 */
+function voiceChannelLabels(community: CommunitySummary): Map<string, string> {
+  return new Map(
+    community.channels.filter((c) => c.type === 'VOICE').map((c) => [c.id, `🔊 ${c.name}`]),
   );
 }
 

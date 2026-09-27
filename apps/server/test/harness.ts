@@ -64,7 +64,9 @@ export function cookieHeader(cookies: Record<string, string>): string {
     .join('; ');
 }
 
-let nextGithubId = 1000;
+// 테스트 DB는 실행마다 한 번만 비우고 파일들이 이어서 쓴다. 파일마다 같은 번호부터 세면 다른 파일이 만든
+// 사용자(와 그 커뮤니티)를 다시 쓰게 되어 파일 순서에 따라 결과가 바뀌므로, 파일마다 다른 범위에서 시작한다.
+let nextGithubId = 1_000_000 + Math.floor(Math.random() * 1_000_000) * 1000;
 
 export function makeGithubUser(overrides: Partial<FakeGithubUser> = {}): FakeGithubUser {
   const id = nextGithubId++;

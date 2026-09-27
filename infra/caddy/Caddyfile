@@ -24,8 +24,12 @@
 }
 
 # API + WebSocket(Socket.IO). WebSocket 업그레이드는 reverse_proxy가 알아서 처리한다.
+# /livekit 아래는 음성 서버의 신호 연결이다 (Phase 5, 음성을 켜지 않았으면 502).
 {$API_DOMAIN} {
 	import security_headers
+	handle_path /livekit/* {
+		reverse_proxy livekit:7880
+	}
 	reverse_proxy server:3000
 }
 

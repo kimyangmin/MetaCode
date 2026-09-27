@@ -14,6 +14,7 @@ import { PrismaService } from '../prisma/prisma.service.js';
 import { PresenceService } from '../presence/presence.service.js';
 import { RealtimeService, room } from '../realtime/realtime.service.js';
 import { toProfile } from '../users/users.service.js';
+import { VoiceService } from '../voice/voice.service.js';
 import { AccessService } from './access.service.js';
 import { ChannelSummaryService } from './channel-summary.service.js';
 
@@ -31,6 +32,7 @@ export class CommunitiesService {
     private readonly realtime: RealtimeService,
     private readonly attachments: AttachmentsService,
     private readonly plaza: PlazaService,
+    private readonly voice: VoiceService,
   ) {}
 
   /** 커뮤니티를 만들고 만든 사람을 OWNER로, 기본 텍스트 채널 하나를 함께 만든다. */
@@ -93,7 +95,12 @@ export class CommunitiesService {
     }));
   }
 
-  async createChannel(userId: string, communityId: string, name: string): Promise<ChannelSummary> {
+  async createChannel(
+    userId: string,
+    communityId: string,
+    name: string,
+    type: 'TEXT' | 'VOICE',
+  ): Promise<ChannelSummary> {
     const membership = await this.access.getMembership(userId, communityId);
     if (membership.role === CommunityRole.Member) {
       throw new ForbiddenException('채널은 관리자만 만들 수 있습니다.');
@@ -104,7 +111,7 @@ export class CommunitiesService {
       select: { position: true },
     });
     const channel = await this.prisma.channel.create({
-      data: { type: 'TEXT', communityId, name, position: (last?.position ?? 0) + 1 },
+      data: { type, communityId, name, position: (last?.position ?? 0) + 1 },
     });
     const [summary] = await this.summaries.summarize(userId, [channel]);
     // 커뮤니티 멤버 전원의 연결을 새 채널 방에 넣고 알린다.
@@ -125,6 +132,7 @@ export class CommunitiesService {
     await this.prisma.communityMember.delete({
       where: { communityId_userId: { communityId, userId } },
     });
+    await this.voice.leftCommunity(userId, communityId);
     const plazaId = `community:${communityId}` as const;
     this.realtime.leaveUser(userId, [
       room.community(communityId),
@@ -160,6 +168,7 @@ export class CommunitiesService {
     // DB의 첨부 행은 연쇄 삭제되지만 저장소의 파일은 따로 지운다.
     const fileKeys = await this.attachments.keysInCommunity(communityId);
     await this.prisma.community.delete({ where: { id: communityId } });
+    await this.voice.communityDeleted(communityId);
     void this.attachments.removeObjects(fileKeys);
     this.realtime.emit(room.community(communityId), SocketEvent.CommunityDeleted, { communityId });
     for (const target of [

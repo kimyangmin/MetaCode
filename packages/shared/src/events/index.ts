@@ -9,10 +9,21 @@ import type {
   PlazaMoved,
   PlazaSnapshot,
 } from '../plaza/events.js';
+import type {
+  VoiceCall,
+  VoiceGains,
+  VoiceJoinResult,
+  VoiceJoined,
+  VoiceLeft,
+  VoiceMember,
+  VoiceProximityChanged,
+  VoiceSetProximityRequest,
+  VoiceUpdateRequest,
+} from '../voice/events.js';
 
 /**
  * Socket.IO 이벤트 규칙: `도메인:동작`. 클라이언트 → 서버는 명령형, 서버 → 클라이언트는 과거형.
- * 방 이름: `user:<id>`, `community:<id>`, `channel:<id>`
+ * 방 이름: `user:<id>`, `community:<id>`, `channel:<id>`, `plaza:<id>`
  */
 export const SocketEvent = {
   MessageSend: 'message:send',
@@ -32,6 +43,19 @@ export const SocketEvent = {
   PlazaMoved: 'plaza:moved',
   PlazaMember: 'plaza:member',
   PlazaCorrected: 'plaza:corrected',
+  /** 볼 수 있는 진행 중인 통화 전부 (접속할 때, 커뮤니티가 바뀔 때) */
+  VoiceSync: 'voice:sync',
+  VoiceJoin: 'voice:join',
+  VoiceLeave: 'voice:leave',
+  /** 내 마이크/헤드셋/말하는 중 상태 */
+  VoiceUpdate: 'voice:update',
+  VoiceSetProximity: 'voice:setProximity',
+  VoiceJoined: 'voice:joined',
+  VoiceLeft: 'voice:left',
+  VoiceUpdated: 'voice:updated',
+  VoiceProximityChanged: 'voice:proximityChanged',
+  /** 근접 음성: 참여자별로 들려야 하는 음량 (받는 사람마다 다르다) */
+  VoiceGains: 'voice:gains',
 } as const;
 
 export const typingStartSchema = z.object({ channelId: z.uuid() });
@@ -50,6 +74,17 @@ export interface ClientToServerEvents {
   ) => void;
   [SocketEvent.PlazaUnwatch]: (payload: { plazaId: string }) => void;
   [SocketEvent.PlazaMove]: (payload: PlazaMoveRequest) => void;
+  [SocketEvent.VoiceSync]: (payload: object, ack: (result: SocketAck<VoiceCall[]>) => void) => void;
+  [SocketEvent.VoiceJoin]: (
+    payload: { channelId: string },
+    ack: (result: SocketAck<VoiceJoinResult>) => void,
+  ) => void;
+  [SocketEvent.VoiceLeave]: (payload: object) => void;
+  [SocketEvent.VoiceUpdate]: (payload: VoiceUpdateRequest) => void;
+  [SocketEvent.VoiceSetProximity]: (
+    payload: VoiceSetProximityRequest,
+    ack: (result: SocketAck<null>) => void,
+  ) => void;
 }
 
 export interface ServerToClientEvents {
@@ -67,6 +102,11 @@ export interface ServerToClientEvents {
   [SocketEvent.PlazaMoved]: (payload: PlazaMoved) => void;
   [SocketEvent.PlazaMember]: (payload: PlazaMemberChange) => void;
   [SocketEvent.PlazaCorrected]: (payload: PlazaCorrection) => void;
+  [SocketEvent.VoiceJoined]: (payload: VoiceJoined) => void;
+  [SocketEvent.VoiceLeft]: (payload: VoiceLeft) => void;
+  [SocketEvent.VoiceUpdated]: (payload: { channelId: string; member: VoiceMember }) => void;
+  [SocketEvent.VoiceProximityChanged]: (payload: VoiceProximityChanged) => void;
+  [SocketEvent.VoiceGains]: (payload: VoiceGains) => void;
 }
 
 /** 입력 중 표시: 클라이언트는 이 간격마다 한 번만 typing:start를 보내고, 받은 쪽은 이 시간 동안 표시한다. */

@@ -10,4 +10,5 @@ export * from './api/attachment.js';
 export * from './api/message.js';
 export * from './events/index.js';
 export * from './plaza/index.js';
+export * from './voice/index.js';
 export * from './desktop/bridge.js';

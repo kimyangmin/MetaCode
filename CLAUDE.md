@@ -15,7 +15,7 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
 
 ## 현재 상태
 
-- **Phase 1~3 완료, Phase 4 (메타버스 모드 MVP) 구현 완료.** 다음은 Phase 5 (음성 통화)입니다.
+- **Phase 1~4 완료, Phase 5 (음성 통화) 구현 완료** (화면 공유는 선택 항목이라 하지 않음). 운영 서버에서 음성을 쓰려면 `docs/deploy.md` 10단계(포트, LiveKit 키)가 필요합니다. 다음은 Phase 6 (캐릭터·맵 에셋)입니다.
 - **운영 중:** https://metacode.kimyangmin.me (2026-09-26 첫 배포, `main` 기준). 서버는 SSH 별칭 `myserver3`(ubuntu, `~/MetaCode`)로 접속할 수 있고, 업데이트는 `main`에 push되면 CI 통과 후 GitHub Actions가 SSH로 `infra/deploy.sh`를 실행해 자동으로 합니다 (배포 전용 키는 `authorized_keys`의 `command=`로 이 스크립트만 실행 가능, 설정은 `docs/deploy.md` 9단계). 손으로 할 때는 서버에서 `bash infra/deploy.sh`입니다. DB 백업은 서버 crontab이 매일 04:00 KST(19:00 UTC)에 `infra/backup.sh`를 실행합니다 (`~/MetaCode/backups/`, 14일 보관, 로그 `backups/backup.log`). 운영 서버에서 무언가를 바꾸기 전에는 사용자에게 확인받습니다.
 - 개발용 GitHub OAuth App(`localhost` 콜백)으로 웹·데스크톱, 운영용 OAuth App으로 운영 웹의 실제 로그인을 확인했습니다 (2026-09-26).
 - 기술 스택은 README 표대로 확정되었습니다 (2026-09-26). 메타버스 렌더링은 Phaser 3 대신 Phaser 4로 정했습니다 (2026-09-27).
@@ -46,7 +46,7 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
 - **Oracle Cloud 주의점:**
   - 서버는 VM.Standard3.Flex(Intel, x86_64)라 amd64 이미지를 씁니다.
   - 포트를 열려면 VCN의 Security List(또는 NSG)와 서버 안의 iptables(`/etc/iptables/rules.v4`, Oracle Ubuntu 이미지는 기본으로 막혀 있음)를 **둘 다** 열어야 합니다.
-  - LiveKit(Phase 5)은 UDP 포트 범위도 열어야 합니다.
+  - LiveKit은 음성용 포트 7882/udp와 7881/tcp를 따로 열어야 합니다 (포트 범위 대신 UDP 포트 하나에 모아서 씀, `docs/deploy.md` 10단계).
 - **Prisma 7:**
   - 접속 URL은 `schema.prisma`가 아니라 `apps/server/prisma.config.ts`에 있고, 루트 `.env`를 직접 읽습니다.
   - 클라이언트는 `apps/server/src/generated/prisma`에 생성되며 git에 올리지 않습니다. 서버의 `dev`/`build`/`typecheck`/`test` 스크립트가 먼저 `prisma generate`를 실행합니다.
@@ -93,6 +93,18 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
   - 키보드: Phaser의 키보드 입력은 끄고(창 전체의 키를 가로채므로), 광장 패널(`tabIndex=0`)의 keydown/keyup으로만 받는다. 광장을 누르면 포커스가 가고, 채팅 입력창의 키는 캐릭터를 움직이지 않는다. 창이 포커스를 잃으면 눌린 키를 비운다.
   - 분할 화면: react-resizable-panels v4. 두 패널 모두 접을 수 있고(채팅 최소 300px, 광장 240px), 크기와 접힘은 localStorage에 기억한다. 접힌 채팅은 입력 중이던 글이 남도록 그대로 두고(`inert`), 접힌 광장은 내려서(Phaser 게임 제거, `plaza:unwatch`) 그리기와 구독을 멈춘다. 보기 전환 버튼은 보이는 첫 패널의 머리글에 있다.
   - Phaser는 약 1.4MB라 광장을 처음 열 때 따로 불러온다(`React.lazy`).
+- **음성 통화 (Phase 5):** `apps/server/src/voice/`, `apps/web/src/features/voice/`, `packages/shared/src/voice/`
+  - LiveKit(셀프 호스팅, WebRTC SFU)이 음성을 나르고, 서버는 입장권(JWT)을 만들고 통화 목록과 상태를 관리합니다. 채널 하나 = LiveKit 방 `channel-<channelId>`, 신원 = 사용자 ID (같은 사람이 다른 곳에서 들어오면 LiveKit이 앞의 연결을 끊음). 입장권은 마이크만 올릴 수 있습니다.
+  - 통화 상태는 서버 메모리에 둡니다 (Presence와 같이 서버 한 대 전제). 통화는 들어간 실시간 연결(socket)에 묶이고, 그 연결이 끊긴 뒤 `VOICE_DISCONNECT_GRACE_MS`(15초) 안에 다시 들어오지 않으면 빼고 LiveKit에서도 끊습니다. 서버가 다시 시작하면 웹 클라이언트가 `connect` 때 `voice:join`을 다시 보내 묶습니다 (이미 LiveKit에 붙어 있으면 새 입장권은 버림).
+  - 한 사람은 통화 하나: 다른 통화에 들어가면 서버가 앞의 통화에서 빼고 `voice:left`를 본인 방에도 보냅니다. 다른 기기의 클라이언트는 이것을 받고 연결을 끊습니다.
+  - 이벤트 대상: 통화 목록과 상태는 `channel:<id>` 방(음성 채널이면 커뮤니티 멤버 전원, DM이면 참여자)으로 보내므로, 통화에 없는 사람도 목록과 광장 표시를 봅니다.
+  - 근접 음성: 서버가 광장 위치(Redis)로 참여자 쌍마다 음량을 계산해(`proximityGain`: 3타일 안 1, 10타일 밖 0, 0.1 단위) 바뀐 사람에게만 `voice:gains`로 보냅니다. 광장 이동(`plaza:move` 통과), 통화 참여/나감, 켜기 때 다시 계산합니다. 클라이언트는 LiveKit 자동 구독을 끄고, 0이면 구독을 끊고 아니면 그 음량으로 틉니다 (`volumeFor`). 구독 여부는 `isSubscribed`가 아니라 `isDesired`로 판단합니다 (구독 요청 중에 끊지 못하는 문제가 있었음). 설정은 `Channel.proximityVoice`에 저장합니다.
+  - 말하는 중: 각 클라이언트가 LiveKit의 음성 감지(`IsSpeakingChanged`, 멈출 때 300ms 늦춤)를 `voice:update`로 서버에 보내고 서버가 알립니다. 채팅 모드 목록(아바타 초록 테두리)과 광장(발밑 고리, 이름표 테두리, 캐릭터 위 `🔊 채널`/`📞 통화 중`)에 보입니다.
+  - 마이크가 없거나 권한이 없으면 듣기만 합니다(`listenOnly`, 음소거로 알림). 헤드셋을 끄면 마이크도 끄고 모든 구독을 끊습니다. 장치 선택은 localStorage에 기억합니다.
+  - LiveKit 클라이언트(약 500KB)는 처음 통화에 들어갈 때 불러옵니다. 통화 제어는 React 밖의 `VoiceController`, 상태는 zustand(`useVoiceStore`)에 둡니다.
+  - 로컬: `infra/docker-compose.yml`의 `livekit` (키 `devkey`, NODE_IP 127.0.0.1). 운영: `COMPOSE_PROFILES=voice`일 때만 뜨고, 신호는 Caddy가 `https://<API_DOMAIN>/livekit`으로 넘깁니다 (livekit-client가 주소의 경로를 유지함). 키가 비어 있으면 서버는 음성만 끈 채로 뜹니다.
+  - 데스크톱: Electron은 권한 처리기가 없으면 모든 권한을 허락하므로, 앱 화면에만 마이크·스피커 선택·클립보드 쓰기를 허락하고 나머지(카메라 포함)는 거절합니다 (`apps/desktop/src/main/permissions.ts`).
+  - 로컬에서 두 사람 음성 확인: 브라우저 패널은 마이크를 막으므로, 두 번째 사용자는 `@livekit/rtc-node`로 음을 보내는 스크립트로 확인했습니다. 실제 마이크로 말하는 확인은 사람이 해야 합니다.
 - **Windows에서 파일 수정:** Windows PowerShell 5.1의 `Get-Content`/`Set-Content`는 UTF-8 한글을 깨뜨립니다. 파일 수정은 편집 도구나 bash를 씁니다.
 
 ## 확정된 결정
@@ -182,9 +194,10 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
   - `channel:created`, `dm:created`, `community:member-joined` / `member-left` / `deleted`, `presence:changed`
   - `plaza:watch` / `plaza:unwatch`: 광장 화면을 열고 닫을 때 (위치 업데이트 구독)
   - `plaza:move` → `plaza:moved`
-  - 광장 인원 변화 → `plaza:roster`
-  - `voice:join` / `voice:leave` → `voice:joined` / `voice:left`
-  - `voice:setProximity` → `voice:proximityChanged`
+  - 광장 인원 변화 → `plaza:member` (나타남/사라짐 한 명씩), 되돌림 → `plaza:corrected`
+  - `voice:sync`(ack로 볼 수 있는 통화 전부), `voice:join`(ack로 음성 서버 주소와 입장권) / `voice:leave` → `voice:joined` / `voice:left`
+  - `voice:update`(내 음소거, 헤드셋, 말하는 중) → `voice:updated`
+  - `voice:setProximity` → `voice:proximityChanged`, 근접 음성 음량 → `voice:gains` (받는 사람마다 다름, `user:` 방으로)
 - Socket.IO room 이름은 `user:<userId>`, `community:<communityId>`, `channel:<channelId>`, `plaza:<plazaId>` 형식을 씁니다.
 - 이벤트 이름과 페이로드 타입은 `packages/shared/src/events`의 `SocketEvent`, `ClientToServerEvents`, `ServerToClientEvents`에만 정의합니다.
 
