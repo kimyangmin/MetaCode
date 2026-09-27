@@ -1,5 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { type MessageDto, type MessagePage, SocketEvent } from '@metacode/shared';
+import { AttachmentsService, toAttachmentDto } from '../attachments/attachments.service.js';
+import type { Attachment } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { RealtimeService, room } from '../realtime/realtime.service.js';
 import { toProfile } from '../users/users.service.js';
@@ -11,7 +13,14 @@ type MessageRow = {
   content: string;
   createdAt: Date;
   author: Parameters<typeof toProfile>[0];
+  attachments: Attachment[];
 };
+
+/** 메시지와 함께 읽을 관계: 작성자, 첨부(올린 순서) */
+const messageInclude = {
+  author: true,
+  attachments: { orderBy: { createdAt: 'asc' } },
+} as const;
 
 export function toMessageDto(message: MessageRow): MessageDto {
   return {
@@ -19,6 +28,7 @@ export function toMessageDto(message: MessageRow): MessageDto {
     channelId: message.channelId,
     author: toProfile(message.author),
     content: message.content,
+    attachments: message.attachments.map(toAttachmentDto),
     createdAt: message.createdAt.toISOString(),
   };
 }
@@ -29,21 +39,32 @@ export class MessagesService {
     private readonly prisma: PrismaService,
     private readonly access: AccessService,
     private readonly realtime: RealtimeService,
+    private readonly attachments: AttachmentsService,
   ) {}
 
   /**
    * 메시지를 저장하고 채널 방 전체에 message:created로 보낸다.
    * 채팅 모드와 메타버스 모드(말풍선)가 모두 이 이벤트 하나를 받는다.
    */
-  async send(userId: string, channelId: string, content: string): Promise<MessageDto> {
+  async send(
+    userId: string,
+    channelId: string,
+    content: string,
+    attachmentIds: string[] = [],
+  ): Promise<MessageDto> {
     const channel = await this.access.getChannel(userId, channelId);
     if (channel.type === 'VOICE')
       throw new BadRequestException('음성 채널에는 글을 쓸 수 없습니다.');
 
+    // 첨부를 붙이지 못하면 메시지도 남기지 않는다.
     const message = toMessageDto(
-      await this.prisma.message.create({
-        data: { channelId, authorId: userId, content },
-        include: { author: true },
+      await this.prisma.$transaction(async (tx) => {
+        const created = await tx.message.create({
+          data: { channelId, authorId: userId, content },
+          select: { id: true },
+        });
+        await this.attachments.claim(tx, userId, channelId, attachmentIds, created.id);
+        return tx.message.findUniqueOrThrow({ where: { id: created.id }, include: messageInclude });
       }),
     );
     this.realtime.emit(room.channel(channelId), SocketEvent.MessageCreated, message);
@@ -62,7 +83,7 @@ export class MessagesService {
       where: { channelId, ...(before ? { id: { lt: before } } : {}) },
       orderBy: { id: 'desc' },
       take: limit + 1,
-      include: { author: true },
+      include: messageInclude,
     });
     return {
       messages: rows.slice(0, limit).map(toMessageDto),

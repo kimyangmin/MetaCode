@@ -1,15 +1,26 @@
 import { z } from 'zod';
+import { type AttachmentDto, MAX_ATTACHMENTS_PER_MESSAGE } from './attachment.js';
 import type { UserProfile } from './user.js';
 
 export const MESSAGE_MAX_LENGTH = 4000;
 export const MESSAGE_PAGE_SIZE = 50;
 
-export const sendMessageSchema = z.object({
-  channelId: z.uuid(),
-  content: z.string().trim().min(1).max(MESSAGE_MAX_LENGTH),
-});
+/** 글이나 첨부 중 하나는 있어야 한다. */
+export const sendMessageSchema = z
+  .object({
+    channelId: z.uuid(),
+    content: z.string().trim().max(MESSAGE_MAX_LENGTH).default(''),
+    attachmentIds: z
+      .array(z.uuid())
+      .max(MAX_ATTACHMENTS_PER_MESSAGE)
+      .default([])
+      .transform((ids) => [...new Set(ids)]),
+  })
+  .refine((m) => m.content.length > 0 || m.attachmentIds.length > 0, {
+    message: '메시지나 첨부 파일이 필요합니다.',
+  });
 
-export type SendMessageRequest = z.infer<typeof sendMessageSchema>;
+export type SendMessageRequest = z.input<typeof sendMessageSchema>;
 
 export const messagesQuerySchema = z.object({
   /** 이 메시지보다 오래된 것을 가져온다 (없으면 최신부터) */
@@ -24,7 +35,9 @@ export interface MessageDto {
   id: string;
   channelId: string;
   author: UserProfile;
+  /** 첨부만 보내면 빈 문자열 */
   content: string;
+  attachments: AttachmentDto[];
   createdAt: string;
 }
 
@@ -32,4 +45,14 @@ export interface MessageDto {
 export interface MessagePage {
   messages: MessageDto[];
   hasMore: boolean;
+}
+
+/**
+ * 메타버스 모드에서 이 메시지를 어떻게 보일지.
+ * 첨부가 있으면 말풍선 대신 캐릭터 모션으로 보인다 (설계 원칙: 표현 규칙은 공용 코드에 둔다).
+ */
+export function messagePresentation(
+  message: Pick<MessageDto, 'attachments'>,
+): 'bubble' | 'attachment-emote' {
+  return message.attachments.length > 0 ? 'attachment-emote' : 'bubble';
 }
