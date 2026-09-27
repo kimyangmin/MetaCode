@@ -20,6 +20,7 @@ import { useRealtime } from '../../realtime/RealtimeProvider';
 import { useTypingUsers } from '../../stores/typing';
 import { displayName } from '../../ui/format';
 import { Composer } from './Composer';
+import { ForwardDialog } from './ForwardDialog';
 import { MessageList, type PendingMessage } from './MessageList';
 import { useAttachmentDrafts } from './uploads';
 
@@ -36,6 +37,8 @@ interface ChatViewProps {
   people: UserProfile[];
   /** 머리글 오른쪽 (보기 전환 버튼) */
   actions?: ReactNode;
+  /** 커뮤니티 채널이면 그 커뮤니티 (프로필 팝업에 역할 표시) */
+  communityId?: string;
 }
 
 /** 채팅 모드: 한 채널의 대화 기록, 입력 중 표시, 입력창 */
@@ -47,6 +50,7 @@ export function ChatView({
   lastReadMessageId,
   people,
   actions,
+  communityId,
 }: ChatViewProps) {
   const queryClient = useQueryClient();
   const { socket } = useRealtime();
@@ -54,6 +58,8 @@ export function ChatView({
   const lastTypingSent = useRef(0);
   const drafts = useAttachmentDrafts(channelId);
   const [dragging, setDragging] = useState(false);
+  const [replyTo, setReplyTo] = useState<MessageDto | null>(null);
+  const [forwarding, setForwarding] = useState<MessageDto | null>(null);
 
   const history = useInfiniteQuery({
     queryKey: queryKeys.messages(channelId),
@@ -86,10 +92,10 @@ export function ChatView({
   }, [channelId, latestId, lastReadMessageId, queryClient]);
 
   const deliver = useCallback(
-    (content: string, attachmentIds: string[], clientId: string) => {
+    (content: string, attachmentIds: string[], clientId: string, replyToId?: string) => {
       setPending((list) => [
         ...list.filter((p) => p.clientId !== clientId),
-        { clientId, content, attachmentIds, status: 'sending' },
+        { clientId, content, attachmentIds, replyToId, status: 'sending' },
       ]);
       const fail = () =>
         setPending((list) =>
@@ -98,11 +104,15 @@ export function ChatView({
       if (!socket) return fail();
       socket
         .timeout(SEND_TIMEOUT_MS)
-        .emit(SocketEvent.MessageSend, { channelId, content, attachmentIds }, (err, result) => {
-          if (err || !result.ok) return fail();
-          addMessageToCache(queryClient, result.data as MessageDto);
-          setPending((list) => list.filter((p) => p.clientId !== clientId));
-        });
+        .emit(
+          SocketEvent.MessageSend,
+          { channelId, content, attachmentIds, replyToId },
+          (err, result) => {
+            if (err || !result.ok) return fail();
+            addMessageToCache(queryClient, result.data as MessageDto);
+            setPending((list) => list.filter((p) => p.clientId !== clientId));
+          },
+        );
     },
     [channelId, queryClient, socket],
   );
@@ -114,16 +124,18 @@ export function ChatView({
         content,
         drafts.readyAttachments.map((a) => a.id),
         crypto.randomUUID(),
+        replyTo?.id,
       );
       drafts.clear();
+      setReplyTo(null);
     },
-    [deliver, drafts],
+    [deliver, drafts, replyTo],
   );
 
   const retry = useCallback(
     (clientId: string) => {
       const target = pending.find((p) => p.clientId === clientId);
-      if (target) deliver(target.content, target.attachmentIds, clientId);
+      if (target) deliver(target.content, target.attachmentIds, clientId, target.replyToId);
     },
     [pending, deliver],
   );
@@ -187,6 +199,9 @@ export function ChatView({
           onLoadMore={loadMore}
           onRetry={retry}
           emptyText={`${prefix}${title}의 첫 메시지를 남겨 보세요.`}
+          communityId={communityId}
+          onReply={setReplyTo}
+          onForward={setForwarding}
         />
       )}
       <TypingIndicator channelId={channelId} people={people} />
@@ -201,7 +216,10 @@ export function ChatView({
         onAddFiles={drafts.add}
         onRemoveDraft={drafts.remove}
         onRetryDraft={drafts.retry}
+        replyTo={replyTo}
+        onCancelReply={() => setReplyTo(null)}
       />
+      {forwarding && <ForwardDialog message={forwarding} onClose={() => setForwarding(null)} />}
     </section>
   );
 }

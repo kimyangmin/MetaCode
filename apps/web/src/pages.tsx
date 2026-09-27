@@ -18,6 +18,7 @@ import { DmSidebar } from './features/dms/DmSidebar';
 import { PlazaPanel } from './features/metaverse/PlazaPanel';
 import { CallButton } from './features/voice/CallButton';
 import { SplitView } from './layout/SplitView';
+import { useUiStore } from './stores/ui';
 import { dmTitle } from './ui/format';
 
 /** 첫 화면: 첫 커뮤니티로, 없으면 DM으로 */
@@ -34,6 +35,7 @@ export function CommunityPage() {
   const communities = useCommunities();
   const community = communities.data?.find((c) => c.id === communityId);
   const members = useMembers(communityId ?? '');
+  const membersHidden = useUiStore((s) => s.membersHidden);
 
   if (!communities.data) return <Loading />;
   // 나갔거나 삭제된 커뮤니티
@@ -57,7 +59,13 @@ export function CommunityPage() {
             me={me}
             lastReadMessageId={channel.lastReadMessageId}
             people={members.data?.map((m) => m.user) ?? []}
-            actions={actions}
+            communityId={community.id}
+            actions={
+              <>
+                <MembersToggle />
+                {actions}
+              </>
+            }
           />
         )}
         plaza={(actions) => (
@@ -68,11 +76,18 @@ export function CommunityPage() {
             me={me}
             channelLabels={textChannelLabels(community)}
             voiceLabels={voiceChannelLabels(community)}
-            actions={actions}
+            actions={
+              actions && (
+                <>
+                  <MembersToggle />
+                  {actions}
+                </>
+              )
+            }
           />
         )}
       />
-      <MemberList communityId={community.id} />
+      {!membersHidden && <MemberList communityId={community.id} />}
     </>
   );
 }
@@ -190,6 +205,24 @@ export function InvitePage() {
         </>
       )}
     </section>
+  );
+}
+
+/** 오른쪽 멤버 목록 보이기/숨기기 (기억한다) */
+function MembersToggle() {
+  const hidden = useUiStore((s) => s.membersHidden);
+  const toggle = useUiStore((s) => s.toggleMembers);
+  return (
+    <button
+      type="button"
+      className="icon-button members-toggle"
+      aria-pressed={!hidden}
+      onClick={toggle}
+      title={hidden ? '멤버 목록 보이기' : '멤버 목록 숨기기'}
+      aria-label={hidden ? '멤버 목록 보이기' : '멤버 목록 숨기기'}
+    >
+      👥
+    </button>
   );
 }
 

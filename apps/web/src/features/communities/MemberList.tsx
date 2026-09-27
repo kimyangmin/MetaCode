@@ -1,18 +1,17 @@
 import type { CommunityMember } from '@metacode/shared';
 import { usePresenceStore } from '../../stores/presence';
+import { openProfile } from '../../stores/profile';
 import { Avatar } from '../../ui/Avatar';
 import { displayName } from '../../ui/format';
-import { useCommunities, useMeRequired, useMembers, useOpenDm } from './hooks';
+import { useCommunities, useMembers } from './hooks';
 import { memberColor, roleNames } from './roles';
 
 const ROLE_LABEL = { OWNER: '소유자', ADMIN: '관리자', MEMBER: '' } as const;
 
-/** 커뮤니티 화면 오른쪽: 온라인/오프라인 멤버. 누르면 DM을 연다. */
+/** 커뮤니티 화면 오른쪽: 온라인/오프라인 멤버. 누르면 사용자 정보(메시지 보내기 포함)를 띄운다. */
 export function MemberList({ communityId }: { communityId: string }) {
   const members = useMembers(communityId);
   const online = usePresenceStore((s) => s.online);
-  const me = useMeRequired();
-  const openDm = useOpenDm();
   const roles = useCommunities().data?.find((c) => c.id === communityId)?.roles ?? [];
 
   if (!members.data) return <aside className="members" aria-label="멤버" />;
@@ -37,11 +36,8 @@ export function MemberList({ communityId }: { communityId: string }) {
                   key={m.user.id}
                   className="members__item"
                   data-online={isOnline(m)}
-                  disabled={m.user.id === me.id}
-                  onClick={() => void openDm([m.user.id])}
-                  title={
-                    m.user.id === me.id ? undefined : `${displayName(m.user)}님에게 메시지 보내기`
-                  }
+                  onClick={(e) => openProfile(m.user, e, communityId)}
+                  title={`${displayName(m.user)} 정보`}
                 >
                   <Avatar user={m.user} size={32} showStatus />
                   <span

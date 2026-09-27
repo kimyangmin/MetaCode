@@ -8,6 +8,7 @@ import {
   useNavigate,
 } from 'react-router';
 import { CommunityRail } from './features/communities/CommunityRail';
+import { ProfilePopup } from './features/communities/ProfilePopup';
 import { CommunityPage, DmPage, HomeRedirect, InvitePage, takePendingInvite } from './pages';
 import { isDesktop } from './platform';
 
@@ -28,6 +29,7 @@ function AppLayout() {
     <div className="app">
       <CommunityRail />
       <Outlet />
+      <ProfilePopup />
     </div>
   );
 }

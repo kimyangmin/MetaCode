@@ -1963,3 +1963,289 @@ h3 {
 .member-roles__kick:hover {
   border-color: var(--danger);
 }
+
+/* ── 채팅 편의 ─────────────── */
+
+/*
+ * 앱 화면의 글자(메뉴, 이름, 버튼 등)는 끌어서 고르거나 끌어 옮길 수 없다.
+ * 메시지 내용, 입력칸, 정보 팝업처럼 복사할 만한 곳만 고를 수 있다.
+ */
+body {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.message__content,
+.message__reply-text,
+.forward-preview,
+.profile-popup__names,
+input,
+textarea {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+img,
+a {
+  -webkit-user-drag: none;
+}
+
+/* 메시지 안의 링크 */
+.message__content a {
+  color: var(--accent);
+  text-decoration: none;
+  word-break: break-all;
+}
+
+.message__content a:hover {
+  text-decoration: underline;
+}
+
+/* 아바타, 이름: 누르면 정보 팝업 */
+.message__avatar,
+.message__author,
+.voice-members__who {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.message__author {
+  font-weight: 700;
+}
+
+.message__author:hover {
+  text-decoration: underline;
+}
+
+.voice-members__who {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  text-align: left;
+}
+
+/* 답장: 메시지 위에 원래 메시지 한 줄 */
+.message__reply {
+  display: flex;
+  grid-column: 1 / -1;
+  align-items: baseline;
+  gap: 6px;
+  width: fit-content;
+  max-width: 100%;
+  margin: 0 0 2px 56px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.8rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.message__reply:hover {
+  color: var(--fg);
+}
+
+.message__reply-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.message__forwarded {
+  margin: 0 0 2px;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+/* 답장한 원래 메시지로 이동했을 때 잠깐 강조 */
+.message[data-highlight='true'] {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  transition: background 0.3s;
+}
+
+/* 입력창 위 답장 표시 */
+.composer__reply {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+  padding: 6px 10px;
+  border-left: 3px solid var(--accent);
+  border-radius: 4px;
+  background: var(--bg-input);
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.composer__reply-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.composer__send {
+  flex: none;
+  width: 40px;
+  height: 40px;
+  color: var(--accent);
+  font-size: 18px;
+}
+
+.composer__send:disabled {
+  color: var(--muted);
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* 우클릭 메뉴: 누른 자리에 뜬다 */
+.context-menu {
+  position: fixed;
+  top: auto;
+  right: auto;
+  z-index: 60;
+}
+
+/* 사용자 정보 팝업 */
+.profile-popup {
+  position: fixed;
+  z-index: 60;
+  display: grid;
+  gap: 12px;
+  width: 260px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 0.3);
+}
+
+.profile-popup__head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.profile-popup__names {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.profile-popup__names strong {
+  overflow: hidden;
+  font-size: 1.05rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.profile-popup__names a {
+  color: var(--muted);
+  font-size: 0.8rem;
+  text-decoration: none;
+}
+
+.profile-popup__names a:hover {
+  color: var(--accent);
+}
+
+.profile-popup__status {
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.profile-popup__status::before {
+  content: '● ';
+}
+
+.profile-popup__status[data-online='true']::before {
+  color: var(--ok);
+}
+
+.profile-popup__roles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.role-tag {
+  padding: 1px 8px;
+  border: 1px solid var(--role-color, var(--border));
+  border-radius: 999px;
+  font-size: 0.75rem;
+}
+
+/* 메시지 전달 */
+.forward-preview {
+  max-height: 80px;
+  margin: 0;
+  padding: 6px 10px;
+  overflow: hidden;
+  border-left: 3px solid var(--border);
+  color: var(--muted);
+  font-size: 0.85rem;
+  white-space: pre-wrap;
+}
+
+.forward-list {
+  display: grid;
+  gap: 2px;
+  max-height: 40vh;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+  scrollbar-width: none;
+}
+
+.forward-list::-webkit-scrollbar {
+  display: none;
+}
+
+.forward-list__item {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--fg);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.forward-list__item:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+
+.forward-list__item small {
+  color: var(--muted);
+}
+
+.forward-list__item em {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.members-toggle[aria-pressed='true'] {
+  background: var(--bg-active);
+  color: var(--fg);
+}
+
+.message__reply strong {
+  flex: none;
+  white-space: nowrap;
+}

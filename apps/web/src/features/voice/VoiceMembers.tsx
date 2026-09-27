@@ -1,5 +1,6 @@
 import type { VoiceMember } from '@metacode/shared';
 import { Avatar } from '../../ui/Avatar';
+import { openProfile } from '../../stores/profile';
 import { displayName } from '../../ui/format';
 import { useVoice } from './VoiceProvider';
 
@@ -23,8 +24,15 @@ export function VoiceMembers({
           className="voice-members__item"
           data-speaking={member.speaking && !member.muted}
         >
-          <Avatar user={member.user} size={22} />
-          <span className="voice-members__name">{displayName(member.user)}</span>
+          <button
+            type="button"
+            className="voice-members__who"
+            onClick={(e) => openProfile(member.user, e)}
+            title={`${displayName(member.user)} 정보`}
+          >
+            <Avatar user={member.user} size={22} />
+            <span className="voice-members__name">{displayName(member.user)}</span>
+          </button>
           {member.sharing && <LiveButton channelId={channelId} member={member} />}
           <MemberFlags member={member} />
         </li>
