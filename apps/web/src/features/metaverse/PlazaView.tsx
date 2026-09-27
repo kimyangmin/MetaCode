@@ -12,8 +12,10 @@ import Phaser from 'phaser';
 import { type KeyboardEvent, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useRealtime } from '../../realtime/RealtimeProvider';
 import { displayName } from '../../ui/format';
+import { useVoiceStore } from '../voice/store';
 import { EMOTE_DURATION_MS, bubbleDurationMs, bubbleText, emoteText } from './bubbles';
 import { PlazaScene } from './PlazaScene';
+import { plazaVoiceStates } from './plazaVoice';
 
 const ARROW_KEYS = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
 
@@ -25,13 +27,15 @@ export interface PlazaViewProps {
    * 모닥불 캠프는 그 DM 하나(이름표 없음). 여기 없는 채널의 메시지는 띄우지 않는다.
    */
   channelLabels: ReadonlyMap<string, string | null>;
+  /** 이 광장에 속한 통화 채널과 캐릭터에 보일 이름 (음성 채널 '🔊 lounge', DM '📞 통화 중') */
+  voiceLabels: ReadonlyMap<string, string>;
 }
 
 /**
  * 메타버스 모드: 광장 하나. Phaser 게임을 띄우고, 서버의 광장 이벤트와 메시지를 씬에 넣는다.
  * 방향키는 이 패널에 포커스가 있을 때만 캐릭터를 움직인다 (채팅 입력 중에는 움직이지 않는다).
  */
-export default function PlazaView({ plazaId, me, channelLabels }: PlazaViewProps) {
+export default function PlazaView({ plazaId, me, channelLabels, voiceLabels }: PlazaViewProps) {
   const { socket } = useRealtime();
   const hostRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
@@ -43,9 +47,11 @@ export default function PlazaView({ plazaId, me, channelLabels }: PlazaViewProps
   // 씬이 보내는 이동은 항상 최신 연결로 보낸다.
   const socketRef = useRef(socket);
   const labelsRef = useRef(channelLabels);
+  const voiceLabelsRef = useRef(voiceLabels);
   useLayoutEffect(() => {
     socketRef.current = socket;
     labelsRef.current = channelLabels;
+    voiceLabelsRef.current = voiceLabels;
   });
 
   // Phaser 게임: 광장마다 하나 (부모가 plazaId로 key를 준다)
@@ -135,6 +141,14 @@ export default function PlazaView({ plazaId, me, channelLabels }: PlazaViewProps
       if (socket.connected) socket.emit(SocketEvent.PlazaUnwatch, { plazaId });
     };
   }, [scene, socket, plazaId]);
+
+  // 통화 상태 → 캐릭터 위 음성 채널 표시와 말하는 중 고리
+  const calls = useVoiceStore((s) => s.calls);
+  const voiceKey = [...voiceLabels].join();
+  useEffect(() => {
+    // voiceLabels는 렌더마다 새로 만들어지므로 내용(voiceKey)이 바뀔 때만 다시 계산한다.
+    scene?.setVoice(plazaVoiceStates(calls, voiceLabelsRef.current));
+  }, [scene, calls, voiceKey]);
 
   // 창이 포커스를 잃으면 keyup을 못 받으므로 눌린 키를 비운다.
   useEffect(() => {

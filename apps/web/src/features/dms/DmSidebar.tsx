@@ -8,6 +8,7 @@ import { Dialog } from '../../ui/Dialog';
 import { displayName, dmTitle } from '../../ui/format';
 import { UserPanel } from '../auth/UserPanel';
 import { useDms, useMeRequired, useOpenDm } from '../communities/hooks';
+import { useCall } from '../voice/store';
 
 /** DM 화면 왼쪽: 대화 목록과 새 대화 */
 export function DmSidebar({ activeId }: { activeId?: string }) {
@@ -45,6 +46,7 @@ export function DmSidebar({ activeId }: { activeId?: string }) {
 function DmLink({ dm, meId, active }: { dm: DmSummary; meId: string; active: boolean }) {
   const others = dm.participants.filter((p) => p.id !== meId);
   const first = others[0];
+  const call = useCall(dm.id);
   return (
     <NavLink
       to={`/dm/${dm.id}`}
@@ -53,6 +55,11 @@ function DmLink({ dm, meId, active }: { dm: DmSummary; meId: string; active: boo
     >
       {first && <Avatar user={first} size={28} showStatus={dm.type === 'DM'} />}
       <span className="sidebar__label">{dmTitle(dm, meId)}</span>
+      {call && (
+        <span className="sidebar__live" role="img" aria-label={`통화 중 ${call.members.length}명`}>
+          🔊
+        </span>
+      )}
       {dm.type === 'GROUP_DM' && <span className="sidebar__count">{dm.participants.length}</span>}
     </NavLink>
   );

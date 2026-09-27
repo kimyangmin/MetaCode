@@ -3,6 +3,7 @@ import { RouterProvider } from 'react-router';
 import { LoginScreen } from './features/auth/LoginScreen';
 import { takeLoginError, useMe } from './features/auth/auth';
 import { rememberPendingInvite } from './pages';
+import { VoiceProvider } from './features/voice/VoiceProvider';
 import { RealtimeProvider } from './realtime/RealtimeProvider';
 import { createAppRouter } from './router';
 
@@ -26,7 +27,9 @@ export function App() {
 
   return (
     <RealtimeProvider key={me.data.id} meId={me.data.id}>
-      <RouterProvider router={router} />
+      <VoiceProvider meId={me.data.id}>
+        <RouterProvider router={router} />
+      </VoiceProvider>
     </RealtimeProvider>
   );
 }
