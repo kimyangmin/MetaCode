@@ -148,10 +148,13 @@ function attachAuthHeader(manager: AuthManager) {
         callback({ requestHeaders: details.requestHeaders });
         return;
       }
-      void manager.getAccessToken().then((token) => {
-        if (token) details.requestHeaders.Authorization = `Bearer ${token}`;
-        callback({ requestHeaders: details.requestHeaders });
-      });
+      void manager
+        .getAccessToken()
+        .catch(() => null)
+        .then((token) => {
+          if (token) details.requestHeaders.Authorization = `Bearer ${token}`;
+          callback({ requestHeaders: details.requestHeaders });
+        });
     },
   );
 }

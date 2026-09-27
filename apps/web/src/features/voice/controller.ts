@@ -168,6 +168,18 @@ export class VoiceController {
     if (!ack.ok) store().patch({ error: ack.error });
   }
 
+  /** 마이크 증폭 (0~2, 1이 원래 크기). 기억하고 통화 중이면 바로 적용한다 */
+  async setInputGain(value: number): Promise<void> {
+    store().setInputGain(value);
+    await this.connection?.setInputGain(value);
+  }
+
+  /** 들리는 소리 전체의 크기 (0~1). 기억하고 통화 중이면 바로 적용한다 */
+  setOutputVolume(value: number): void {
+    store().setOutputVolume(value);
+    this.applyVolumes();
+  }
+
   async switchDevice(kind: 'audioinput' | 'audiooutput', deviceId: string): Promise<void> {
     store().setDevice(kind, deviceId);
     await this.connection?.switchDevice(kind, deviceId);
@@ -294,12 +306,13 @@ export class VoiceController {
       },
     });
     this.connection = conn;
-    const { muted, deafened, inputDeviceId, outputDeviceId } = store();
+    const { muted, deafened, inputDeviceId, outputDeviceId, inputGain } = store();
     try {
       const micOk = await conn.connect(url, token, {
         micEnabled: !muted && !deafened,
         inputDeviceId,
         outputDeviceId,
+        inputGain,
       });
       if (this.connection !== conn) return;
       store().setSession({ channelId, status: 'connected', listenOnly: !micOk });
@@ -363,12 +376,20 @@ export class VoiceController {
   }
 
   private applyVolumes() {
-    const { session, calls, deafened, gains, watching, previewing } = store();
+    const { session, calls, deafened, gains, watching, previewing, outputVolume } = store();
     if (!session) return;
     const proximity = calls[session.channelId]?.proximity ?? false;
-    this.connection?.applyVolumes((identity, kind) =>
-      trackVolume(identity, kind, { deafened, proximity, gains, watching, previewing }),
-    );
+    this.connection?.applyVolumes((identity, kind) => {
+      const volume = trackVolume(identity, kind, {
+        deafened,
+        proximity,
+        gains,
+        watching,
+        previewing,
+      });
+      // 출력 음량은 소리에만 곱한다 (화면 공유 영상은 음량이 아니라 구독 여부).
+      return kind === 'screen' ? volume : volume * outputVolume;
+    });
   }
 
   private putCall(call: VoiceCall) {

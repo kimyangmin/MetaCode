@@ -2,6 +2,7 @@ import { z } from 'zod';
 import type { ChannelSummary, DmSummary } from '../api/channel.js';
 import type { CommunityMember } from '../api/community.js';
 import type { ForwardMessageRequest, MessageDto, SendMessageRequest } from '../api/message.js';
+import type { UserProfile } from '../api/user.js';
 import type {
   PlazaCorrection,
   PlazaMemberChange,
@@ -23,6 +24,7 @@ import type {
 
 /**
  * Socket.IO 이벤트 규칙: `도메인:동작`. 클라이언트 → 서버는 명령형, 서버 → 클라이언트는 과거형.
+ * 도메인: message, typing, channel, dm, community, presence, user, plaza, voice.
  * 방 이름: `user:<id>`, `community:<id>`, `channel:<id>`, `plaza:<id>`
  */
 export const SocketEvent = {
@@ -42,6 +44,8 @@ export const SocketEvent = {
   /** 역할, 채널 권한, 관리자가 바뀌었다: 커뮤니티 정보(볼 수 있는 채널 등)를 다시 받는다 */
   CommunityUpdated: 'community:updated',
   PresenceChanged: 'presence:changed',
+  /** 닉네임이나 프로필 사진이 바뀌었다 (같은 커뮤니티·DM 사람과 본인에게) */
+  UserUpdated: 'user:updated',
   /** 광장 화면을 열 때: 광장 방에 들어가고 현재 상태(스냅숏)를 받는다 */
   PlazaWatch: 'plaza:watch',
   PlazaUnwatch: 'plaza:unwatch',
@@ -111,6 +115,7 @@ export interface ServerToClientEvents {
   [SocketEvent.CommunityDeleted]: (payload: { communityId: string }) => void;
   [SocketEvent.CommunityUpdated]: (payload: { communityId: string }) => void;
   [SocketEvent.PresenceChanged]: (payload: { userId: string; online: boolean }) => void;
+  [SocketEvent.UserUpdated]: (user: UserProfile) => void;
   [SocketEvent.PlazaMoved]: (payload: PlazaMoved) => void;
   [SocketEvent.PlazaMember]: (payload: PlazaMemberChange) => void;
   [SocketEvent.PlazaCorrected]: (payload: PlazaCorrection) => void;

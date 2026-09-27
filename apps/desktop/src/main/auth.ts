@@ -13,6 +13,19 @@ const LOGIN_TIMEOUT_MS = 5 * 60 * 1000;
 /** 만료 이만큼 전에 미리 갱신한다. */
 const EXPIRY_MARGIN_MS = 30 * 1000;
 
+/** 네트워크 오류나 서버 오류로 갱신에 실패하면 이만큼 기다렸다가 다시 해 본다 (앱을 막 켰을 때 등) */
+const REFRESH_RETRY_DELAYS_MS = [1000, 2000];
+
+/**
+ * 로그인은 되어 있지만 지금 서버에 닿지 않아 액세스 토큰을 받지 못했다.
+ * 로그아웃이 아니므로 리프레시 토큰은 지우지 않는다. 렌더러는 이 오류를 "연결할 수 없음"으로 보여 준다.
+ */
+export class SessionUnavailableError extends Error {
+  constructor() {
+    super('서버에 연결하지 못했습니다.');
+  }
+}
+
 /** 리프레시 토큰 영구 보관소. 구현은 OS 암호화 저장소(safeStorage)를 쓴다. */
 export interface TokenStorage {
   load(): string | null;
@@ -30,6 +43,8 @@ export interface AuthManagerDeps {
   fetch?: typeof fetch;
   /** 진단용 로그. 토큰이나 코드 값은 넘기지 않는다. */
   log?(message: string): void;
+  /** 갱신 재시도 간격 (테스트에서 줄인다) */
+  refreshRetryDelaysMs?: number[];
 }
 
 /**
@@ -84,7 +99,11 @@ export class AuthManager {
     return this.refreshToken !== null;
   }
 
-  /** 유효한 액세스 토큰. 만료가 가까우면 갱신한다. 동시에 불려도 갱신은 한 번만 한다. */
+  /**
+   * 유효한 액세스 토큰. 만료가 가까우면 갱신한다. 동시에 불려도 갱신은 한 번만 한다.
+   * 로그인 전이거나 세션이 끊겼으면(401) null, 서버에 닿지 않으면 SessionUnavailableError로 거절한다
+   * (null을 주면 렌더러가 로그아웃된 줄 알고 로그인 화면을 띄운다).
+   */
   getAccessToken(): Promise<string | null> {
     if (this.access && this.access.expiresAt - EXPIRY_MARGIN_MS > Date.now()) {
       return Promise.resolve(this.access.token);
@@ -143,15 +162,25 @@ export class AuthManager {
   }
 
   private async refresh(): Promise<string | null> {
-    const res = await this.post('/auth/refresh', { refreshToken: this.refreshToken });
-    if (!res) return null; // 네트워크 오류: 토큰은 그대로 두고 다음에 다시 시도한다.
+    const delays = this.deps.refreshRetryDelaysMs ?? REFRESH_RETRY_DELAYS_MS;
+    let res = await this.post('/auth/refresh', { refreshToken: this.refreshToken });
+    for (const delay of delays) {
+      if (res && res.status < 500) break;
+      this.deps.log?.(`갱신 실패 (${res ? res.status : '네트워크 오류'}), ${delay}ms 뒤 다시 시도`);
+      await new Promise((resolve) => setTimeout(resolve, delay));
+      // 기다리는 사이 로그아웃했다.
+      if (!this.refreshToken) return null;
+      res = await this.post('/auth/refresh', { refreshToken: this.refreshToken });
+    }
+    // 네트워크 오류나 서버 오류: 토큰은 그대로 두고 다음에 다시 시도한다.
+    if (!res || res.status >= 500) throw new SessionUnavailableError();
     if (res.status === 401) {
       // 세션이 끊겼다(로그아웃, 만료, 탈취 감지). 로그인 화면으로 돌아간다.
       this.clear();
       this.deps.onChanged();
       return null;
     }
-    if (!res.ok) return null;
+    if (!res.ok) throw new SessionUnavailableError();
     this.setTokens((await res.json()) as AuthTokens);
     return this.access!.token;
   }

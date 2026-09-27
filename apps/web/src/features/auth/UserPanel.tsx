@@ -1,10 +1,9 @@
 import type { UserProfile } from '@metacode/shared';
-import { useQueryClient } from '@tanstack/react-query';
 import { type RealtimeStatus, useRealtime } from '../../realtime/RealtimeProvider';
+import { useSettingsStore } from '../../stores/settings';
 import { Avatar } from '../../ui/Avatar';
 import { displayName } from '../../ui/format';
 import { VoicePanel } from '../voice/VoicePanel';
-import { logout, meQueryKey } from './auth';
 
 const STATUS_LABEL: Record<RealtimeStatus, string> = {
   connected: '온라인',
@@ -12,18 +11,9 @@ const STATUS_LABEL: Record<RealtimeStatus, string> = {
   disconnected: '오프라인',
 };
 
-/** 사이드바 아래: 통화 중이면 음성 패널, 내 프로필, 연결 상태, 로그아웃 */
+/** 사이드바 아래: 통화 중이면 음성 패널, 내 프로필, 연결 상태, 설정 (로그아웃은 설정 안에) */
 export function UserPanel({ me }: { me: UserProfile }) {
-  const queryClient = useQueryClient();
   const { status } = useRealtime();
-
-  const onLogout = async () => {
-    await logout();
-    // 먼저 로그아웃 상태로 바꿔 로그인 화면으로 돌아간 뒤, 이전 사용자의 데이터를 지운다.
-    // clear()를 쓰면 App이 구독 중인 'me' 쿼리까지 사라져 화면이 바뀌지 않는다.
-    queryClient.setQueryData(meQueryKey, null);
-    queryClient.removeQueries({ predicate: (q) => q.queryKey[0] !== meQueryKey[0] });
-  };
 
   return (
     <>
@@ -36,8 +26,13 @@ export function UserPanel({ me }: { me: UserProfile }) {
             {STATUS_LABEL[status]}
           </span>
         </div>
-        <button className="icon-button" onClick={onLogout} title="로그아웃" aria-label="로그아웃">
-          ⎋
+        <button
+          className="icon-button"
+          onClick={() => useSettingsStore.getState().open()}
+          title="설정"
+          aria-label="설정"
+        >
+          ⚙
         </button>
       </footer>
     </>

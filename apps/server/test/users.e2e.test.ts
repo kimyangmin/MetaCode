@@ -1,0 +1,187 @@
+import {
+  type AvatarUploadTicket,
+  type CommunitySummary,
+  type InviteInfo,
+  SocketEvent,
+  type UserDetail,
+} from '@metacode/shared';
+import sharp from 'sharp';
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import {
+  type ClientSocket,
+  type TestApp,
+  type TestUser,
+  connectSocket,
+  expectNoEvent,
+  loginUser,
+  makeGithubUser,
+  nextEvent,
+  startTestApp,
+} from './harness.js';
+
+let t: TestApp;
+let sockets: ClientSocket[] = [];
+
+beforeAll(async () => {
+  t = await startTestApp();
+});
+
+afterEach(() => {
+  for (const s of sockets) s.disconnect();
+  sockets = [];
+});
+
+afterAll(async () => {
+  await t.close();
+});
+
+const json = (method: string, body?: unknown): RequestInit => ({
+  method,
+  body: body === undefined ? undefined : JSON.stringify(body),
+});
+
+async function connect(user: TestUser) {
+  const socket = await connectSocket(t, user);
+  sockets.push(socket);
+  return socket;
+}
+
+/** 프로필 사진 주소는 PUBLIC_SERVER_URL 기준이라, 테스트 서버에서는 경로만 쓴다 */
+const avatarPath = (url: string) => new URL(url).pathname;
+
+async function uploadAvatar(user: TestUser, body: Uint8Array): Promise<Response> {
+  const ticket = await user.json<AvatarUploadTicket>(
+    '/users/me/avatar/upload',
+    json('POST', { size: body.byteLength }),
+  );
+  const put = await fetch(ticket.uploadUrl, { method: 'PUT', headers: ticket.headers, body });
+  expect(put.ok).toBe(true);
+  return user.fetch('/users/me/avatar', { method: 'PUT' });
+}
+
+const png = (color: string) =>
+  sharp({ create: { width: 600, height: 300, channels: 3, background: color } })
+    .png()
+    .toBuffer();
+
+describe('프로필', () => {
+  it('닉네임과 자기소개를 바꾸고, 비우면 기본값으로 돌아간다', async () => {
+    const user = await loginUser(t);
+    expect(user.me.displayName).toBeNull();
+
+    const updated = await user.json<UserDetail>(
+      '/users/me',
+      json('PATCH', { nickname: '  양민  ', bio: '안녕하세요' }),
+    );
+    expect(updated).toMatchObject({ displayName: '양민', bio: '안녕하세요', customAvatar: false });
+
+    // 보내지 않은 항목은 그대로 둔다.
+    const onlyBio = await user.json<UserDetail>('/users/me', json('PATCH', { bio: '' }));
+    expect(onlyBio).toMatchObject({ displayName: '양민', bio: null });
+
+    const reset = await user.json<UserDetail>('/users/me', json('PATCH', { nickname: '' }));
+    expect(reset.displayName).toBeNull();
+
+    const tooLong = await user.fetch('/users/me', json('PATCH', { nickname: 'x'.repeat(33) }));
+    expect(tooLong.status).toBe(400);
+  });
+
+  it('GitHub로 다시 로그인하면 GitHub 정보만 맞추고 닉네임과 자기소개는 그대로 둔다', async () => {
+    const github = makeGithubUser();
+    const user = await loginUser(t, github);
+    await user.json('/users/me', json('PATCH', { nickname: '닉네임', bio: '소개' }));
+
+    const again = await loginUser(t, { ...github, name: '바뀐 GitHub 이름', login: 'renamed' });
+    expect(again.me.id).toBe(user.me.id);
+    expect(await again.json<UserDetail>('/users/me')).toMatchObject({
+      username: 'renamed',
+      displayName: '닉네임',
+      bio: '소개',
+    });
+  });
+
+  it('다른 사람의 프로필(자기소개 포함)을 볼 수 있다', async () => {
+    const alice = await loginUser(t);
+    const bob = await loginUser(t);
+    await alice.json('/users/me', json('PATCH', { bio: '앨리스입니다' }));
+    const seen = await bob.json<UserDetail>(`/users/${alice.me.id}`);
+    expect(seen).toMatchObject({ id: alice.me.id, bio: '앨리스입니다' });
+  });
+
+  it('닉네임을 바꾸면 같은 커뮤니티 멤버와 본인에게 알리고, 모르는 사람에게는 알리지 않는다', async () => {
+    const alice = await loginUser(t);
+    const bob = await loginUser(t);
+    const stranger = await loginUser(t);
+    const community = await alice.json<CommunitySummary>(
+      '/communities',
+      json('POST', { name: '알림' }),
+    );
+    const invite = await alice.json<InviteInfo>(
+      `/communities/${community.id}/invites`,
+      json('POST'),
+    );
+    await bob.json(`/invites/${invite.code}/accept`, json('POST'));
+    const [aliceSocket, bobSocket, strangerSocket] = await Promise.all([
+      connect(alice),
+      connect(bob),
+      connect(stranger),
+    ]);
+
+    const toBob = nextEvent(bobSocket, SocketEvent.UserUpdated, (u) => u.id === alice.me.id);
+    const toSelf = nextEvent(aliceSocket, SocketEvent.UserUpdated, (u) => u.id === alice.me.id);
+    const notStranger = expectNoEvent(strangerSocket, SocketEvent.UserUpdated);
+    await alice.json('/users/me', json('PATCH', { nickname: '새 이름' }));
+    expect((await toBob).displayName).toBe('새 이름');
+    expect((await toSelf).displayName).toBe('새 이름');
+    await notStranger;
+  });
+});
+
+describe('프로필 사진', () => {
+  it('올린 이미지를 정사각형 WebP로 바꿔 쓰고, 바꾸면 이전 사진은 지운다', async () => {
+    const user = await loginUser(t);
+    const githubAvatar = user.me.avatarUrl;
+
+    const first = await uploadAvatar(user, await png('#ff0000'));
+    expect(first.status).toBe(200);
+    const applied = (await first.json()) as UserDetail;
+    expect(applied.customAvatar).toBe(true);
+    expect(applied.avatarUrl).toMatch(new RegExp(`/avatars/${user.me.id}/[0-9a-f-]{36}\\.webp$`));
+
+    // 인증 없이 받을 수 있고, 오래 캐시한다.
+    const file = await t.fetch(avatarPath(applied.avatarUrl));
+    expect(file.status).toBe(200);
+    expect(file.headers.get('content-type')).toBe('image/webp');
+    expect(file.headers.get('cache-control')).toContain('immutable');
+    const meta = await sharp(Buffer.from(await file.arrayBuffer())).metadata();
+    expect([meta.width, meta.height]).toEqual([256, 256]);
+
+    const second = (await (await uploadAvatar(user, await png('#0000ff'))).json()) as UserDetail;
+    expect(second.avatarUrl).not.toBe(applied.avatarUrl);
+    expect((await t.fetch(avatarPath(applied.avatarUrl))).status).toBe(404);
+
+    // GitHub 사진으로 돌아가면 올린 사진도 지운다.
+    const reset = await user.json<UserDetail>('/users/me/avatar', json('DELETE'));
+    expect(reset).toMatchObject({ customAvatar: false, avatarUrl: githubAvatar });
+    expect((await t.fetch(avatarPath(second.avatarUrl))).status).toBe(404);
+  });
+
+  it('이미지가 아니면 거절한다 (SVG 포함)', async () => {
+    const user = await loginUser(t);
+    const svg = new TextEncoder().encode('<svg xmlns="http://www.w3.org/2000/svg"></svg>');
+    const res = await uploadAvatar(user, svg);
+    expect(res.status).toBe(400);
+    expect((await user.json<UserDetail>('/users/me')).customAvatar).toBe(false);
+  });
+
+  it('먼저 올리지 않고 적용하면 거절한다', async () => {
+    const user = await loginUser(t);
+    expect((await user.fetch('/users/me/avatar', { method: 'PUT' })).status).toBe(400);
+  });
+
+  it('프로필 사진 주소가 아닌 경로는 받을 수 없다', async () => {
+    const user = await loginUser(t);
+    expect((await t.fetch(`/avatars/${user.me.id}/..%2Fsecret`)).status).toBe(404);
+    expect((await t.fetch(`/avatars/not-a-uuid/x.webp`)).status).toBe(400);
+  });
+});

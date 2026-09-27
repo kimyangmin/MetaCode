@@ -1,6 +1,7 @@
 import { API_URL } from '../config';
 import { getDesktopBridge } from '../platform';
 
+/** 서버가 돌려준 오류. status 0은 서버에 닿지 않은 것이다 */
 export class ApiError extends Error {
   constructor(
     readonly status: number,
@@ -33,7 +34,10 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
   const send = async () => {
     const headers = new Headers(init.headers);
     if (desktop) {
-      const token = await desktop.auth.getAccessToken();
+      // 로그인은 되어 있지만 서버에 닿지 않으면 메인 프로세스가 거절한다 (로그아웃과 구분).
+      const token = await desktop.auth.getAccessToken().catch(() => {
+        throw new ApiError(0, '서버에 연결하지 못했습니다.');
+      });
       if (token) headers.set('Authorization', `Bearer ${token}`);
     }
     return fetch(`${API_URL}${path}`, {
