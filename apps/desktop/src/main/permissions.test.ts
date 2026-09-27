@@ -8,6 +8,11 @@ describe('allowPermission', () => {
     expect(allowPermission('media', true)).toBe(true);
   });
 
+  it('화면 공유는 앱 화면에만 허락한다', () => {
+    expect(allowPermission('display-capture', true)).toBe(true);
+    expect(allowPermission('display-capture', false)).toBe(false);
+  });
+
   it('카메라는 마이크와 함께 요청해도 거절한다', () => {
     expect(allowPermission('media', true, ['audio', 'video'])).toBe(false);
   });
@@ -18,7 +23,7 @@ describe('allowPermission', () => {
   });
 
   it('필요 없는 권한은 앱 화면이라도 거절한다', () => {
-    for (const permission of ['geolocation', 'notifications', 'display-capture', 'openExternal']) {
+    for (const permission of ['geolocation', 'notifications', 'openExternal', 'midi']) {
       expect(allowPermission(permission, true)).toBe(false);
     }
   });

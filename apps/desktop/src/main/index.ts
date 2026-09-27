@@ -1,5 +1,13 @@
 import path from 'node:path';
-import { BrowserWindow, type IpcMainInvokeEvent, app, ipcMain, session, shell } from 'electron';
+import {
+  BrowserWindow,
+  type IpcMainInvokeEvent,
+  app,
+  desktopCapturer,
+  ipcMain,
+  session,
+  shell,
+} from 'electron';
 import { AuthManager } from './auth';
 import { allowPermission } from './permissions';
 import { createTokenStorage } from './token-storage';
@@ -24,6 +32,8 @@ const IPC = {
   getAccessToken: 'metacode:auth:get-access-token',
   changed: 'metacode:auth:changed',
   download: 'metacode:download',
+  screenSources: 'metacode:screen:sources',
+  screenSelect: 'metacode:screen:select',
 } as const;
 
 /** 인증이 필요한 첨부 파일 주소 */
@@ -117,6 +127,52 @@ function attachAuthHeader(manager: AuthManager) {
   );
 }
 
+/** 고른 화면은 이 시간 안에 쓰지 않으면 잊는다 (화면 공유를 누르지 않고 창만 닫은 경우) */
+const SCREEN_SELECTION_TTL_MS = 30_000;
+let screenSelection: { id: string; at: number } | null = null;
+
+/**
+ * 화면 공유. Electron은 getDisplayMedia에서 고르는 창을 띄우지 않으므로, 웹 화면이 목록(screenSources)을
+ * 보여 주고 고른 것(screenSelect)을 알려 준 뒤 getDisplayMedia를 부른다. 앱 화면의 요청만 받는다.
+ */
+function registerScreenShare() {
+  ipcMain.handle(IPC.screenSources, async (event) => {
+    if (!fromApp(event)) return [];
+    const sources = await desktopCapturer.getSources({
+      types: ['screen', 'window'],
+      thumbnailSize: { width: 320, height: 180 },
+    });
+    return sources.map((source) => ({
+      id: source.id,
+      name: source.name,
+      kind: source.id.startsWith('screen:') ? 'screen' : 'window',
+      thumbnail: source.thumbnail.toDataURL(),
+    }));
+  });
+  ipcMain.handle(IPC.screenSelect, (event, id: unknown) => {
+    if (fromApp(event) && typeof id === 'string') screenSelection = { id, at: Date.now() };
+  });
+  session.defaultSession.setDisplayMediaRequestHandler((request, callback) => {
+    const selection = screenSelection;
+    screenSelection = null;
+    const url = request.frame?.url || request.securityOrigin;
+    if (!isAppUrl(url) || !selection || Date.now() - selection.at > SCREEN_SELECTION_TTL_MS) {
+      callback({});
+      return;
+    }
+    void desktopCapturer
+      .getSources({ types: ['screen', 'window'], thumbnailSize: { width: 0, height: 0 } })
+      .then((sources) => {
+        const source = sources.find((s) => s.id === selection.id);
+        if (!source) return callback({});
+        // 시스템 소리는 Windows에서만 함께 보낼 수 있다.
+        const audio = request.audioRequested && process.platform === 'win32';
+        callback(audio ? { video: source, audio: 'loopback' } : { video: source });
+      })
+      .catch(() => callback({}));
+  });
+}
+
 /** 권한은 앱 화면에만, 통화에 필요한 것만 준다 (permissions.ts) */
 function restrictPermissions() {
   session.defaultSession.setPermissionRequestHandler(
@@ -152,6 +208,7 @@ function main() {
     });
     registerIpc(auth);
     restrictPermissions();
+    registerScreenShare();
     attachAuthHeader(auth);
     mainWindow = createMainWindow();
 
