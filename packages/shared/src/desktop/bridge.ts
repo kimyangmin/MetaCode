@@ -14,6 +14,26 @@ export interface MetaCodeDesktopBridge {
   download(url: string): Promise<void>;
   /** 화면 공유할 화면/창 고르기. 0.1.0 앱에는 없다 (앱을 업데이트해야 화면 공유를 쓸 수 있음) */
   screen?: DesktopScreenBridge;
+  /** 자동 업데이트. 0.3.0부터 있다 (없으면 자동 업데이트가 안 되는 옛 앱) */
+  updates?: DesktopUpdatesBridge;
+}
+
+/** 다 받아서 설치만 하면 되는 새 버전 */
+export interface UpdateReadyInfo {
+  version: string;
+}
+
+/**
+ * 데스크톱 자동 업데이트. 새 버전은 메인 프로세스가 백그라운드에서 받아 두고 앱을 끌 때 설치한다.
+ * 웹 화면은 받아 둔 것이 있으면 "다시 시작" 안내를 띄운다.
+ */
+export interface DesktopUpdatesBridge {
+  /** 이미 받아 둔 새 버전. 없으면 null */
+  getReady(): Promise<UpdateReadyInfo | null>;
+  /** 새 버전을 다 받으면 호출된다. 반환값을 호출하면 구독이 해제된다. */
+  onReady(listener: (info: UpdateReadyInfo) => void): () => void;
+  /** 앱을 끄고 새 버전을 설치한 뒤 다시 켠다 */
+  install(): Promise<void>;
 }
 
 /** 공유할 수 있는 화면이나 창 */

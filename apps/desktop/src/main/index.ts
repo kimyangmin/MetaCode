@@ -8,9 +8,11 @@ import {
   session,
   shell,
 } from 'electron';
+import { autoUpdater } from 'electron-updater';
 import { AuthManager } from './auth';
 import { allowPermission } from './permissions';
 import { createTokenStorage } from './token-storage';
+import { AutoUpdate } from './updater';
 
 /**
  * 앱 창은 웹 화면을 연다. 개발 중에는 web 개발 서버, 설치 파일로 배포한 앱은 운영 사이트다
@@ -34,6 +36,9 @@ const IPC = {
   download: 'metacode:download',
   screenSources: 'metacode:screen:sources',
   screenSelect: 'metacode:screen:select',
+  updateGetReady: 'metacode:update:get-ready',
+  updateReady: 'metacode:update:ready',
+  updateInstall: 'metacode:update:install',
 } as const;
 
 /** 인증이 필요한 첨부 파일 주소 */
@@ -41,6 +46,7 @@ const ATTACHMENTS_URL = `${API_URL}/attachments/`;
 
 let mainWindow: BrowserWindow | null = null;
 let auth: AuthManager | null = null;
+let updates: AutoUpdate | null = null;
 
 /** 앱 화면(웹 주소와 같은 출처)인지. 브리지 호출, 권한, 창 이동을 이 기준으로 막는다 */
 function isAppUrl(url: string): boolean {
@@ -173,6 +179,26 @@ function registerScreenShare() {
   });
 }
 
+/**
+ * 자동 업데이트. 설치한 앱에서만 한다 (개발 중에는 올릴 버전이 없음).
+ * 브리지는 개발 중에도 있어서, 웹 화면은 "받아 둔 것 없음"으로 본다.
+ */
+function registerAutoUpdate() {
+  if (app.isPackaged) {
+    updates = new AutoUpdate(autoUpdater, {
+      onReady: (info) => mainWindow?.webContents.send(IPC.updateReady, info),
+      log: (message) => console.log(`[update] ${message}`),
+    });
+    updates.start();
+  }
+  ipcMain.handle(IPC.updateGetReady, (event) =>
+    fromApp(event) ? (updates?.getReady() ?? null) : null,
+  );
+  ipcMain.handle(IPC.updateInstall, (event) => {
+    if (fromApp(event)) updates?.install();
+  });
+}
+
 /** 권한은 앱 화면에만, 통화에 필요한 것만 준다 (permissions.ts) */
 function restrictPermissions() {
   session.defaultSession.setPermissionRequestHandler(
@@ -209,6 +235,7 @@ function main() {
     registerIpc(auth);
     restrictPermissions();
     registerScreenShare();
+    registerAutoUpdate();
     attachAuthHeader(auth);
     mainWindow = createMainWindow();
 
@@ -217,7 +244,10 @@ function main() {
     });
   });
 
-  app.on('before-quit', () => auth?.dispose());
+  app.on('before-quit', () => {
+    auth?.dispose();
+    updates?.dispose();
+  });
   app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') app.quit();
   });

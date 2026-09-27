@@ -6,3 +6,6 @@ export function webUrl(): string {
   const { protocol, origin } = window.location;
   return protocol.startsWith('http') ? origin : 'http://localhost:5173';
 }
+
+/** 데스크톱 앱 설치 파일을 받는 곳 (GitHub Releases의 최신 버전) */
+export const DESKTOP_DOWNLOAD_URL = 'https://github.com/kimyangmin/MetaCode/releases/latest';

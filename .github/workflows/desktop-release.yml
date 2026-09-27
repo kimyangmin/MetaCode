@@ -1,0 +1,66 @@
+name: Desktop Release
+
+# desktop-v<버전> 태그를 push하면 Windows 설치 파일을 만들어 GitHub Release(최신)로 올린다.
+# 설치한 앱은 최신 Release의 latest.yml을 보고 스스로 업데이트한다 (apps/desktop/src/main/updater.ts).
+# 태그의 버전은 apps/desktop/package.json의 version과 같아야 한다. 절차는 README "데스크톱 앱 새 버전 내기".
+on:
+  push:
+    tags: ['desktop-v*']
+
+permissions:
+  contents: write
+
+concurrency:
+  group: desktop-release
+  cancel-in-progress: false
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check version
+        id: version
+        run: |
+          version=$(node -p "require('./apps/desktop/package.json').version")
+          if [ "desktop-v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::태그($GITHUB_REF_NAME)와 apps/desktop/package.json 버전($version)이 다릅니다."
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # 데스크톱은 shared의 타입을 쓰므로 먼저 빌드한다.
+      - run: pnpm --filter @metacode/shared build
+      - run: pnpm --filter @metacode/desktop test
+      - run: pnpm --filter @metacode/desktop dist:win
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        working-directory: apps/desktop/release
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            "MetaCode-Setup-$VERSION.exe" \
+            "MetaCode-Setup-$VERSION.exe.blockmap" \
+            latest.yml \
+            --latest \
+            --title "MetaCode 데스크톱 $VERSION" \
+            --notes "Windows 설치 파일: MetaCode-Setup-$VERSION.exe를 받아 실행합니다. 이미 설치한 앱(0.3.0 이상)은 알아서 업데이트됩니다.
+
+          코드 서명을 하지 않아서 처음 설치할 때 \"Windows의 PC 보호\" 창이 뜨면 추가 정보 → 실행을 누릅니다."
