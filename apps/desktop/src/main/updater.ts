@@ -1,67 +1,72 @@
-import type { DesktopUpdateInfo } from '@metacode/shared';
+import type { UpdateReadyInfo } from '@metacode/shared';
 
-/** 새 버전을 찾고 내려받는 쪽 (설치한 앱에서는 electron-updater). 테스트에서는 가짜를 넣는다 */
-export interface UpdateSource {
-  /** 새 버전이 있으면 뒤에서 내려받기 시작한다 */
-  check(): Promise<unknown>;
-  /** 앱을 닫고 받아 둔 새 버전을 설치한 뒤 다시 연다 */
-  install(): void;
-  onDownloaded(listener: (info: DesktopUpdateInfo) => void): void;
+/** 새 버전을 확인하는 간격. 앱을 켤 때 한 번, 그 뒤로는 이 간격마다 */
+export const UPDATE_CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000;
+
+/** electron-updater의 autoUpdater 중 쓰는 부분 (테스트에서 바꿔 끼운다) */
+export interface UpdaterLike {
+  autoDownload: boolean;
+  autoInstallOnAppQuit: boolean;
+  checkForUpdates(): Promise<unknown>;
+  quitAndInstall(isSilent?: boolean, isForceRunAfter?: boolean): void;
+  on(event: 'update-downloaded', listener: (info: { version: string }) => void): unknown;
+  on(event: 'error', listener: (error: Error) => void): unknown;
 }
 
-export interface UpdaterOptions {
-  source: UpdateSource;
-  /** 다 받았을 때 (앱 화면에 알린다) */
-  onReady(info: DesktopUpdateInfo): void;
+export interface AutoUpdateOptions {
+  /** 새 버전을 다 받았을 때. 앱 화면에 "다시 시작" 안내를 띄운다 */
+  onReady(info: UpdateReadyInfo): void;
   log(message: string): void;
-  /** 다시 확인하는 간격 */
-  intervalMs: number;
 }
 
 /**
- * 자동 업데이트: 켤 때와 일정 간격으로 새 버전을 확인하고, 다 받으면 알린다.
- * 받은 뒤에는 더 확인하지 않는다. 사용자가 바로 다시 시작하지 않아도 앱을 끌 때 설치된다.
+ * 자동 업데이트. 새 버전(GitHub Releases, electron-builder.yml의 publish)을 백그라운드에서 받아 두고,
+ * 사용자가 "다시 시작"을 누르거나 앱을 끌 때 설치한다. 코드 서명을 하지 않아서 서명 확인은 하지 않는다
+ * (electron-builder.yml에 publisherName이 없으면 electron-updater가 확인하지 않음).
  */
-export class Updater {
-  private ready: DesktopUpdateInfo | null = null;
-  private timer: ReturnType<typeof setInterval> | undefined;
+export class AutoUpdate {
+  private ready: UpdateReadyInfo | null = null;
+  private timer: ReturnType<typeof setInterval> | null = null;
 
-  constructor(private readonly options: UpdaterOptions) {}
+  constructor(
+    private readonly updater: UpdaterLike,
+    private readonly options: AutoUpdateOptions,
+  ) {
+    updater.autoDownload = true;
+    updater.autoInstallOnAppQuit = true;
+    updater.on('update-downloaded', (info) => {
+      this.ready = { version: info.version };
+      options.log(`${info.version} 받음`);
+      options.onReady(this.ready);
+    });
+    // 확인이나 받기에 실패해도 앱은 그대로 쓴다. 다음 확인 때 다시 시도한다.
+    updater.on('error', (error) => options.log(`실패: ${error.message}`));
+  }
 
   start() {
-    this.options.source.onDownloaded((info) => {
-      this.ready = info;
-      this.stop();
-      this.options.log(`${info.version} 받음`);
-      this.options.onReady(info);
-    });
-    void this.check();
-    this.timer = setInterval(() => void this.check(), this.options.intervalMs);
+    this.check();
+    this.timer = setInterval(() => this.check(), UPDATE_CHECK_INTERVAL_MS);
   }
 
-  stop() {
-    clearInterval(this.timer);
-    this.timer = undefined;
-  }
-
-  getReady(): DesktopUpdateInfo | null {
+  /** 받아 둔 새 버전. 없으면 null */
+  getReady(): UpdateReadyInfo | null {
     return this.ready;
   }
 
-  /** 받아 둔 새 버전이 있을 때만 설치한다 */
-  install(): boolean {
-    if (!this.ready) return false;
-    this.options.source.install();
-    return true;
+  /** 앱을 끄고 새 버전을 설치한 뒤 다시 켠다. 받아 둔 것이 없으면 아무것도 하지 않는다 */
+  install() {
+    if (!this.ready) return;
+    // 설치 창 없이(oneClick NSIS) 설치하고 앱을 다시 켠다.
+    this.updater.quitAndInstall(true, true);
   }
 
-  private async check() {
-    if (this.ready) return;
-    try {
-      await this.options.source.check();
-    } catch (err) {
-      // 오프라인이거나 GitHub에 닿지 않으면 다음 간격에 다시 본다.
-      this.options.log(`확인 실패: ${err instanceof Error ? err.message : String(err)}`);
-    }
+  dispose() {
+    if (this.timer) clearInterval(this.timer);
+    this.timer = null;
+  }
+
+  private check() {
+    // 실패는 'error' 이벤트로도 오므로 거기서만 남긴다.
+    this.updater.checkForUpdates().catch(() => undefined);
   }
 }

@@ -12,7 +12,7 @@ import { autoUpdater } from 'electron-updater';
 import { AuthManager } from './auth';
 import { allowPermission } from './permissions';
 import { createTokenStorage } from './token-storage';
-import { Updater } from './updater';
+import { AutoUpdate } from './updater';
 import { isPopoutUrl } from './windows';
 
 /**
@@ -37,8 +37,8 @@ const IPC = {
   download: 'metacode:download',
   screenSources: 'metacode:screen:sources',
   screenSelect: 'metacode:screen:select',
-  updateReady: 'metacode:update:ready',
   updateGetReady: 'metacode:update:get-ready',
+  updateReady: 'metacode:update:ready',
   updateInstall: 'metacode:update:install',
 } as const;
 
@@ -47,6 +47,7 @@ const ATTACHMENTS_URL = `${API_URL}/attachments/`;
 
 let mainWindow: BrowserWindow | null = null;
 let auth: AuthManager | null = null;
+let updates: AutoUpdate | null = null;
 
 /** 앱 화면(웹 주소와 같은 출처)인지. 브리지 호출, 권한, 창 이동을 이 기준으로 막는다 */
 function isAppUrl(url: string): boolean {
@@ -201,38 +202,23 @@ function registerScreenShare() {
   });
 }
 
-/** 새 버전을 다시 확인하는 간격 */
-const UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
-
 /**
- * 자동 업데이트 (설치한 앱만). GitHub Releases의 최신 정식 릴리스(electron-builder.yml의 publish)에서
- * latest.yml을 읽어 새 버전을 뒤에서 받고, 다 받으면 앱 화면에 알린다. 설치는 사용자가 다시 시작을 누르거나 앱을 끌 때.
- * 서명하지 않은 앱이라 서명 확인은 하지 않는다 (app-update.yml에 publisherName이 없음).
+ * 자동 업데이트. 설치한 앱에서만 한다 (개발 중에는 올릴 버전이 없음).
+ * 브리지는 개발 중에도 있어서, 웹 화면은 "받아 둔 것 없음"으로 본다.
  */
-function registerUpdater() {
-  let updater: Updater | null = null;
+function registerAutoUpdate() {
   if (app.isPackaged) {
-    autoUpdater.autoDownload = true;
-    autoUpdater.autoInstallOnAppQuit = true;
-    updater = new Updater({
-      source: {
-        check: () => autoUpdater.checkForUpdates(),
-        // 조용히 설치하고 다시 연다.
-        install: () => autoUpdater.quitAndInstall(true, true),
-        onDownloaded: (listener) =>
-          autoUpdater.on('update-downloaded', (info) => listener({ version: info.version })),
-      },
+    updates = new AutoUpdate(autoUpdater, {
       onReady: (info) => mainWindow?.webContents.send(IPC.updateReady, info),
       log: (message) => console.log(`[update] ${message}`),
-      intervalMs: UPDATE_CHECK_INTERVAL_MS,
     });
-    updater.start();
+    updates.start();
   }
   ipcMain.handle(IPC.updateGetReady, (event) =>
-    fromApp(event) ? (updater?.getReady() ?? null) : null,
+    fromApp(event) ? (updates?.getReady() ?? null) : null,
   );
   ipcMain.handle(IPC.updateInstall, (event) => {
-    if (fromApp(event)) updater?.install();
+    if (fromApp(event)) updates?.install();
   });
 }
 
@@ -272,7 +258,7 @@ function main() {
     registerIpc(auth);
     restrictPermissions();
     registerScreenShare();
-    registerUpdater();
+    registerAutoUpdate();
     attachAuthHeader(auth);
     mainWindow = createMainWindow();
 
@@ -281,7 +267,10 @@ function main() {
     });
   });
 
-  app.on('before-quit', () => auth?.dispose());
+  app.on('before-quit', () => {
+    auth?.dispose();
+    updates?.dispose();
+  });
   app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') app.quit();
   });

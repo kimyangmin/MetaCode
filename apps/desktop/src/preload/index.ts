@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import type { DesktopUpdateInfo, MetaCodeDesktopBridge, ScreenSource } from '@metacode/shared';
+import type { MetaCodeDesktopBridge, ScreenSource, UpdateReadyInfo } from '@metacode/shared';
 
 // sandbox 모드의 preload는 electron 일부 모듈만 require할 수 있다.
 // 그래서 @metacode/shared는 타입만 가져오고, IPC 이름은 main/index.ts와 똑같이 적는다.
@@ -11,8 +11,8 @@ const IPC = {
   download: 'metacode:download',
   screenSources: 'metacode:screen:sources',
   screenSelect: 'metacode:screen:select',
-  updateReady: 'metacode:update:ready',
   updateGetReady: 'metacode:update:get-ready',
+  updateReady: 'metacode:update:ready',
   updateInstall: 'metacode:update:install',
 } as const;
 
@@ -28,10 +28,10 @@ const bridge: MetaCodeDesktopBridge = {
     getSources: () => ipcRenderer.invoke(IPC.screenSources) as Promise<ScreenSource[]>,
     select: (sourceId) => ipcRenderer.invoke(IPC.screenSelect, sourceId) as Promise<void>,
   },
-  update: {
-    getReady: () => ipcRenderer.invoke(IPC.updateGetReady) as Promise<DesktopUpdateInfo | null>,
+  updates: {
+    getReady: () => ipcRenderer.invoke(IPC.updateGetReady) as Promise<UpdateReadyInfo | null>,
     onReady(listener) {
-      const handler = (_event: unknown, info: DesktopUpdateInfo) => listener(info);
+      const handler = (_event: unknown, info: UpdateReadyInfo) => listener(info);
       ipcRenderer.on(IPC.updateReady, handler);
       return () => {
         ipcRenderer.removeListener(IPC.updateReady, handler);

@@ -2414,28 +2414,24 @@ a {
   display: inline-flex;
 }
 
-/* 데스크톱 앱 업데이트 안내 (layout/UpdateNotice.tsx) */
+/* 데스크톱 앱 업데이트 안내 (화면 위 가운데) */
 .update-notice {
   position: fixed;
   top: 12px;
   left: 50%;
-  z-index: 80;
+  z-index: 150;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
   max-width: calc(100vw - 32px);
-  padding: 8px 8px 8px 14px;
+  padding: 8px 8px 8px 16px;
   border: 1px solid var(--border);
   border-radius: 8px;
-  background: var(--bg);
-  box-shadow: 0 4px 16px rgb(0 0 0 / 18%);
-  color: var(--fg);
-  font-size: 0.875rem;
+  background: var(--bg-sidebar);
+  box-shadow: 0 4px 16px rgb(0 0 0 / 0.25);
+  font-size: 0.9rem;
+  word-break: keep-all;
   transform: translateX(-50%);
-}
-
-.update-notice > span {
-  min-width: 0;
 }
 
 .update-notice .button {

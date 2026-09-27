@@ -10,10 +10,11 @@ directories:
 files:
   - dist/**/*.js
   - package.json
-# 런타임 의존성(electron-updater)은 electron-builder가 알아서 넣는다. 네이티브 모듈이 없어서 다시 빌드하지 않는다.
+# 런타임 의존성(electron-updater)은 JS뿐이라 다시 빌드할 네이티브 모듈이 없다.
 npmRebuild: false
-# 자동 업데이트가 새 버전을 찾는 곳. 설치 파일과 함께 release/latest.yml이 만들어지고,
-# 둘을 GitHub 릴리스(정식, 태그 desktop-v<버전>)에 올리면 설치된 앱이 받아 간다 (.github/workflows/desktop-release.yml).
+# 자동 업데이트가 새 버전을 찾는 곳 (앱 안의 app-update.yml에 들어간다). 올리는 것은 GitHub Actions가
+# 한다 (.github/workflows/desktop-release.yml). 코드 서명을 하게 되면 win.publisherName을 넣어서
+# 받은 설치 파일의 서명을 확인하게 한다.
 publish:
   provider: github
   owner: kimyangmin

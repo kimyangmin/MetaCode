@@ -17,6 +17,7 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
 
 - **Phase 1~5 완료** (Phase 5 선택 항목인 화면 공유 포함). Phase 6(에셋)은 에셋이 준비될 때 하기로 하고, **Phase 7을 먼저 진행**합니다 (2026-09-27 사용자 결정). 운영 서버의 음성 통화는 2026-09-27에 켰습니다 (`docs/deploy.md` 10단계: 7882/udp, 7881/tcp, `.env.production`의 LiveKit 키).
 - **운영 중:** https://metacode.kimyangmin.me (2026-09-26 첫 배포, `main` 기준). 서버는 SSH 별칭 `myserver3`(ubuntu, `~/MetaCode`)로 접속할 수 있고, 업데이트는 `main`에 push되면 CI 통과 후 GitHub Actions가 SSH로 `infra/deploy.sh`를 실행해 자동으로 합니다 (배포 전용 키는 `authorized_keys`의 `command=`로 이 스크립트만 실행 가능, 설정은 `docs/deploy.md` 9단계). 손으로 할 때는 서버에서 `bash infra/deploy.sh`입니다. DB 백업은 서버 crontab이 매일 04:00 KST(19:00 UTC)에 `infra/backup.sh`를 실행합니다 (`~/MetaCode/backups/`, 14일 보관, 로그 `backups/backup.log`). 운영 서버에서 무언가를 바꾸기 전에는 사용자에게 확인받습니다.
+- Phase 7 진행 중: 데스크톱 자동 업데이트(GitHub Releases, `desktop-v*` 태그) 완료. 코드 서명은 정식 공개 때 정합니다.
 - 개발용 GitHub OAuth App(`localhost` 콜백)으로 웹·데스크톱, 운영용 OAuth App으로 운영 웹의 실제 로그인을 확인했습니다 (2026-09-26).
 - 기술 스택은 README 표대로 확정되었습니다 (2026-09-26). 메타버스 렌더링은 Phaser 3 대신 Phaser 4로 정했습니다 (2026-09-27).
 - Phase를 진행하면 이 섹션과 README 로드맵 체크박스를 함께 갱신합니다.
@@ -108,14 +109,17 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
   - 데스크톱 화면 공유: Electron의 getDisplayMedia는 고르는 창이 없어서, 웹이 브리지(`screen.getSources`)로 받은 목록을 보여 주고 고른 것(`screen.select`, 30초 유효)을 메인 프로세스의 `setDisplayMediaRequestHandler`가 넘겨줍니다. 고르지 않은 요청과 앱 화면이 아닌 요청은 거절합니다. 시스템 소리(loopback)는 Windows에서만 됩니다. 데스크톱 0.1.0에는 이 브리지가 없어서 "새 버전 설치" 안내가 뜹니다.
   - 데스크톱: Electron은 권한 처리기가 없으면 모든 권한을 허락하므로, 앱 화면에만 마이크·스피커 선택·클립보드 쓰기를 허락하고 나머지(카메라 포함)는 거절합니다 (`apps/desktop/src/main/permissions.ts`).
   - 로컬에서 두 사람 음성 확인: 브라우저 패널은 마이크를 막으므로, 두 번째 사용자는 `@livekit/rtc-node`로 음을 보내는 스크립트로 확인했습니다. 실제 마이크로 말하는 확인은 사람이 해야 합니다.
-- **데스크톱 설치 파일:** `apps/desktop/electron-builder.yml`, `pnpm --filter @metacode/desktop dist:win` (NSIS, 현재 사용자에 설치, 서명 없음).
+- **데스크톱 설치 파일:** `apps/desktop/electron-builder.yml`, `pnpm --filter @metacode/desktop dist:win` (NSIS, 현재 사용자에 설치, 서명 없음). 배포용은 자동 업데이트 항목의 워크플로가 만듭니다.
   - 설치한 앱은 운영 사이트(`https://metacode.kimyangmin.me`)를 앱 창에서 엽니다 (웹 빌드를 앱에 넣지 않음). 개발 중(`app.isPackaged`가 아님)에는 `localhost:5173`, 둘 다 `METACODE_WEB_URL`/`METACODE_API_URL`로 바꿀 수 있습니다. 앱 안에는 메인 프로세스와 preload만 들어갑니다.
   - 브리지 호출, 권한, 창 이동은 웹 주소와 **같은 출처**인지로 판단합니다 (`isAppUrl`). 다른 사이트로 이동하지 못하고, 외부 링크는 시스템 브라우저로 엽니다.
   - 설치한 앱은 이름(productName)이 MetaCode라 사용자 데이터가 `%APPDATA%\MetaCode`에 따로 생깁니다. 개발용 앱(`@metacode/desktop`)과 로그인, 한 번에 하나만 실행 잠금(`requestSingleInstanceLock`)이 섞이지 않습니다 (처음엔 이름이 같아서 개발용 앱이 켜져 있으면 설치한 앱이 바로 꺼졌음).
-  - 자동 업데이트(0.2.0부터): electron-updater가 GitHub의 **최신 정식 릴리스**(`/releases/latest`, pre-release 제외)에서 `latest.yml`을 읽습니다. 태그 이름은 상관없어서 `desktop-v<버전>`을 씁니다. 켤 때와 6시간마다 확인하고, 다 받으면 브리지 `update.onReady`로 알리고 웹의 `layout/UpdateNotice.tsx`가 "지금 다시 시작"(`quitAndInstall(true, true)`)을 권합니다. 확인·설치 로직은 electron 없이 테스트하려고 `main/updater.ts`에 나눠 뒀습니다. 개발 중(`app.isPackaged` 아님)에는 확인하지 않습니다.
-  - 브리지에 `update`가 없는 0.1.0 앱에는 새로 설치하라는 안내를 한 번 띄웁니다 (닫으면 localStorage에 기억).
-  - 릴리스: `desktop-v*` 태그를 올리면 `.github/workflows/desktop-release.yml`이 Windows에서 빌드해 릴리스 **초안**을 만듭니다. 공개(정식)는 사람이 합니다. 태그와 `package.json` 버전이 다르면 실패합니다.
-  - 로컬에서 업데이트 흐름을 확인하려면: 빌드한 `win-unpacked/resources/app-update.yml`을 `provider: generic` + 로컬 주소로 바꾸고, 그 주소에 버전만 올린 `latest.yml`과 설치 파일을 둡니다. 설치한 앱이 켜져 있으면 한 번에 하나만 실행 잠금 때문에 바로 꺼지므로 `--user-data-dir`로 띄웁니다. "지금 다시 시작"을 누르면 실제로 설치되니 누르지 않습니다.
+- **데스크톱 자동 업데이트:** `apps/desktop/src/main/updater.ts`(electron-updater), `.github/workflows/desktop-release.yml`, 웹 `features/desktop/UpdateNotice.tsx`
+  - `desktop-v<버전>` 태그를 push하면 Actions의 Windows 러너가 설치 파일 + `.blockmap` + `latest.yml`을 만들어 GitHub Release(Latest)로 올립니다. 태그와 `apps/desktop/package.json` 버전이 다르면 실패합니다. 저장소가 공개라서 앱에 토큰이 필요 없습니다.
+  - 앱(설치한 것만)은 켤 때와 4시간마다 확인하고, 백그라운드에서 받아 두었다가 앱을 끌 때 설치합니다. 받으면 브리지 `updates`로 웹에 알려 화면 위에 "다시 시작"을 띄웁니다 (`quitAndInstall(true, true)`: 조용히 설치 후 다시 켬).
+  - 앱은 저장소의 **Latest Release**를 보므로, 데스크톱이 아닌 Release를 Latest로 올리면 업데이트 확인이 깨집니다.
+  - 코드 서명을 하지 않아서 받은 설치 파일의 서명은 확인하지 않습니다. 서명을 도입하면 `electron-builder.yml`의 `win.publisherName`을 넣어 확인하게 합니다.
+  - 0.2.0 이하 앱에는 `updates` 브리지가 없어서, 웹이 "새 버전 받기"(Releases 링크) 안내를 띄웁니다.
+  - 업데이트 캐시 폴더 이름은 패키지 이름에서 나와 `@metacodedesktop-updater`입니다 (`%LOCALAPPDATA%` 아래).
 - **역할과 채널 권한 (Phase 7):** `apps/server/src/chat/roles.service.ts`, `access.service.ts`, 웹 `features/communities/CommunitySettings.tsx`, `ChannelSettings.tsx`
   - 소유자와 관리자(`CommunityMember.role`)는 역할·채널을 관리하고 모든 채널을 봅니다. 관리자는 소유자만 정합니다. 사용자 정의 역할(`Role`)은 비공개 채널을 누구에게 보여 줄지 정하는 데 쓰고, 멤버 이름 색도 정합니다 (가장 위 역할의 색).
   - 채널이 보이는지는 `AccessService` 한 곳에서 판단합니다: 공개 채널은 멤버 전원, 비공개 채널은 관리자 + 허용된 역할을 가진 멤버. 목록 조회(`visibleChannelsWhere`), 접속할 때 들어가는 채널 방, 메시지·기록·첨부·통화(`getChannel`)가 모두 이 판단을 씁니다. 광장 말풍선도 채널 방으로 오는 `message:created`라서 그대로 따릅니다.

@@ -1,6 +1,6 @@
 {
   "name": "@metacode/desktop",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "MetaCode 데스크톱 앱",
   "author": "kimyangmin",
   "private": true,
@@ -23,6 +23,6 @@
     "wait-on": "^9.1.0"
   },
   "dependencies": {
-    "electron-updater": "^6.8.9"
+    "electron-updater": "^6.8.10"
   }
 }

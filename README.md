@@ -280,8 +280,7 @@ MetaCode/
 - [x] 커뮤니티 권한/역할 (관리자, 멤버, 사용자 정의 역할, 비공개 채널)
 - [ ] 광장 동시 접속 부하 테스트
 - [ ] 운영 서버 백업 자동화, 모니터링
-- [x] 데스크톱 앱 배포: 설치 파일, 자동 업데이트
-- [ ] 데스크톱 코드 서명 (정식 공개 때)
+- [ ] 데스크톱 앱 배포: 설치 파일, 자동 업데이트, 코드 서명 (설치 파일·자동 업데이트 완료, 코드 서명은 정식 공개 때)
 
 ### 추후 기능
 - 여러 채널을 동시에 나눠 보는 멀티 분할 화면
@@ -409,26 +408,27 @@ GITHUB_OAUTH_URL=http://localhost:4010 GITHUB_API_URL=http://localhost:4010 GITH
 pnpm --filter @metacode/desktop dist:win
 ```
 
-`apps/desktop/release/MetaCode-Setup-<버전>.exe`가 만들어집니다. 설치한 앱은 운영 사이트(`https://metacode.kimyangmin.me`)를 앱 창에서 열므로, 서버를 배포하면 앱 화면도 바로 최신이 됩니다. 앱을 다시 설치해야 하는 것은 데스크톱 기능(로그인, 권한, 첨부 받기 등)을 바꿨을 때뿐입니다.
+`apps/desktop/release/MetaCode-Setup-<버전>.exe`가 만들어집니다. 설치한 앱은 운영 사이트(`https://metacode.kimyangmin.me`)를 앱 창에서 열므로, 서버를 배포하면 앱 화면도 바로 최신이 됩니다. 앱이 바뀌는 것은 데스크톱 기능(로그인, 권한, 첨부 받기, 화면 공유 등)을 바꿨을 때뿐이고, 그때는 아래처럼 새 버전을 내면 설치한 앱이 스스로 업데이트합니다.
 
 - 코드 서명 인증서가 없어서 처음 실행할 때 Windows가 "Windows의 PC 보호" 창을 띄웁니다. **추가 정보 → 실행**을 누르면 됩니다.
 - 관리자 권한 없이 현재 사용자 계정에 설치됩니다 (`%LOCALAPPDATA%\Programs` 아래). 제거는 Windows 설정의 앱 목록에서 합니다.
-- macOS 설치 파일은 Mac에서만 만들 수 있습니다. 코드 서명은 정식 공개 때 합니다.
+- macOS 설치 파일은 Mac에서만 만들 수 있습니다. 코드 서명은 정식 공개 때 다시 정합니다.
+- 사용자에게 나눠 줄 설치 파일은 아래처럼 GitHub Actions가 만들어 Releases에 올립니다. 이 명령은 손으로 확인할 때 씁니다.
 
-### 데스크톱 새 버전 내보내기 (자동 업데이트)
+### 데스크톱 앱 새 버전 내기 (자동 업데이트)
 
-0.2.0부터 설치한 앱이 GitHub의 최신 정식 릴리스를 확인해 새 버전을 뒤에서 받고, 다 받으면 "지금 다시 시작"을 권합니다 (나중에를 눌러도 앱을 끌 때 설치됨). 0.1.0은 자동 업데이트가 없어서 한 번은 새로 설치해야 합니다 (앱 화면에 안내가 뜸).
+0.3.0부터 설치한 앱은 스스로 업데이트합니다. 켤 때와 4시간마다 [GitHub Releases](https://github.com/kimyangmin/MetaCode/releases/latest)의 최신 버전을 확인하고, 새 버전을 백그라운드에서 받아 두었다가 앱 화면 위의 **다시 시작**을 누르거나 앱을 끌 때 설치합니다.
 
-1. `apps/desktop/package.json`의 `version`을 올리고 PR로 반영합니다.
-2. 반영된 커밋에 태그를 붙여 올립니다.
-
+1. `apps/desktop/package.json`의 `version`을 올려서 `main`에 병합합니다.
+2. 그 커밋에 `desktop-v<버전>` 태그를 달아 push합니다.
    ```bash
-   git tag desktop-v0.2.1
-   git push origin desktop-v0.2.1
+   git tag desktop-v0.3.1 && git push origin desktop-v0.3.1
    ```
+3. `Desktop Release` 워크플로가 Windows 설치 파일, `.blockmap`, `latest.yml`을 만들어 Release로 올립니다 (태그와 package.json 버전이 다르면 실패합니다).
 
-3. GitHub Actions(`Desktop release`)가 설치 파일, `latest.yml`, blockmap을 만들어 릴리스 **초안**에 올립니다.
-4. 초안을 확인하고 정식 릴리스로 공개합니다. **pre-release로 올리면 자동 업데이트가 받지 않습니다.**
+- 앱은 저장소의 **최신(Latest) Release**를 봅니다. 이 저장소에 데스크톱 외의 Release를 올리면 그것이 최신이 되어 업데이트 확인이 실패하므로, 다른 Release는 올리지 않거나 Latest로 표시하지 않습니다.
+- 앱 화면은 운영 사이트를 열기 때문에 웹만 바꾼 경우에는 새 버전을 낼 필요가 없습니다. 메인 프로세스나 preload(`apps/desktop/src`)를 바꿨을 때만 냅니다.
+- 0.2.0 이하 앱에는 자동 업데이트가 없어서 한 번은 Releases에서 받아 설치해야 합니다. 앱 화면에 "새 버전 받기" 안내가 뜹니다.
 
 ### 자주 쓰는 명령어
 

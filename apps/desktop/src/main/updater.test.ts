@@ -1,68 +1,69 @@
-import type { DesktopUpdateInfo } from '@metacode/shared';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { type UpdateSource, Updater } from './updater';
+import { EventEmitter } from 'node:events';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { AutoUpdate, UPDATE_CHECK_INTERVAL_MS, type UpdaterLike } from './updater';
 
-const HOUR = 60 * 60 * 1000;
-
-function fakeSource() {
-  let downloaded: ((info: DesktopUpdateInfo) => void) | undefined;
-  const source = {
-    check: vi.fn(() => Promise.resolve()),
-    install: vi.fn(),
-    onDownloaded: (listener) => {
-      downloaded = listener;
-    },
-  } satisfies UpdateSource;
-  return { source, download: (version: string) => downloaded?.({ version }) };
+class FakeUpdater extends EventEmitter implements UpdaterLike {
+  autoDownload = false;
+  autoInstallOnAppQuit = false;
+  checkForUpdates = vi.fn(() => Promise.resolve(null));
+  quitAndInstall = vi.fn();
 }
 
-function createUpdater(source: UpdateSource) {
+function setup() {
+  const updater = new FakeUpdater();
   const onReady = vi.fn();
-  const updater = new Updater({ source, onReady, log: () => {}, intervalMs: HOUR });
-  return { updater, onReady };
+  const log = vi.fn();
+  const updates = new AutoUpdate(updater, { onReady, log });
+  return { updater, updates, onReady, log };
 }
 
-describe('Updater', () => {
-  beforeEach(() => vi.useFakeTimers());
-  afterEach(() => vi.useRealTimers());
+afterEach(() => {
+  vi.useRealTimers();
+});
 
-  it('켤 때와 간격마다 확인하고, 다 받으면 알린 뒤 더 확인하지 않는다', () => {
-    const { source, download } = fakeSource();
-    const { updater, onReady } = createUpdater(source);
-    updater.start();
-    expect(source.check).toHaveBeenCalledTimes(1);
-
-    vi.advanceTimersByTime(HOUR);
-    expect(source.check).toHaveBeenCalledTimes(2);
-
-    download('0.2.1');
-    expect(onReady).toHaveBeenCalledWith({ version: '0.2.1' });
-    expect(updater.getReady()).toEqual({ version: '0.2.1' });
-
-    vi.advanceTimersByTime(3 * HOUR);
-    expect(source.check).toHaveBeenCalledTimes(2);
+describe('AutoUpdate', () => {
+  it('백그라운드에서 받고 앱을 끌 때 설치하도록 설정한다', () => {
+    const { updater } = setup();
+    expect(updater.autoDownload).toBe(true);
+    expect(updater.autoInstallOnAppQuit).toBe(true);
   });
 
-  it('받아 둔 새 버전이 없으면 설치하지 않는다', () => {
-    const { source, download } = fakeSource();
-    const { updater } = createUpdater(source);
-    updater.start();
-    expect(updater.install()).toBe(false);
-    expect(source.install).not.toHaveBeenCalled();
-
-    download('0.2.1');
-    expect(updater.install()).toBe(true);
-    expect(source.install).toHaveBeenCalledTimes(1);
-    updater.stop();
+  it('시작할 때 한 번, 그 뒤로 간격마다 확인한다', () => {
+    vi.useFakeTimers();
+    const { updater, updates } = setup();
+    updates.start();
+    expect(updater.checkForUpdates).toHaveBeenCalledTimes(1);
+    vi.advanceTimersByTime(UPDATE_CHECK_INTERVAL_MS);
+    expect(updater.checkForUpdates).toHaveBeenCalledTimes(2);
+    updates.dispose();
+    vi.advanceTimersByTime(UPDATE_CHECK_INTERVAL_MS);
+    expect(updater.checkForUpdates).toHaveBeenCalledTimes(2);
   });
 
-  it('확인에 실패해도 멈추지 않고 다음 간격에 다시 본다', async () => {
-    const { source } = fakeSource();
-    source.check.mockRejectedValueOnce(new Error('offline'));
-    const { updater } = createUpdater(source);
-    updater.start();
-    await vi.advanceTimersByTimeAsync(HOUR);
-    expect(source.check).toHaveBeenCalledTimes(2);
-    updater.stop();
+  it('다 받으면 알리고, 나중에 물어봐도 알려 준다', () => {
+    const { updater, updates, onReady } = setup();
+    expect(updates.getReady()).toBeNull();
+    updater.emit('update-downloaded', { version: '0.3.0' });
+    expect(onReady).toHaveBeenCalledWith({ version: '0.3.0' });
+    expect(updates.getReady()).toEqual({ version: '0.3.0' });
+  });
+
+  it('받아 둔 것이 있을 때만 설치한다', () => {
+    const { updater, updates } = setup();
+    updates.install();
+    expect(updater.quitAndInstall).not.toHaveBeenCalled();
+    updater.emit('update-downloaded', { version: '0.3.0' });
+    updates.install();
+    expect(updater.quitAndInstall).toHaveBeenCalledWith(true, true);
+  });
+
+  it('확인에 실패해도 던지지 않고 기록만 한다', async () => {
+    const { updater, updates, log } = setup();
+    updater.checkForUpdates.mockRejectedValueOnce(new Error('offline'));
+    updates.start();
+    updater.emit('error', new Error('offline'));
+    await Promise.resolve();
+    expect(log).toHaveBeenCalledWith('실패: offline');
+    updates.dispose();
   });
 });
