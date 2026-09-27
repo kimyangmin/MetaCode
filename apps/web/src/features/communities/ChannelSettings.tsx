@@ -1,6 +1,7 @@
 import type { ChannelSummary, CommunitySummary, RoleDto } from '@metacode/shared';
 import { useQueryClient } from '@tanstack/react-query';
 import { type CSSProperties, type FormEvent, useState } from 'react';
+import { useNavigate } from 'react-router';
 import { ApiError, apiFetch } from '../../api/client';
 import { jsonBody, queryKeys } from '../../api/queries';
 import { Dialog } from '../../ui/Dialog';
@@ -84,6 +85,32 @@ export function ChannelSettings({
   const [name, setName] = useState(channel.name ?? '');
   const [access, setAccess] = useState({ isPrivate: channel.private, roleIds: channel.roleIds });
   const [error, setError] = useState<string | null>(null);
+  const navigate = useNavigate();
+
+  const remove = async () => {
+    const kind = channel.type === 'VOICE' ? '음성 채널' : '채널';
+    if (
+      !window.confirm(
+        `"${channel.name}" ${kind}을 삭제할까요? 메시지와 첨부 파일이 모두 지워집니다.`,
+      )
+    ) {
+      return;
+    }
+    try {
+      await apiFetch(`/channels/${channel.id}`, { method: 'DELETE' });
+      queryClient.setQueryData<CommunitySummary[]>(queryKeys.communities, (list) =>
+        list?.map((c) =>
+          c.id === community.id
+            ? { ...c, channels: c.channels.filter((ch) => ch.id !== channel.id) }
+            : c,
+        ),
+      );
+      onClose();
+      navigate(`/c/${community.id}`);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : '채널을 삭제하지 못했습니다.');
+    }
+  };
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -116,9 +143,14 @@ export function ChannelSettings({
           onChange={setAccess}
         />
         {error && <p className="form__error">{error}</p>}
-        <button className="button button--primary" disabled={!name.trim()}>
-          저장
-        </button>
+        <div className="form__actions">
+          <button type="button" className="button button--danger" onClick={() => void remove()}>
+            채널 삭제
+          </button>
+          <button className="button button--primary" disabled={!name.trim()}>
+            저장
+          </button>
+        </div>
       </form>
     </Dialog>
   );

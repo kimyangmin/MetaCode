@@ -83,6 +83,15 @@ export function RealtimeProvider({ meId, children }: { meId: string; children: R
         ),
       );
     });
+    socket.on(SocketEvent.ChannelDeleted, ({ channelId, communityId }) => {
+      queryClient.setQueryData<CommunitySummary[]>(queryKeys.communities, (communities) =>
+        communities?.map((c) =>
+          c.id === communityId
+            ? { ...c, channels: c.channels.filter((ch) => ch.id !== channelId) }
+            : c,
+        ),
+      );
+    });
     socket.on(SocketEvent.DmCreated, (dm) => {
       queryClient.setQueryData<DmSummary[]>(queryKeys.dms, (dms) =>
         dms && !dms.some((d) => d.id === dm.id) ? [dm, ...dms] : dms,

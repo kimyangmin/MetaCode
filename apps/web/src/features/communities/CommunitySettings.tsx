@@ -11,7 +11,8 @@ import { jsonBody, queryKeys } from '../../api/queries';
 import { Avatar } from '../../ui/Avatar';
 import { Dialog } from '../../ui/Dialog';
 import { displayName } from '../../ui/format';
-import { useMembers } from './hooks';
+import { useDragSort } from '../../ui/useDragSort';
+import { useMeRequired, useMembers } from './hooks';
 
 const DEFAULT_COLOR = '#3f8fdb';
 
@@ -90,6 +91,19 @@ function RolesTab({ community }: { community: CommunitySummary }) {
   const [name, setName] = useState('');
   const [color, setColor] = useState(DEFAULT_COLOR);
 
+  const sort = useDragSort(
+    community.roles.map((r) => r.id),
+    (ids) =>
+      void run(
+        () =>
+          apiFetch(`/communities/${community.id}/roles/order`, {
+            method: 'PUT',
+            ...jsonBody({ ids }),
+          }),
+        '순서를 바꾸지 못했습니다.',
+      ).then(refresh),
+  );
+
   const create = async (e: FormEvent) => {
     e.preventDefault();
     const ok = await run(
@@ -109,14 +123,15 @@ function RolesTab({ community }: { community: CommunitySummary }) {
   return (
     <div className="form">
       <p className="form__hint">
-        역할을 만들어 멤버에게 주면, 비공개 채널을 그 역할을 가진 멤버에게만 보여 줄 수 있습니다.
-        이름 색은 가진 역할 중 가장 위 역할의 색을 따릅니다.
+        ⠿를 끌어 순서를 바꿀 수 있습니다. 역할을 만들어 멤버에게 주면, 비공개 채널을 그 역할을 가진
+        멤버에게만 보여 줄 수 있습니다. 이름 색은 가진 역할 중 가장 위 역할의 색을 따릅니다.
       </p>
       {community.roles.length === 0 && <p className="settings__empty">아직 역할이 없습니다.</p>}
       <ul className="role-list">
         {community.roles.map((role) => (
           <RoleRow
             key={role.id}
+            sortProps={sort.itemProps(role.id)}
             communityId={community.id}
             role={role}
             onError={run}
@@ -152,9 +167,11 @@ function RoleRow({
   role,
   onError,
   onDone,
+  sortProps,
 }: {
   communityId: string;
   role: RoleDto;
+  sortProps: ReturnType<ReturnType<typeof useDragSort>['itemProps']>;
   onError: ReturnType<typeof useRequest>['run'];
   onDone(): void;
 }) {
@@ -185,7 +202,10 @@ function RoleRow({
   };
 
   return (
-    <li className="role-list__item">
+    <li className="role-list__item" {...sortProps}>
+      <span className="drag-handle" aria-hidden title="끌어서 순서 바꾸기">
+        ⠿
+      </span>
       <input
         type="color"
         defaultValue={role.color ?? DEFAULT_COLOR}
@@ -239,6 +259,29 @@ function MembersTab({ community }: { community: CommunitySummary }) {
     if (ok) refresh();
   };
 
+  const me = useMeRequired();
+  /** 내보낼 수 있는지: 나와 소유자는 안 되고, 관리자는 소유자만 내보낸다 */
+  const canKick = (member: CommunityMember) =>
+    member.user.id !== me.id &&
+    member.role !== CommunityRole.Owner &&
+    (member.role !== CommunityRole.Admin || isOwner);
+
+  const kick = async (member: CommunityMember) => {
+    if (
+      !window.confirm(
+        `${displayName(member.user)}님을 커뮤니티에서 내보낼까요? 초대 링크로 다시 들어올 수 있습니다.`,
+      )
+    ) {
+      return;
+    }
+    const ok = await run(
+      () =>
+        apiFetch(`/communities/${community.id}/members/${member.user.id}`, { method: 'DELETE' }),
+      '내보내지 못했습니다.',
+    );
+    if (ok) refresh();
+  };
+
   const toggleAdmin = async (member: CommunityMember) => {
     const ok = await run(
       () =>
@@ -277,6 +320,15 @@ function MembersTab({ community }: { community: CommunitySummary }) {
               )}
               {!isOwner && member.role === CommunityRole.Admin && (
                 <span className="members__role">관리자</span>
+              )}
+              {canKick(member) && (
+                <button
+                  type="button"
+                  className="member-roles__kick"
+                  onClick={() => void kick(member)}
+                >
+                  내보내기
+                </button>
               )}
             </div>
             {community.roles.length > 0 && (

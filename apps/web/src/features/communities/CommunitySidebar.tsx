@@ -11,6 +11,7 @@ import { ApiError, apiFetch } from '../../api/client';
 import { jsonBody, queryKeys } from '../../api/queries';
 import { webUrl } from '../../config';
 import { Dialog } from '../../ui/Dialog';
+import { useDragSort } from '../../ui/useDragSort';
 import { UserPanel } from '../auth/UserPanel';
 import { useCall, useVoiceStore } from '../voice/store';
 import { VoiceMembers } from '../voice/VoiceMembers';
@@ -36,7 +37,26 @@ export function CommunitySidebar({
   const [modal, setModal] = useState<Modal>(null);
   const isOwner = community.myRole === CommunityRole.Owner;
   const canManage = community.myRole !== CommunityRole.Member;
+  const textChannels = community.channels.filter((c) => c.type === 'TEXT');
   const voiceChannels = community.channels.filter((c) => c.type === 'VOICE');
+
+  // 채널 끌어서 순서 바꾸기 (관리자). 텍스트와 음성은 각자 구역 안에서만 옮긴다.
+  const saveOrder = (ids: string[]) => {
+    const byId = new Map(community.channels.map((c) => [c.id, c]));
+    queryClient.setQueryData<CommunitySummary[]>(queryKeys.communities, (list) =>
+      list?.map((c) =>
+        c.id === community.id ? { ...c, channels: ids.map((id) => byId.get(id)!) } : c,
+      ),
+    );
+    void apiFetch(`/communities/${community.id}/channels/order`, {
+      method: 'PUT',
+      ...jsonBody({ ids }),
+    }).catch(() => queryClient.invalidateQueries({ queryKey: queryKeys.communities }));
+  };
+  const textIds = textChannels.map((c) => c.id);
+  const voiceIds = voiceChannels.map((c) => c.id);
+  const textSort = useDragSort(textIds, (ids) => saveOrder([...ids, ...voiceIds]), canManage);
+  const voiceSort = useDragSort(voiceIds, (ids) => saveOrder([...textIds, ...ids]), canManage);
 
   const leaveOrDelete = async () => {
     setMenuOpen(false);
@@ -93,21 +113,21 @@ export function CommunitySidebar({
 
       <nav className="sidebar__list" aria-label="채널">
         <h3 className="sidebar__section">텍스트 채널</h3>
-        {community.channels
-          .filter((c) => c.type === 'TEXT')
-          .map((channel) => (
-            <ChannelLink
-              key={channel.id}
-              communityId={community.id}
-              channel={channel}
-              active={channel.id === activeChannelId}
-              onEdit={canManage ? () => setModal({ edit: channel }) : undefined}
-            />
-          ))}
+        {textChannels.map((channel) => (
+          <ChannelLink
+            key={channel.id}
+            sortProps={textSort.itemProps(channel.id)}
+            communityId={community.id}
+            channel={channel}
+            active={channel.id === activeChannelId}
+            onEdit={canManage ? () => setModal({ edit: channel }) : undefined}
+          />
+        ))}
         {voiceChannels.length > 0 && <h3 className="sidebar__section">음성 채널</h3>}
         {voiceChannels.map((channel) => (
           <VoiceChannelItem
             key={channel.id}
+            sortProps={voiceSort.itemProps(channel.id)}
             channel={channel}
             onEdit={canManage ? () => setModal({ edit: channel }) : undefined}
           />
@@ -141,20 +161,24 @@ function ChannelLink({
   channel,
   active,
   onEdit,
+  sortProps,
 }: {
   communityId: string;
   channel: ChannelSummary;
   active: boolean;
+  sortProps: SortProps;
   /** 관리자면 채널 설정 버튼을 보인다 */
   onEdit?: () => void;
 }) {
   const unread = !active && hasUnread(channel);
   return (
-    <div className="channel-row">
+    <div className="channel-row" {...sortProps}>
       <NavLink
         to={`/c/${communityId}/${channel.id}`}
         className="sidebar__item"
         data-unread={unread}
+        // 링크 자체가 끌리면 순서 바꾸기 대신 주소가 끌린다.
+        draggable={false}
       >
         <span className="sidebar__hash">#</span>
         <span className="sidebar__label">{channel.name}</span>
@@ -188,12 +212,22 @@ function EditButton({ name, onClick }: { name: string; onClick(): void }) {
 }
 
 /** 음성 채널: 누르면 통화에 들어간다 (보던 텍스트 채널은 그대로). 아래에 참여자를 보여 준다 */
-function VoiceChannelItem({ channel, onEdit }: { channel: ChannelSummary; onEdit?: () => void }) {
+type SortProps = ReturnType<ReturnType<typeof useDragSort>['itemProps']>;
+
+function VoiceChannelItem({
+  channel,
+  onEdit,
+  sortProps,
+}: {
+  channel: ChannelSummary;
+  onEdit?: () => void;
+  sortProps: SortProps;
+}) {
   const voice = useVoice();
   const call = useCall(channel.id);
   const joined = useVoiceStore((s) => s.session?.channelId === channel.id);
   return (
-    <div className="voice-channel">
+    <div className="voice-channel" {...sortProps}>
       <div className="channel-row">
         <button
           type="button"

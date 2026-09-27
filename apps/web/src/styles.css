@@ -1907,3 +1907,59 @@ h3 {
   gap: 6px;
   color: var(--fg);
 }
+
+/* ── 끌어서 순서 바꾸기 ─────────────── */
+
+[data-dragging='true'] {
+  opacity: 0.4;
+}
+
+/* 놓을 자리: 항목의 위나 아래에 파란 선 */
+[data-drop='before'] {
+  box-shadow: inset 0 2px 0 var(--accent);
+}
+
+[data-drop='after'] {
+  box-shadow: inset 0 -2px 0 var(--accent);
+}
+
+.drag-handle {
+  flex: none;
+  color: var(--muted);
+  cursor: grab;
+}
+
+.role-list__item[draggable='true'] {
+  cursor: grab;
+}
+
+.button--danger {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.button--danger:hover {
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+}
+
+.form__actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.member-roles__kick {
+  margin-left: 8px;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--danger);
+  font: inherit;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.member-roles__kick:hover {
+  border-color: var(--danger);
+}
