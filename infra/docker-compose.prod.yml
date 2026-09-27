@@ -46,11 +46,21 @@ services:
       GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:?}
       GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:?}
       JWT_SECRET: ${JWT_SECRET:?}
+      # 서버는 내부 주소로 파일을 읽고 쓰고, 브라우저에 줄 주소는 공개 도메인으로 서명한다.
+      S3_ENDPOINT: http://seaweedfs:9000
+      S3_PUBLIC_ENDPOINT: https://${FILES_DOMAIN:?}
+      S3_BUCKET: metacode-uploads
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:?}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:?}
+      UPLOAD_MAX_SIZE_MB: ${UPLOAD_MAX_SIZE_MB:-50}
     depends_on:
       migrate:
         condition: service_completed_successfully
       redis:
         condition: service_healthy
+      # 첨부 파일 버킷이 만들어진 뒤에 시작한다.
+      seaweedfs-init:
+        condition: service_completed_successfully
 
   # 서버보다 먼저 DB 마이그레이션을 적용하고 끝난다.
   migrate:

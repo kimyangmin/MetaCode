@@ -181,7 +181,17 @@ sh infra/backup.sh
 0 19 * * * cd /home/ubuntu/MetaCode && sh infra/backup.sh >> backups/backup.log 2>&1
 ```
 
-백업은 같은 서버 디스크에 남으므로, 서버가 통째로 사라지는 경우까지 대비하려면 `backups/`를 Oracle Object Storage 같은 다른 곳에 주기적으로 복사하세요. 첨부 파일(SeaweedFS) 백업은 Phase 3에서 파일 업로드를 만들 때 추가합니다.
+백업은 같은 서버 디스크에 남으므로, 서버가 통째로 사라지는 경우까지 대비하려면 `backups/`를 Oracle Object Storage 같은 다른 곳에 주기적으로 복사하세요. 첨부 파일은 따로 백업합니다 (저장소 데이터 폴더 압축본, 최근 2개 보관):
+
+```bash
+sh infra/backup.sh files
+```
+
+매주 일요일 새벽에 자동으로 돌리려면 crontab에 추가합니다 (04:30 KST = 19:30 UTC):
+
+```
+30 19 * * 0 cd /home/ubuntu/MetaCode && sh infra/backup.sh files >> backups/backup.log 2>&1
+```
 
 복원 (백업 파일 이름을 바꿔서):
 
