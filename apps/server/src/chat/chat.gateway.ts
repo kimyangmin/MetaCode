@@ -9,15 +9,19 @@ import {
 import {
   type ClientToServerEvents,
   type MessageDto,
+  type PlazaSnapshot,
   type ServerToClientEvents,
   type SocketAck,
   SocketEvent,
+  plazaMoveSchema,
+  plazaWatchSchema,
   sendMessageSchema,
   typingStartSchema,
 } from '@metacode/shared';
 import type { Socket } from 'socket.io';
 import { AccessTokenService } from '../auth/access-token.service.js';
 import { ACCESS_COOKIE, readCookie } from '../auth/cookies.js';
+import { PlazaService } from '../plaza/plaza.service.js';
 import { PresenceService } from '../presence/presence.service.js';
 import {
   type AppServer,
@@ -46,6 +50,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     private readonly presence: PresenceService,
     private readonly messages: MessagesService,
     private readonly realtime: RealtimeService,
+    private readonly plaza: PlazaService,
   ) {}
 
   afterInit(server: AppServer) {
@@ -127,10 +132,59 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     });
   }
 
+  /** 광장 화면을 열 때: 멤버인지 확인하고 광장 방에 넣은 뒤 현재 상태를 돌려준다. */
+  @SubscribeMessage(SocketEvent.PlazaWatch)
+  async onPlazaWatch(socket: AppSocket, payload: unknown): Promise<SocketAck<PlazaSnapshot>> {
+    const parsed = plazaWatchSchema.safeParse(payload);
+    if (!parsed.success) return { ok: false, error: '광장 ID 형식이 올바르지 않습니다.' };
+    try {
+      const snapshot = await this.plaza.snapshot(socket.data.userId!, parsed.data.plazaId);
+      await socket.join(room.plaza(parsed.data.plazaId));
+      return { ok: true, data: snapshot };
+    } catch (error) {
+      if (error instanceof HttpException) return { ok: false, error: error.message };
+      this.logger.error(error);
+      return { ok: false, error: '광장을 열지 못했습니다.' };
+    }
+  }
+
+  @SubscribeMessage(SocketEvent.PlazaUnwatch)
+  async onPlazaUnwatch(socket: AppSocket, payload: unknown): Promise<void> {
+    const parsed = plazaWatchSchema.safeParse(payload);
+    if (parsed.success) await socket.leave(room.plaza(parsed.data.plazaId));
+  }
+
+  /**
+   * 내 캐릭터 이동. 광장을 열어 둔(=멤버 확인을 거친) 연결만 보낼 수 있다.
+   * 받아들이면 같은 광장을 보는 다른 사람들에게, 아니면 보낸 연결에만 되돌릴 위치를 보낸다.
+   */
+  @SubscribeMessage(SocketEvent.PlazaMove)
+  async onPlazaMove(socket: AppSocket, payload: unknown): Promise<void> {
+    const parsed = plazaMoveSchema.safeParse(payload);
+    if (!parsed.success) return;
+    const target = room.plaza(parsed.data.plazaId);
+    if (!socket.rooms.has(target)) return;
+    try {
+      const result = await this.plaza.move(socket.data.userId!, parsed.data);
+      if (result.ok) socket.to(target).emit(SocketEvent.PlazaMoved, result.moved);
+      else socket.emit(SocketEvent.PlazaCorrected, result.correction);
+    } catch (error) {
+      this.logger.error('광장 이동 처리 실패', error);
+    }
+  }
+
   private async broadcastPresence(userId: string, online: boolean) {
     const audience = await this.access.presenceAudience(userId);
     if (audience.length > 0) {
       this.realtime.emit(audience, SocketEvent.PresenceChanged, { userId, online });
+    }
+    // 광장 인원 = 멤버 중 온라인. 이 사람이 속한 광장들을 보고 있는 사람들에게 나타남/사라짐을 알린다.
+    for (const plazaId of await this.plaza.plazaIdsOf(userId)) {
+      this.realtime.emit(room.plaza(plazaId), SocketEvent.PlazaMember, {
+        plazaId,
+        userId,
+        occupant: online ? await this.plaza.occupant(plazaId, userId) : null,
+      });
     }
   }
 }

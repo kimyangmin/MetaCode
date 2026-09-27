@@ -12,6 +12,8 @@ export const room = {
   user: (id: string) => `user:${id}`,
   community: (id: string) => `community:${id}`,
   channel: (id: string) => `channel:${id}`,
+  /** 광장 화면을 열어 둔 연결만 들어간다 (위치 업데이트 구독). plazaId는 community:<id> 또는 dm:<id> */
+  plaza: (plazaId: string) => `plaza:${plazaId}`,
 };
 
 type Emit = ServerToClientEvents;

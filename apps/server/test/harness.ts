@@ -36,6 +36,8 @@ export async function startTestApp() {
     fetch: (path: string, init?: RequestInit) =>
       fetch(`${baseUrl}${path}`, { redirect: 'manual', ...init }),
     async close() {
+      // 각 테스트가 끊은 소켓의 해제 처리(Presence 기록)가 끝난 뒤에 Redis를 닫는다.
+      await new Promise((r) => setTimeout(r, 300));
       await app.close();
       await github.close();
     },
