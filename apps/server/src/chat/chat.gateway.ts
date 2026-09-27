@@ -104,6 +104,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
         socket.data.userId!,
         parsed.data.channelId,
         parsed.data.content,
+        parsed.data.attachmentIds,
       );
       return { ok: true, data: message };
     } catch (error) {

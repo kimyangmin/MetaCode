@@ -10,6 +10,8 @@ export interface MetaCodeDesktopBridge {
     chrome: string;
   };
   auth: DesktopAuthBridge;
+  /** 인증이 필요한 주소(첨부 파일 등)를 내려받는다. 저장 위치는 OS 저장 창에서 고른다. */
+  download(url: string): Promise<void>;
 }
 
 /**

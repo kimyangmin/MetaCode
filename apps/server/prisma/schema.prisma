@@ -26,6 +26,7 @@ model User {
   channelMemberships ChannelMember[]
   messages           Message[]
   readStates         ChannelReadState[]
+  attachments        Attachment[]
 
   @@index([username])
   @@map("users")
@@ -101,10 +102,11 @@ model Channel {
   dmKey          String?     @unique @map("dm_key")
   createdAt      DateTime    @default(now()) @map("created_at")
 
-  community  Community?         @relation(fields: [communityId], references: [id], onDelete: Cascade)
-  members    ChannelMember[]
-  messages   Message[]
-  readStates ChannelReadState[]
+  community   Community?         @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  members     ChannelMember[]
+  messages    Message[]
+  readStates  ChannelReadState[]
+  attachments Attachment[]
 
   @@index([communityId])
   @@map("channels")
@@ -131,8 +133,9 @@ model Message {
   content   String
   createdAt DateTime @default(now()) @map("created_at")
 
-  channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
-  author  User    @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  channel     Channel      @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  author      User         @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  attachments Attachment[]
 
   @@index([channelId, id(sort: Desc)])
   @@map("messages")
@@ -168,4 +171,43 @@ model RefreshToken {
   @@index([userId])
   @@index([familyId])
   @@map("refresh_tokens")
+}
+
+enum AttachmentStatus {
+  /// 올릴 주소만 발급했고 아직 확인하지 않음
+  PENDING
+  /// 저장소에 올라온 것을 확인함 (이미지는 썸네일까지 만듦). 메시지에 붙일 수 있다.
+  READY
+}
+
+enum AttachmentKind {
+  IMAGE
+  FILE
+}
+
+/// 파일 자체는 S3 호환 저장소에 있고, 여기에는 위치와 정보만 둔다.
+/// 채널에 묶어 두어 권한은 채널 접근 권한으로 판단한다. 메시지에 붙기 전에는 messageId가 없다.
+model Attachment {
+  id           String           @id @default(uuid(7)) @db.Uuid
+  channelId    String           @map("channel_id") @db.Uuid
+  uploaderId   String           @map("uploader_id") @db.Uuid
+  messageId    String?          @map("message_id") @db.Uuid
+  status       AttachmentStatus @default(PENDING)
+  kind         AttachmentKind   @default(FILE)
+  objectKey    String           @map("object_key")
+  thumbnailKey String?          @map("thumbnail_key")
+  fileName     String           @map("file_name")
+  contentType  String           @map("content_type")
+  size         Int
+  width        Int?
+  height       Int?
+  createdAt    DateTime         @default(now()) @map("created_at")
+
+  channel  Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  uploader User     @relation(fields: [uploaderId], references: [id], onDelete: Cascade)
+  message  Message? @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@index([messageId])
+  @@index([status, createdAt])
+  @@map("attachments")
 }

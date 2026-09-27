@@ -2,6 +2,7 @@ import type { MessageDto, UserProfile } from '@metacode/shared';
 import { Fragment, useEffect, useRef } from 'react';
 import { Avatar } from '../../ui/Avatar';
 import { displayName, formatDay, formatTime, sameDay } from '../../ui/format';
+import { MessageAttachments } from './MessageAttachments';
 
 /** 같은 사람이 이 시간 안에 이어서 보낸 메시지는 이름/아바타 없이 붙여 보여준다. */
 const GROUP_WINDOW_MS = 5 * 60 * 1000;
@@ -9,6 +10,8 @@ const GROUP_WINDOW_MS = 5 * 60 * 1000;
 export interface PendingMessage {
   clientId: string;
   content: string;
+  /** 함께 보내는 첨부 (다시 보낼 때도 같은 첨부를 쓴다) */
+  attachmentIds: string[];
   status: 'sending' | 'failed';
 }
 
@@ -52,7 +55,7 @@ export function MessageList(props: MessageListProps) {
         <div key={p.clientId} className="message message--pending" data-status={p.status}>
           <div className="message__gutter" />
           <div className="message__body">
-            <p className="message__content">{p.content}</p>
+            <p className="message__content">{p.content || `📎 파일 ${p.attachmentIds.length}개`}</p>
             {p.status === 'failed' && (
               <button className="message__retry" onClick={() => props.onRetry(p.clientId)}>
                 전송 실패 · 다시 보내기
@@ -119,7 +122,8 @@ function MessageItem({
             <time dateTime={message.createdAt}>{formatTime(message.createdAt)}</time>
           </header>
         )}
-        <p className="message__content">{message.content}</p>
+        {message.content && <p className="message__content">{message.content}</p>}
+        <MessageAttachments attachments={message.attachments} />
       </div>
     </article>
   );

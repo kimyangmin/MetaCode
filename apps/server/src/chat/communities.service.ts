@@ -8,6 +8,7 @@ import {
   type InviteInfo,
   SocketEvent,
 } from '@metacode/shared';
+import { AttachmentsService } from '../attachments/attachments.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { PresenceService } from '../presence/presence.service.js';
 import { RealtimeService, room } from '../realtime/realtime.service.js';
@@ -27,6 +28,7 @@ export class CommunitiesService {
     private readonly summaries: ChannelSummaryService,
     private readonly presence: PresenceService,
     private readonly realtime: RealtimeService,
+    private readonly attachments: AttachmentsService,
   ) {}
 
   /** 커뮤니티를 만들고 만든 사람을 OWNER로, 기본 텍스트 채널 하나를 함께 만든다. */
@@ -145,7 +147,10 @@ export class CommunitiesService {
       where: { communityId },
       select: { id: true },
     });
+    // DB의 첨부 행은 연쇄 삭제되지만 저장소의 파일은 따로 지운다.
+    const fileKeys = await this.attachments.keysInCommunity(communityId);
     await this.prisma.community.delete({ where: { id: communityId } });
+    void this.attachments.removeObjects(fileKeys);
     this.realtime.emit(room.community(communityId), SocketEvent.CommunityDeleted, { communityId });
     for (const target of [
       room.community(communityId),
