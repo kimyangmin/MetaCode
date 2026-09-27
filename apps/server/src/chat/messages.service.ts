@@ -1,5 +1,10 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
-import { type MessageDto, type MessagePage, SocketEvent } from '@metacode/shared';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  type MessageDto,
+  type MessagePage,
+  REPLY_PREVIEW_LENGTH,
+  SocketEvent,
+} from '@metacode/shared';
 import { AttachmentsService, toAttachmentDto } from '../attachments/attachments.service.js';
 import type { Attachment } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
@@ -11,15 +16,23 @@ type MessageRow = {
   id: string;
   channelId: string;
   content: string;
+  forwarded: boolean;
   createdAt: Date;
   author: Parameters<typeof toProfile>[0];
   attachments: Attachment[];
+  replyTo: {
+    id: string;
+    content: string;
+    author: Parameters<typeof toProfile>[0];
+    _count: { attachments: number };
+  } | null;
 };
 
-/** 메시지와 함께 읽을 관계: 작성자, 첨부(올린 순서) */
+/** 메시지와 함께 읽을 관계: 작성자, 첨부(올린 순서), 답장한 원래 메시지 */
 const messageInclude = {
   author: true,
   attachments: { orderBy: { createdAt: 'asc' } },
+  replyTo: { include: { author: true, _count: { select: { attachments: true } } } },
 } as const;
 
 export function toMessageDto(message: MessageRow): MessageDto {
@@ -29,6 +42,15 @@ export function toMessageDto(message: MessageRow): MessageDto {
     author: toProfile(message.author),
     content: message.content,
     attachments: message.attachments.map(toAttachmentDto),
+    replyTo: message.replyTo
+      ? {
+          id: message.replyTo.id,
+          author: toProfile(message.replyTo.author),
+          content: Array.from(message.replyTo.content).slice(0, REPLY_PREVIEW_LENGTH).join(''),
+          attachmentCount: message.replyTo._count.attachments,
+        }
+      : null,
+    forwarded: message.forwarded,
     createdAt: message.createdAt.toISOString(),
   };
 }
@@ -51,19 +73,61 @@ export class MessagesService {
     channelId: string,
     content: string,
     attachmentIds: string[] = [],
+    replyToId?: string,
   ): Promise<MessageDto> {
     const channel = await this.access.getChannel(userId, channelId);
     if (channel.type === 'VOICE')
       throw new BadRequestException('음성 채널에는 글을 쓸 수 없습니다.');
+    // 답장은 같은 채널의 메시지에만 (다른 채널의 내용이 새어 나가지 않도록)
+    if (replyToId) {
+      const target = await this.prisma.message.findFirst({
+        where: { id: replyToId, channelId },
+        select: { id: true },
+      });
+      if (!target) throw new BadRequestException('답장할 메시지를 찾을 수 없습니다.');
+    }
 
     // 첨부를 붙이지 못하면 메시지도 남기지 않는다.
     const message = toMessageDto(
       await this.prisma.$transaction(async (tx) => {
         const created = await tx.message.create({
-          data: { channelId, authorId: userId, content },
+          data: { channelId, authorId: userId, content, replyToId },
           select: { id: true },
         });
         await this.attachments.claim(tx, userId, channelId, attachmentIds, created.id);
+        return tx.message.findUniqueOrThrow({ where: { id: created.id }, include: messageInclude });
+      }),
+    );
+    this.realtime.emit(room.channel(channelId), SocketEvent.MessageCreated, message);
+    return message;
+  }
+
+  /**
+   * 메시지 전달: 볼 수 있는 메시지를 쓸 수 있는 다른 채널로. 보낸 사람은 전달한 사람이고, 첨부도 복사한다.
+   */
+  async forward(userId: string, messageId: string, channelId: string): Promise<MessageDto> {
+    const source = await this.prisma.message.findUnique({
+      where: { id: messageId },
+      select: { id: true, channelId: true, content: true },
+    });
+    if (!source) throw new NotFoundException('메시지를 찾을 수 없습니다.');
+    await this.access.getChannel(userId, source.channelId);
+    const target = await this.access.getChannel(userId, channelId);
+    if (target.type === 'VOICE')
+      throw new BadRequestException('음성 채널에는 글을 쓸 수 없습니다.');
+
+    const copies = await this.attachments.copyForForward(source.id, channelId, userId);
+    const message = toMessageDto(
+      await this.prisma.$transaction(async (tx) => {
+        const created = await tx.message.create({
+          data: { channelId, authorId: userId, content: source.content, forwarded: true },
+          select: { id: true },
+        });
+        if (copies.length > 0) {
+          await tx.attachment.createMany({
+            data: copies.map((c) => ({ ...c, messageId: created.id })),
+          });
+        }
         return tx.message.findUniqueOrThrow({ where: { id: created.id }, include: messageInclude });
       }),
     );

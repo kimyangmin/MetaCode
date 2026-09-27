@@ -1719,6 +1719,701 @@ h3 {
   white-space: nowrap;
 }
 
+/* ── 역할과 채널 권한 ─────────────── */
+
+/* 채널 줄: 채널 링크 + (관리자) 설정 버튼. 설정 버튼은 줄에 마우스를 올렸을 때만 보인다 */
+.channel-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.channel-row > .sidebar__item {
+  flex: 1;
+  min-width: 0;
+}
+
+.channel-row__edit {
+  position: absolute;
+  right: 4px;
+  width: 22px;
+  height: 22px;
+  font-size: 13px;
+  opacity: 0;
+}
+
+.channel-row:hover .channel-row__edit,
+.channel-row__edit:focus-visible {
+  opacity: 1;
+}
+
+.sidebar__lock {
+  margin-left: auto;
+  font-size: 0.7rem;
+  opacity: 0.8;
+}
+
+.settings {
+  display: grid;
+  gap: 12px;
+}
+
+.settings__tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--border);
+}
+
+.settings__tabs button {
+  padding: 6px 12px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  cursor: pointer;
+}
+
+.settings__tabs button[aria-selected='true'] {
+  border-bottom-color: var(--accent);
+  color: var(--fg);
+  font-weight: 600;
+}
+
+.settings__empty {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.role-list,
+.member-roles {
+  display: grid;
+  gap: 6px;
+  max-height: 40vh;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+  scrollbar-width: none;
+}
+
+.role-list::-webkit-scrollbar,
+.member-roles::-webkit-scrollbar {
+  display: none;
+}
+
+.role-list__item,
+.role-form {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.role-list__item input:not([type='color']),
+.role-form input:not([type='color']) {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-input);
+  color: var(--fg);
+  font: inherit;
+}
+
+.role-list__item input[type='color'],
+.role-form input[type='color'] {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.role-list__remove:hover {
+  color: var(--danger);
+}
+
+.member-roles__item {
+  display: grid;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.member-roles__who {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--fg);
+  font-size: 0.9rem;
+}
+
+.form .member-roles__admin {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  font-size: 0.8rem;
+}
+
+.member-roles__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* 역할 고르기 칩: 역할 색으로 테두리, 골랐으면 채운다 */
+.form .role-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border: 1px solid var(--role-color);
+  border-radius: 999px;
+  color: var(--fg);
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.role-chip input {
+  display: none;
+}
+
+.role-chip:has(input:checked) {
+  background: color-mix(in srgb, var(--role-color) 30%, transparent);
+}
+
+.role-chip:has(input:focus-visible) {
+  outline: 2px solid var(--accent);
+}
+
+.channel-access {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.form .channel-access__private {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--fg);
+}
+
+/* ── 끌어서 순서 바꾸기 ─────────────── */
+
+[data-dragging='true'] {
+  opacity: 0.4;
+}
+
+/* 놓을 자리: 항목의 위나 아래에 파란 선 */
+[data-drop='before'] {
+  box-shadow: inset 0 2px 0 var(--accent);
+}
+
+[data-drop='after'] {
+  box-shadow: inset 0 -2px 0 var(--accent);
+}
+
+.drag-handle {
+  flex: none;
+  color: var(--muted);
+  cursor: grab;
+}
+
+.role-list__item[draggable='true'] {
+  cursor: grab;
+}
+
+.button--danger {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.button--danger:hover {
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+}
+
+.form__actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.member-roles__kick {
+  margin-left: 8px;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--danger);
+  font: inherit;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.member-roles__kick:hover {
+  border-color: var(--danger);
+}
+
+/* ── 채팅 편의 ─────────────── */
+
+/*
+ * 앱 화면의 글자(메뉴, 이름, 버튼 등)는 끌어서 고르거나 끌어 옮길 수 없다.
+ * 메시지 내용, 입력칸, 정보 팝업처럼 복사할 만한 곳만 고를 수 있다.
+ */
+body {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.message__content,
+.message__reply-text,
+.forward-preview,
+.profile-popup__names,
+input,
+textarea {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+img,
+a {
+  -webkit-user-drag: none;
+}
+
+/* 메시지 안의 링크 */
+.message__content a {
+  color: var(--accent);
+  text-decoration: none;
+  word-break: break-all;
+}
+
+.message__content a:hover {
+  text-decoration: underline;
+}
+
+/* 아바타, 이름: 누르면 정보 팝업 */
+.message__avatar,
+.message__author,
+.voice-members__who {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.message__author {
+  font-weight: 700;
+}
+
+.message__author:hover {
+  text-decoration: underline;
+}
+
+.voice-members__who {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  text-align: left;
+}
+
+/* 답장: 메시지 위에 원래 메시지 한 줄 */
+.message__reply {
+  display: flex;
+  grid-column: 1 / -1;
+  align-items: baseline;
+  gap: 6px;
+  width: fit-content;
+  max-width: 100%;
+  margin: 0 0 2px 56px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.8rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.message__reply:hover {
+  color: var(--fg);
+}
+
+.message__reply-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.message__forwarded {
+  margin: 0 0 2px;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+/* 답장한 원래 메시지로 이동했을 때 잠깐 강조 */
+.message[data-highlight='true'] {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  transition: background 0.3s;
+}
+
+/* 입력창 위 답장 표시 */
+.composer__reply {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+  padding: 6px 10px;
+  border-left: 3px solid var(--accent);
+  border-radius: 4px;
+  background: var(--bg-input);
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.composer__reply-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.composer__send {
+  flex: none;
+  width: 40px;
+  height: 40px;
+  color: var(--accent);
+  font-size: 18px;
+}
+
+.composer__send:disabled {
+  color: var(--muted);
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* 우클릭 메뉴: 누른 자리에 뜬다 */
+.context-menu {
+  position: fixed;
+  top: auto;
+  right: auto;
+  z-index: 60;
+}
+
+/* 사용자 정보 팝업 */
+.profile-popup {
+  position: fixed;
+  z-index: 60;
+  display: grid;
+  gap: 12px;
+  width: 260px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 0.3);
+}
+
+.profile-popup__head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.profile-popup__names {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.profile-popup__names strong {
+  overflow: hidden;
+  font-size: 1.05rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.profile-popup__names a {
+  color: var(--muted);
+  font-size: 0.8rem;
+  text-decoration: none;
+}
+
+.profile-popup__names a:hover {
+  color: var(--accent);
+}
+
+.profile-popup__status {
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.profile-popup__status::before {
+  content: '● ';
+}
+
+.profile-popup__status[data-online='true']::before {
+  color: var(--ok);
+}
+
+.profile-popup__roles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.role-tag {
+  padding: 1px 8px;
+  border: 1px solid var(--role-color, var(--border));
+  border-radius: 999px;
+  font-size: 0.75rem;
+}
+
+/* 메시지 전달 */
+.forward-preview {
+  max-height: 80px;
+  margin: 0;
+  padding: 6px 10px;
+  overflow: hidden;
+  border-left: 3px solid var(--border);
+  color: var(--muted);
+  font-size: 0.85rem;
+  white-space: pre-wrap;
+}
+
+.forward-list {
+  display: grid;
+  gap: 2px;
+  max-height: 40vh;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+  scrollbar-width: none;
+}
+
+.forward-list::-webkit-scrollbar {
+  display: none;
+}
+
+.forward-list__item {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--fg);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.forward-list__item:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+
+.forward-list__item small {
+  color: var(--muted);
+}
+
+.forward-list__item em {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.members-toggle[aria-pressed='true'] {
+  background: var(--bg-active);
+  color: var(--fg);
+}
+
+.message__reply strong {
+  flex: none;
+  white-space: nowrap;
+}
+
+/* ── 패널 옮기기·분리 ─────────────── */
+
+.split-host {
+  position: relative;
+  min-width: 0;
+  height: 100%;
+}
+
+.split--single {
+  display: flex;
+  flex-direction: column;
+}
+
+.split--single > * {
+  flex: 1;
+  min-height: 0;
+}
+
+/* 머리글 왼쪽 손잡이: ⠿ 끌기, ⧉ 새 창 */
+.panel-handle {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 2px;
+  margin-right: 4px;
+}
+
+.panel-handle__grip {
+  padding: 2px 4px;
+  border-radius: 4px;
+  color: var(--muted);
+  cursor: grab;
+}
+
+.panel-handle__grip:hover {
+  background: var(--bg-hover);
+  color: var(--fg);
+}
+
+.panel-handle__popout {
+  width: 24px;
+  height: 24px;
+  font-size: 14px;
+}
+
+/* 끄는 동안: 분할 영역 전체가 놓을 자리. 가장 가까운 가장자리 쪽 절반을 파랗게 보여 준다 */
+.split-drop {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+}
+
+.split-drop__preview {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  border: 2px dashed var(--accent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  color: var(--accent);
+  font-weight: 700;
+  pointer-events: none;
+}
+
+.split-drop__preview[data-edge='left'] {
+  inset: 4px 50% 4px 4px;
+}
+
+.split-drop__preview[data-edge='right'] {
+  inset: 4px 4px 4px 50%;
+}
+
+.split-drop__preview[data-edge='top'] {
+  inset: 4px 4px 50% 4px;
+}
+
+.split-drop__preview[data-edge='bottom'] {
+  inset: 50% 4px 4px 4px;
+}
+
+.split__notice {
+  position: fixed;
+  bottom: 16px;
+  left: 50%;
+  z-index: 70;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--bg-active);
+  color: var(--fg);
+  font-size: 0.85rem;
+  transform: translateX(-50%);
+}
+
+.view-toggles__button--solo {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+/* 분리한 창: 패널 하나를 창 가득 */
+.popout {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+.popout > .chat,
+.popout > .plaza-panel {
+  flex: 1;
+  min-height: 0;
+}
+
+.popout__status {
+  margin: auto;
+  color: var(--muted);
+}
+
+/* 화면 공유 미리보기: 공유 중인 참여자 위에 마우스를 올리면 옆에 작게 */
+.share-preview {
+  position: fixed;
+  z-index: 55;
+  display: grid;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  box-shadow: 0 10px 28px rgb(0 0 0 / 0.35);
+  pointer-events: none;
+}
+
+.share-preview__title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 0.8rem;
+}
+
+.share-preview__stage {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border-radius: 6px;
+  background: #000;
+  color: #bbb;
+  font-size: 0.75rem;
+  text-align: center;
+}
+
+.share-preview__stage video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.live-wrap {
+  display: inline-flex;
+}
+
 /* 데스크톱 앱 업데이트 안내 (화면 위 가운데) */
 .update-notice {
   position: fixed;

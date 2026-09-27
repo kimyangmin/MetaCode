@@ -13,6 +13,7 @@ import { AuthManager } from './auth';
 import { allowPermission } from './permissions';
 import { createTokenStorage } from './token-storage';
 import { AutoUpdate } from './updater';
+import { isPopoutUrl } from './windows';
 
 /**
  * 앱 창은 웹 화면을 연다. 개발 중에는 web 개발 서버, 설치 파일로 배포한 앱은 운영 사이트다
@@ -63,6 +64,41 @@ function focusMainWindow() {
   mainWindow.focus();
 }
 
+/** 모든 앱 창(메인, 분리한 창)의 보안 설정. 원격 화면에 Node 권한을 주지 않는다 */
+const webPreferences = () => ({
+  preload: path.join(__dirname, '../preload/index.js'),
+  contextIsolation: true,
+  nodeIntegration: false,
+  sandbox: true,
+});
+
+/**
+ * 창이 열거나 이동할 수 있는 곳을 막는다.
+ * - 분리한 창(/popout/)은 같은 보안 설정의 앱 창으로 열고, 그 창에도 같은 규칙을 건다.
+ * - 그 밖의 링크는 시스템 브라우저로 연다. 앱 화면 밖으로는 이동하지 못한다.
+ */
+function guardWindow(win: BrowserWindow) {
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (isPopoutUrl(url, WEB_ORIGIN)) {
+      return {
+        action: 'allow',
+        overrideBrowserWindowOptions: {
+          minWidth: 360,
+          minHeight: 400,
+          autoHideMenuBar: true,
+          webPreferences: webPreferences(),
+        },
+      };
+    }
+    if (url.startsWith('https://') || url.startsWith('http://')) void shell.openExternal(url);
+    return { action: 'deny' };
+  });
+  win.webContents.on('did-create-window', (child) => guardWindow(child));
+  win.webContents.on('will-navigate', (event, url) => {
+    if (!isAppUrl(url)) event.preventDefault();
+  });
+}
+
 function createMainWindow(): BrowserWindow {
   const win = new BrowserWindow({
     width: 1280,
@@ -70,22 +106,9 @@ function createMainWindow(): BrowserWindow {
     minWidth: 800,
     minHeight: 600,
     title: 'MetaCode',
-    webPreferences: {
-      preload: path.join(__dirname, '../preload/index.js'),
-      contextIsolation: true,
-      nodeIntegration: false,
-      sandbox: true,
-    },
+    webPreferences: webPreferences(),
   });
-
-  // 외부 링크는 앱 창이 아니라 시스템 브라우저로 연다.
-  win.webContents.setWindowOpenHandler(({ url }) => {
-    if (url.startsWith('https://') || url.startsWith('http://')) void shell.openExternal(url);
-    return { action: 'deny' };
-  });
-  win.webContents.on('will-navigate', (event, url) => {
-    if (!isAppUrl(url)) event.preventDefault();
-  });
+  guardWindow(win);
 
   void win.loadURL(WEB_URL);
 

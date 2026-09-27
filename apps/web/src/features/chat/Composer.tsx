@@ -1,4 +1,5 @@
-import { MESSAGE_MAX_LENGTH } from '@metacode/shared';
+import { MESSAGE_MAX_LENGTH, type MessageDto } from '@metacode/shared';
+import { displayName } from '../../ui/format';
 import {
   type ClipboardEvent,
   type KeyboardEvent,
@@ -24,6 +25,9 @@ interface ComposerProps {
   onAddFiles(files: File[]): void;
   onRemoveDraft(localId: string): void;
   onRetryDraft(localId: string): void;
+  /** 답장하는 중이면 원래 메시지 (입력창 위에 표시) */
+  replyTo: MessageDto | null;
+  onCancelReply(): void;
 }
 
 /**
@@ -58,6 +62,14 @@ export function Composer(props: ComposerProps) {
     previousDraftCount.current = draftCount;
   }, [draftCount]);
 
+  // 답장을 누르면 바로 쓸 수 있게 입력창으로 간다.
+  const replyId = props.replyTo?.id;
+  useEffect(() => {
+    if (replyId) ref.current?.focus();
+  }, [replyId]);
+
+  const canSend = !uploading && (value.trim().length > 0 || hasReadyAttachments);
+
   const submit = () => {
     const content = value.trim();
     if (uploading || (!content && !hasReadyAttachments)) return;
@@ -66,6 +78,10 @@ export function Composer(props: ComposerProps) {
   };
 
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Escape' && props.replyTo) {
+      props.onCancelReply();
+      return;
+    }
     if (e.key !== 'Enter' || e.shiftKey) return;
     if (e.nativeEvent.isComposing || e.keyCode === 229) return;
     e.preventDefault();
@@ -98,6 +114,25 @@ export function Composer(props: ComposerProps) {
             />
           ))}
         </ul>
+      )}
+      {props.replyTo && (
+        <div className="composer__reply">
+          <span>
+            ↩ <strong>{displayName(props.replyTo.author)}</strong>님에게 답장
+          </span>
+          <span className="composer__reply-text">
+            {props.replyTo.content || `📎 파일 ${props.replyTo.attachments.length}개`}
+          </span>
+          <button
+            type="button"
+            className="icon-button"
+            onClick={props.onCancelReply}
+            aria-label="답장 취소"
+            title="답장 취소 (Esc)"
+          >
+            ×
+          </button>
+        </div>
       )}
       {props.notice && (
         <p className="composer__notice" role="alert">
@@ -139,6 +174,15 @@ export function Composer(props: ComposerProps) {
           onPaste={onPaste}
           aria-label={placeholder}
         />
+        <button
+          type="submit"
+          className="icon-button composer__send"
+          disabled={!canSend}
+          aria-label="보내기"
+          title="보내기 (Enter)"
+        >
+          ➤
+        </button>
       </div>
     </form>
   );

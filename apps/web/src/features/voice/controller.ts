@@ -210,6 +210,20 @@ export class VoiceController {
     this.applyVolumes();
   }
 
+  /**
+   * 마우스를 올린 동안 화면 공유를 작게 미리 본다 (같은 통화에 있을 때만, 영상만 받는다).
+   * null이면 미리보기를 닫고 구독을 끊는다.
+   */
+  preview(userId: string | null): void {
+    if (store().previewing === userId) return;
+    const self = userId === this.meId;
+    store().patch({
+      previewing: userId,
+      previewScreen: self ? (this.connection?.localScreen() ?? null) : null,
+    });
+    this.applyVolumes();
+  }
+
   /** 브라우저가 소리 재생을 막았을 때 사용자가 누른 버튼에서 부른다 */
   startAudio(): void {
     void this.connection?.startAudio().then(() => store().patch({ playbackBlocked: false }));
@@ -268,9 +282,9 @@ export class VoiceController {
       },
       onPlaybackBlocked: (blocked) => store().patch({ playbackBlocked: blocked }),
       onScreen: (identity, stream) => {
-        if (this.connection === conn && store().watching === identity) {
-          store().patch({ screen: stream });
-        }
+        if (this.connection !== conn) return;
+        if (store().watching === identity) store().patch({ screen: stream });
+        if (store().previewing === identity) store().patch({ previewScreen: stream });
       },
       onScreenShareEnded: () => {
         if (this.connection !== conn || !store().sharing) return;
@@ -311,7 +325,13 @@ export class VoiceController {
   }
 
   private closeScreens() {
-    store().patch({ sharing: false, watching: null, screen: null });
+    store().patch({
+      sharing: false,
+      watching: null,
+      screen: null,
+      previewing: null,
+      previewScreen: null,
+    });
   }
 
   private onSpeaking(value: boolean) {
@@ -343,11 +363,11 @@ export class VoiceController {
   }
 
   private applyVolumes() {
-    const { session, calls, deafened, gains, watching } = store();
+    const { session, calls, deafened, gains, watching, previewing } = store();
     if (!session) return;
     const proximity = calls[session.channelId]?.proximity ?? false;
     this.connection?.applyVolumes((identity, kind) =>
-      trackVolume(identity, kind, { deafened, proximity, gains, watching }),
+      trackVolume(identity, kind, { deafened, proximity, gains, watching, previewing }),
     );
   }
 

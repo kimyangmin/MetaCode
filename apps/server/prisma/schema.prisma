@@ -56,6 +56,7 @@ model Community {
   members  CommunityMember[]
   channels Channel[]
   invites  Invite[]
+  roles    Role[]
 
   @@map("communities")
 }
@@ -66,12 +67,58 @@ model CommunityMember {
   role        CommunityRole @default(MEMBER)
   joinedAt    DateTime      @default(now()) @map("joined_at")
 
-  community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  community Community    @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  roles     MemberRole[]
 
   @@id([communityId, userId])
   @@index([userId])
   @@map("community_members")
+}
+
+/// 커뮤니티가 만든 역할 (Discord식). 비공개 채널을 어떤 역할에게 보여 줄지 정하는 데 쓴다.
+/// 소유자와 관리자(CommunityMember.role)는 역할과 상관없이 모든 채널을 본다.
+model Role {
+  id          String   @id @default(uuid(7)) @db.Uuid
+  communityId String   @map("community_id") @db.Uuid
+  name        String
+  /// #rrggbb. 멤버 이름 색
+  color       String?
+  position    Int      @default(0)
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  community Community           @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  members   MemberRole[]
+  channels  ChannelRoleAccess[]
+
+  @@unique([communityId, name])
+  @@map("roles")
+}
+
+model MemberRole {
+  communityId String @map("community_id") @db.Uuid
+  userId      String @map("user_id") @db.Uuid
+  roleId      String @map("role_id") @db.Uuid
+
+  member CommunityMember @relation(fields: [communityId, userId], references: [communityId, userId], onDelete: Cascade)
+  role   Role            @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, userId])
+  @@index([communityId, userId])
+  @@map("member_roles")
+}
+
+/// 비공개 채널을 볼 수 있는 역할
+model ChannelRoleAccess {
+  channelId String @map("channel_id") @db.Uuid
+  roleId    String @map("role_id") @db.Uuid
+
+  channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  role    Role    @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([channelId, roleId])
+  @@index([roleId])
+  @@map("channel_role_access")
 }
 
 model Invite {
@@ -98,15 +145,18 @@ model Channel {
   name           String?
   position       Int         @default(0)
   proximityVoice Boolean     @default(false) @map("proximity_voice")
+  /// 비공개 채널: 소유자, 관리자, roleAccess의 역할을 가진 멤버만 본다 (커뮤니티 채널만)
+  private        Boolean     @default(false)
   /// 1:1 DM 중복 방지: 두 사용자 ID를 정렬해 이은 값
   dmKey          String?     @unique @map("dm_key")
   createdAt      DateTime    @default(now()) @map("created_at")
 
-  community   Community?         @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  community   Community?          @relation(fields: [communityId], references: [id], onDelete: Cascade)
   members     ChannelMember[]
   messages    Message[]
   readStates  ChannelReadState[]
   attachments Attachment[]
+  roleAccess  ChannelRoleAccess[]
 
   @@index([communityId])
   @@map("channels")
@@ -131,11 +181,17 @@ model Message {
   channelId String   @map("channel_id") @db.Uuid
   authorId  String   @map("author_id") @db.Uuid
   content   String
+  /// 답장한 메시지. 원래 메시지가 지워지면 비운다
+  replyToId String?  @map("reply_to_id") @db.Uuid
+  /// 다른 곳에서 전달한 메시지
+  forwarded Boolean  @default(false)
   createdAt DateTime @default(now()) @map("created_at")
 
   channel     Channel      @relation(fields: [channelId], references: [id], onDelete: Cascade)
   author      User         @relation(fields: [authorId], references: [id], onDelete: Cascade)
   attachments Attachment[]
+  replyTo     Message?     @relation("Replies", fields: [replyToId], references: [id], onDelete: SetNull)
+  replies     Message[]    @relation("Replies")
 
   @@index([channelId, id(sort: Desc)])
   @@map("messages")

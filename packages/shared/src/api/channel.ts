@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { ChannelType } from '../domain/channel.js';
+import { roleIdsSchema } from './community.js';
 import type { UserProfile } from './user.js';
 
 /**
@@ -16,7 +17,19 @@ export const createChannelSchema = z.object({
   name: channelNameSchema,
   /** 텍스트 채널(대화 기록) 또는 음성 채널(통화) */
   type: z.enum(['TEXT', 'VOICE']).default('TEXT'),
+  /** 비공개면 소유자, 관리자, roleIds의 역할을 가진 멤버만 본다 */
+  private: z.boolean().default(false),
+  roleIds: roleIdsSchema.default([]),
 });
+
+/** 채널 설정 바꾸기 (관리자). 빠진 항목은 그대로 둔다 */
+export const updateChannelSchema = z.object({
+  name: channelNameSchema.optional(),
+  private: z.boolean().optional(),
+  roleIds: roleIdsSchema.optional(),
+});
+
+export type UpdateChannelRequest = z.input<typeof updateChannelSchema>;
 
 export type CreateChannelRequest = z.infer<typeof createChannelSchema>;
 
@@ -30,6 +43,10 @@ export interface ChannelSummary {
   lastMessageId: string | null;
   /** 내가 마지막으로 읽은 메시지 ID */
   lastReadMessageId: string | null;
+  /** 비공개 채널 (커뮤니티 채널만). DM은 false */
+  private: boolean;
+  /** 비공개 채널을 볼 수 있는 역할 */
+  roleIds: string[];
 }
 
 /** DM과 그룹 DM. 참여자에는 나도 포함된다. */

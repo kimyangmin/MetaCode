@@ -18,6 +18,7 @@ import { DmSidebar } from './features/dms/DmSidebar';
 import { PlazaPanel } from './features/metaverse/PlazaPanel';
 import { CallButton } from './features/voice/CallButton';
 import { SplitView } from './layout/SplitView';
+import { useUiStore } from './stores/ui';
 import { dmTitle } from './ui/format';
 
 /** 첫 화면: 첫 커뮤니티로, 없으면 DM으로 */
@@ -34,6 +35,7 @@ export function CommunityPage() {
   const communities = useCommunities();
   const community = communities.data?.find((c) => c.id === communityId);
   const members = useMembers(communityId ?? '');
+  const membersHidden = useUiStore((s) => s.membersHidden);
 
   if (!communities.data) return <Loading />;
   // 나갔거나 삭제된 커뮤니티
@@ -48,7 +50,11 @@ export function CommunityPage() {
     <>
       <CommunitySidebar community={community} activeChannelId={channel.id} />
       <SplitView
-        chat={(actions) => (
+        popoutPaths={{
+          chat: `/popout/chat/${channel.id}`,
+          plaza: `/popout/plaza/community:${community.id}`,
+        }}
+        chat={({ actions, handle }) => (
           <ChatView
             key={channel.id}
             channelId={channel.id}
@@ -57,10 +63,19 @@ export function CommunityPage() {
             me={me}
             lastReadMessageId={channel.lastReadMessageId}
             people={members.data?.map((m) => m.user) ?? []}
-            actions={actions}
+            communityId={community.id}
+            handle={handle}
+            actions={
+              actions && (
+                <>
+                  <MembersToggle />
+                  {actions}
+                </>
+              )
+            }
           />
         )}
-        plaza={(actions) => (
+        plaza={({ actions, handle }) => (
           <PlazaPanel
             plazaId={`community:${community.id}`}
             title={`${community.name} 광장`}
@@ -68,11 +83,19 @@ export function CommunityPage() {
             me={me}
             channelLabels={textChannelLabels(community)}
             voiceLabels={voiceChannelLabels(community)}
-            actions={actions}
+            handle={handle}
+            actions={
+              actions && (
+                <>
+                  <MembersToggle />
+                  {actions}
+                </>
+              )
+            }
           />
         )}
       />
-      <MemberList communityId={community.id} />
+      {!membersHidden && <MemberList communityId={community.id} />}
     </>
   );
 }
@@ -90,7 +113,8 @@ export function DmPage() {
       <DmSidebar activeId={channelId} />
       {dm ? (
         <SplitView
-          chat={(actions) => (
+          popoutPaths={{ chat: `/popout/chat/${dm.id}`, plaza: `/popout/plaza/dm:${dm.id}` }}
+          chat={({ actions, handle }) => (
             <ChatView
               key={dm.id}
               channelId={dm.id}
@@ -99,6 +123,7 @@ export function DmPage() {
               me={me}
               lastReadMessageId={dm.lastReadMessageId}
               people={dm.participants}
+              handle={handle}
               actions={
                 <>
                   <CallButton channelId={dm.id} />
@@ -107,7 +132,7 @@ export function DmPage() {
               }
             />
           )}
-          plaza={(actions) => (
+          plaza={({ actions, handle }) => (
             <PlazaPanel
               plazaId={`dm:${dm.id}`}
               title="모닥불 캠프"
@@ -115,6 +140,7 @@ export function DmPage() {
               me={me}
               channelLabels={new Map([[dm.id, null]])}
               voiceLabels={new Map([[dm.id, '📞 통화 중']])}
+              handle={handle}
               actions={actions}
             />
           )}
@@ -193,15 +219,33 @@ export function InvitePage() {
   );
 }
 
+/** 오른쪽 멤버 목록 보이기/숨기기 (기억한다) */
+function MembersToggle() {
+  const hidden = useUiStore((s) => s.membersHidden);
+  const toggle = useUiStore((s) => s.toggleMembers);
+  return (
+    <button
+      type="button"
+      className="icon-button members-toggle"
+      aria-pressed={!hidden}
+      onClick={toggle}
+      title={hidden ? '멤버 목록 보이기' : '멤버 목록 숨기기'}
+      aria-label={hidden ? '멤버 목록 보이기' : '멤버 목록 숨기기'}
+    >
+      👥
+    </button>
+  );
+}
+
 /** 분수 광장에는 커뮤니티의 모든 텍스트 채널 메시지가 채널 이름과 함께 뜬다 */
-function textChannelLabels(community: CommunitySummary): Map<string, string> {
+export function textChannelLabels(community: CommunitySummary): Map<string, string> {
   return new Map(
     community.channels.filter((c) => c.type === 'TEXT').map((c) => [c.id, `#${c.name}`]),
   );
 }
 
 /** 광장 캐릭터 위에 참여 중인 음성 채널을 보여 준다 */
-function voiceChannelLabels(community: CommunitySummary): Map<string, string> {
+export function voiceChannelLabels(community: CommunitySummary): Map<string, string> {
   return new Map(
     community.channels.filter((c) => c.type === 'VOICE').map((c) => [c.id, `🔊 ${c.name}`]),
   );

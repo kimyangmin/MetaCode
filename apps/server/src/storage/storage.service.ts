@@ -1,4 +1,5 @@
 import {
+  CopyObjectCommand,
   DeleteObjectsCommand,
   GetObjectCommand,
   HeadObjectCommand,
@@ -104,6 +105,17 @@ export class StorageService {
   async write(key: string, body: Buffer, contentType: string): Promise<void> {
     await this.client.send(
       new PutObjectCommand({ Bucket: this.bucket, Key: key, Body: body, ContentType: contentType }),
+    );
+  }
+
+  /** 같은 버킷 안에서 복사한다 (메시지 전달: 원래 파일이 지워져도 전달한 쪽은 남도록) */
+  async copy(from: string, to: string): Promise<void> {
+    await this.client.send(
+      new CopyObjectCommand({
+        Bucket: this.bucket,
+        CopySource: `${this.bucket}/${encodeURIComponent(from)}`,
+        Key: to,
+      }),
     );
   }
 

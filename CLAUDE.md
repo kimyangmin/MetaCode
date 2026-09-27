@@ -105,6 +105,7 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
   - LiveKit 클라이언트(약 500KB)는 처음 통화에 들어갈 때 불러옵니다. 통화 제어는 React 밖의 `VoiceController`, 상태는 zustand(`useVoiceStore`)에 둡니다.
   - 로컬: `infra/docker-compose.yml`의 `livekit` (키 `devkey`, NODE_IP 127.0.0.1). 운영: `COMPOSE_PROFILES=voice`일 때만 뜨고, 신호는 Caddy가 `https://<API_DOMAIN>/livekit`으로 넘깁니다 (livekit-client가 주소의 경로를 유지함). 키가 비어 있으면 서버는 음성만 끈 채로 뜹니다.
   - 화면 공유: 통화 중인 사람이 음성 패널의 🖥️로 공유합니다 (영상 + 가능하면 시스템 소리). 상태는 `voice:update`의 `sharing`으로 알려 목록과 광장(`🖥️`)에 보이고, 목록의 LIVE를 누르면 보기 창이 뜹니다 (그 통화에 없으면 먼저 들어감). 영상과 공유 소리는 **보고 있는 동안에만** 구독합니다 (`trackVolume`). 입장권은 마이크, 화면 공유 영상, 화면 공유 소리만 올릴 수 있습니다.
+  - 미리보기: 참여자 목록(과 DM 머리글)의 공유 중인 사람에게 마우스를 0.3초 올리면 옆에 작게 띄웁니다. 같은 통화에 있을 때만 그 사람의 화면 영상을 받고(소리는 안 받음), 마우스를 떼면 구독을 끊습니다 (`previewing`, `SharePreview.tsx`).
   - 데스크톱 화면 공유: Electron의 getDisplayMedia는 고르는 창이 없어서, 웹이 브리지(`screen.getSources`)로 받은 목록을 보여 주고 고른 것(`screen.select`, 30초 유효)을 메인 프로세스의 `setDisplayMediaRequestHandler`가 넘겨줍니다. 고르지 않은 요청과 앱 화면이 아닌 요청은 거절합니다. 시스템 소리(loopback)는 Windows에서만 됩니다. 데스크톱 0.1.0에는 이 브리지가 없어서 "새 버전 설치" 안내가 뜹니다.
   - 데스크톱: Electron은 권한 처리기가 없으면 모든 권한을 허락하므로, 앱 화면에만 마이크·스피커 선택·클립보드 쓰기를 허락하고 나머지(카메라 포함)는 거절합니다 (`apps/desktop/src/main/permissions.ts`).
   - 로컬에서 두 사람 음성 확인: 브라우저 패널은 마이크를 막으므로, 두 번째 사용자는 `@livekit/rtc-node`로 음을 보내는 스크립트로 확인했습니다. 실제 마이크로 말하는 확인은 사람이 해야 합니다.
@@ -119,6 +120,22 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
   - 코드 서명을 하지 않아서 받은 설치 파일의 서명은 확인하지 않습니다. 서명을 도입하면 `electron-builder.yml`의 `win.publisherName`을 넣어 확인하게 합니다.
   - 0.2.0 이하 앱에는 `updates` 브리지가 없어서, 웹이 "새 버전 받기"(Releases 링크) 안내를 띄웁니다.
   - 업데이트 캐시 폴더 이름은 패키지 이름에서 나와 `@metacodedesktop-updater`입니다 (`%LOCALAPPDATA%` 아래).
+- **역할과 채널 권한 (Phase 7):** `apps/server/src/chat/roles.service.ts`, `access.service.ts`, 웹 `features/communities/CommunitySettings.tsx`, `ChannelSettings.tsx`
+  - 소유자와 관리자(`CommunityMember.role`)는 역할·채널을 관리하고 모든 채널을 봅니다. 관리자는 소유자만 정합니다. 사용자 정의 역할(`Role`)은 비공개 채널을 누구에게 보여 줄지 정하는 데 쓰고, 멤버 이름 색도 정합니다 (가장 위 역할의 색).
+  - 채널이 보이는지는 `AccessService` 한 곳에서 판단합니다: 공개 채널은 멤버 전원, 비공개 채널은 관리자 + 허용된 역할을 가진 멤버. 목록 조회(`visibleChannelsWhere`), 접속할 때 들어가는 채널 방, 메시지·기록·첨부·통화(`getChannel`)가 모두 이 판단을 씁니다. 광장 말풍선도 채널 방으로 오는 `message:created`라서 그대로 따릅니다.
+  - 권한이 바뀌면(역할 주기/빼기, 역할 지우기, 관리자 변경, 채널 설정, 비공개 채널 만들기) `RolesService.syncAccess`가 멤버마다 채널 방을 다시 맞추고, 볼 수 없게 된 음성 채널의 통화에서 빼고, `community:updated`로 알려 클라이언트가 커뮤니티 정보를 다시 받게 합니다.
+  - 채널 삭제(마지막 텍스트 채널은 못 지움, 저장소 파일과 통화도 정리, `channel:deleted`), 멤버 내보내기(소유자는 못 내보냄, 관리자는 소유자만 내보냄, 나가기와 같은 처리), 역할·채널 순서 바꾸기(전체 목록을 새 순서로 보내고 같은 항목인지 확인)도 소유자·관리자만 합니다. 웹의 끌어서 순서 바꾸기는 `ui/useDragSort.ts`(HTML5 드래그, 파일 끌어 놓기와 구분하는 데이터 형식)입니다.
+  - 테스트 주의: "이벤트가 오지 않는다"는 확인은 **보내기 전에** `expectNoEvent`를 걸어 둡니다. 보내기 확인(ack)을 기다린 뒤에 걸면 이미 도착한 이벤트를 놓쳐서 누수를 잡지 못합니다 (실제로 여러 테스트가 그랬고 고쳤음).
+- **채팅 편의:**
+  - 답장: `message:send`의 `replyToId`(같은 채널의 메시지만), DTO의 `replyTo`(앞 120자, 원래 메시지가 지워지면 null). 전달: `message:forward`(볼 수 있는 메시지를 쓸 수 있는 채널로, 보낸 사람은 전달한 사람, `forwarded: true`). 전달할 때 첨부는 저장소 파일까지 복사해서 원래 채널이 지워져도 남습니다.
+  - 메시지 우클릭 메뉴(답장, 전달, 텍스트 복사, 링크 복사). 글을 골라 둔 상태면 브라우저 기본 메뉴를 씁니다.
+  - 링크: `ui/links.ts`의 `splitLinks`로 http(s) 주소만 나눠 React 요소로 그립니다 (HTML을 해석하지 않음, javascript: 주소는 글자로 남음). 새 창으로 열리고, 데스크톱은 setWindowOpenHandler가 시스템 브라우저로 엽니다.
+  - 앱 화면의 글자는 고르거나 끌 수 없게(`user-select: none`) 하고, 메시지 내용·입력칸·정보 팝업만 고를 수 있습니다.
+  - 사용자 정보 팝업(`stores/profile.ts`, `ProfilePopup`): 메시지·멤버 목록·통화 참여자의 아바타나 이름을 누르면 뜹니다. 멤버 목록은 예전처럼 바로 DM을 열지 않고 팝업의 "메시지 보내기"로 엽니다. 멤버 목록 보이기/숨기기(👥)는 localStorage에 기억합니다.
+- **패널 배치와 분리:** `layout/SplitView.tsx`, `layout/arrangement.ts`, `stores/layout.ts`, `layout/Popout.tsx`
+  - 머리글의 ⠿를 끌어 분할 영역의 가장자리(상하좌우 중 가장 가까운 쪽)에 놓으면 그쪽으로 옮깁니다. 배치(방향, 앞 패널)는 localStorage에 기억하고, 크기는 방향별로 기억합니다.
+  - 창 밖에 놓거나(드래그 끝의 화면 좌표가 창 밖이고 아무 데도 놓지 않았을 때) ⧉를 누르면 `/popout/chat/:channelId`, `/popout/plaza/:plazaId`를 새 창으로 엽니다. 분리한 창은 앱 전체를 따로 띄워 실시간 연결을 따로 엽니다. 메인 창은 그 패널을 숨기고, 분리한 창이 닫히면(0.8초마다 확인) 다시 보여 줍니다. 브라우저가 드래그 끝의 팝업을 막으면 ⧉로 다시 시도하라고 안내합니다. 마지막 패널은 분리하지 않습니다.
+  - 데스크톱: `setWindowOpenHandler`가 앱 출처의 `/popout/` 주소만 같은 보안 설정(preload, sandbox)의 앱 창으로 열고, 그 창에도 같은 규칙을 겁니다 (`main/windows.ts`). 다른 http(s) 주소는 시스템 브라우저로 엽니다.
 - **Windows에서 파일 수정:** Windows PowerShell 5.1의 `Get-Content`/`Set-Content`는 UTF-8 한글을 깨뜨립니다. 파일 수정은 편집 도구나 bash를 씁니다.
 
 ## 확정된 결정
@@ -250,7 +267,8 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
 - `User` (구현됨): githubId, username, displayName, avatarUrl. characterId는 Phase 6에서 추가
 - `RefreshToken` (구현됨): userId, tokenHash, familyId, client, expiresAt, revokedAt
 - `Community` (구현됨): name, ownerId / `CommunityMember`: userId, communityId, role(`OWNER` | `ADMIN` | `MEMBER`) / `Invite`: code(8자), expiresAt(7일), uses
-- `Channel` (구현됨): type(`TEXT` | `VOICE` | `DM` | `GROUP_DM`), communityId(DM이면 null), name, position, proximityVoice, dmKey(1:1 DM 중복 방지)
+- `Role` (구현됨): communityId, name(커뮤니티 안에서 고유), color(#rrggbb), position / `MemberRole`: 멤버 ↔ 역할 / `ChannelRoleAccess`: 비공개 채널 ↔ 볼 수 있는 역할
+- `Channel` (구현됨): type(`TEXT` | `VOICE` | `DM` | `GROUP_DM`), communityId(DM이면 null), name, position, proximityVoice, private(비공개 채널), dmKey(1:1 DM 중복 방지)
   - `ChannelMember`: DM 참여자. 커뮤니티 채널의 접근은 커뮤니티 멤버십(추후 채널 권한)으로 판단
   - 광장은 테이블이 아닙니다. 채널에서 계산합니다: `TEXT`·`VOICE` → `community:<communityId>`(분수 광장), `DM`·`GROUP_DM` → `dm:<channelId>`(모닥불 캠프)
 - `Message` (구현됨): channelId, authorId, content(최대 4000자), createdAt. id가 UUIDv7이라 id 순서 = 시간 순서
