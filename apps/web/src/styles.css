@@ -170,6 +170,8 @@ h3 {
 .app {
   display: grid;
   grid-template-columns: 72px 240px minmax(0, 1fr) auto;
+  /* 행 높이를 창 높이로 고정한다. 내용(긴 채팅)이 행을 늘리면 입력창이 화면 밖으로 밀리고 광장이 확대된 것처럼 보인다 */
+  grid-template-rows: minmax(0, 1fr);
   height: 100vh;
   overflow: hidden;
 }
@@ -2255,12 +2257,14 @@ a {
 .split-host {
   position: relative;
   min-width: 0;
+  min-height: 0;
   height: 100%;
 }
 
 .split--single {
   display: flex;
   flex-direction: column;
+  min-height: 0;
 }
 
 .split--single > * {
@@ -2295,15 +2299,10 @@ a {
   font-size: 14px;
 }
 
-/* 끄는 동안: 분할 영역 전체가 놓을 자리. 가장 가까운 가장자리 쪽 절반을 파랗게 보여 준다 */
-.split-drop {
-  position: absolute;
-  inset: 0;
-  z-index: 20;
-}
-
+/* 끄는 동안: 분할 영역 전체가 놓을 자리. 가장 가까운 가장자리 쪽 절반을 파랗게 보여 준다 (드래그를 가로채지 않음) */
 .split-drop__preview {
   position: absolute;
+  z-index: 20;
   display: grid;
   place-items: center;
   border: 2px dashed var(--accent);

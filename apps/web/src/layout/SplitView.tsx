@@ -131,7 +131,31 @@ function SplitPanels({
     chat: defaultLayout?.chat !== 0,
     plaza: defaultLayout?.plaza !== 0,
   });
-  const [dragging, setDragging] = useState<PanelKey | null>(null);
+  const hostRef = useRef<HTMLDivElement>(null);
+  // 끌고 있는 패널. 드래그를 시작할 때 화면을 바꾸지 않도록 상태가 아니라 ref에 둔다 (onDragStart 설명).
+  const dragged = useRef<PanelKey | null>(null);
+  const [drop, setDrop] = useState<{ panel: PanelKey; edge: Edge } | null>(null);
+
+  const edgeOf = (e: DragEvent) =>
+    edgeAt(hostRef.current!.getBoundingClientRect(), e.clientX, e.clientY);
+
+  // 놓을 자리는 분할 영역 전체다. 안쪽 요소의 dragover가 올라오므로 따로 덮개를 두지 않는다.
+  const onDragOver = (e: DragEvent) => {
+    const panel = dragged.current;
+    if (!panel || !e.dataTransfer.types.includes(PANEL_TYPE)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    const edge = edgeOf(e);
+    if (drop?.panel !== panel || drop.edge !== edge) setDrop({ panel, edge });
+  };
+
+  const onDrop = (e: DragEvent) => {
+    const panel = dragged.current;
+    if (!panel || !e.dataTransfer.types.includes(PANEL_TYPE)) return;
+    e.preventDefault();
+    useLayoutStore.getState().setArrangement(arrangementFor(panel, edgeOf(e)));
+    setDrop(null);
+  };
 
   const track = (key: PanelKey) => (size: { asPercentage: number }) =>
     setOpen((current) => {
@@ -175,7 +199,10 @@ function SplitPanels({
     handle: (
       <PanelHandle
         panel={key}
-        onDragChange={setDragging}
+        onDragChange={(panel) => {
+          dragged.current = panel;
+          if (!panel) setDrop(null);
+        }}
         // 다른 패널이 닫혀 있으면 메인 창이 비므로 분리하지 않는다.
         onDetach={open[otherPanel(key)] ? (at) => onDetach(key, at) : undefined}
       />
@@ -205,7 +232,15 @@ function SplitPanels({
   );
 
   return (
-    <div className="split-host">
+    <div
+      ref={hostRef}
+      className="split-host"
+      onDragOver={onDragOver}
+      onDragLeave={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDrop(null);
+      }}
+      onDrop={onDrop}
+    >
       <Group
         className="split"
         orientation={orientation}
@@ -218,7 +253,11 @@ function SplitPanels({
         <Separator className="split__separator" />
         {panel(second)}
       </Group>
-      {dragging && <DropZones dragged={dragging} onDone={() => setDragging(null)} />}
+      {drop && (
+        <div className="split-drop__preview" data-edge={drop.edge}>
+          {LABEL[drop.panel]}
+        </div>
+      )}
     </div>
   );
 }
@@ -233,6 +272,14 @@ function PanelHandle({
   onDragChange(panel: PanelKey | null): void;
   onDetach?: (at?: { x: number; y: number }) => void;
 }) {
+  const onDragStart = (e: DragEvent) => {
+    e.dataTransfer.setData(PANEL_TYPE, panel);
+    e.dataTransfer.effectAllowed = 'move';
+    // 여기서는 화면을 바꾸지 않는다. Chromium은 dragstart 직후 누른 자리에 끄는 요소가 그대로 있는지
+    // 확인하고, 다른 요소(예: 놓을 자리 덮개)가 가리면 드래그를 바로 취소한다 (실제로 그래서 끌리지 않았음).
+    onDragChange(panel);
+  };
+
   const onDragEnd = (e: DragEvent) => {
     onDragChange(null);
     const outside = isOutsideWindow(
@@ -258,11 +305,7 @@ function PanelHandle({
         role="button"
         aria-label={`${LABEL[panel]} 옮기기`}
         title="끌어서 상하좌우로 옮기기 · 창 밖에 놓으면 새 창으로 분리"
-        onDragStart={(e) => {
-          e.dataTransfer.setData(PANEL_TYPE, panel);
-          e.dataTransfer.effectAllowed = 'move';
-          onDragChange(panel);
-        }}
+        onDragStart={onDragStart}
         onDragEnd={onDragEnd}
       >
         ⠿
@@ -279,46 +322,6 @@ function PanelHandle({
         </button>
       )}
     </span>
-  );
-}
-
-/** 패널을 끄는 동안 분할 영역 위에 뜨는 놓을 자리. 가장 가까운 가장자리 쪽 절반을 미리 보여 준다 */
-function DropZones({ dragged, onDone }: { dragged: PanelKey; onDone(): void }) {
-  const [edge, setEdge] = useState<Edge | null>(null);
-  const ref = useRef<HTMLDivElement>(null);
-
-  const onDragOver = (e: DragEvent) => {
-    if (!e.dataTransfer.types.includes(PANEL_TYPE)) return;
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-    const rect = ref.current!.getBoundingClientRect();
-    const next = edgeAt(rect, e.clientX, e.clientY);
-    if (next !== edge) setEdge(next);
-  };
-
-  const onDrop = (e: DragEvent) => {
-    if (!e.dataTransfer.types.includes(PANEL_TYPE) || !edge) return;
-    e.preventDefault();
-    useLayoutStore.getState().setArrangement(arrangementFor(dragged, edge));
-    onDone();
-  };
-
-  return (
-    <div
-      ref={ref}
-      className="split-drop"
-      onDragOver={onDragOver}
-      onDragLeave={(e) => {
-        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setEdge(null);
-      }}
-      onDrop={onDrop}
-    >
-      {edge && (
-        <div className="split-drop__preview" data-edge={edge}>
-          {LABEL[dragged]}
-        </div>
-      )}
-    </div>
   );
 }
 
