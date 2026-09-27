@@ -50,7 +50,11 @@ export function CommunityPage() {
     <>
       <CommunitySidebar community={community} activeChannelId={channel.id} />
       <SplitView
-        chat={(actions) => (
+        popoutPaths={{
+          chat: `/popout/chat/${channel.id}`,
+          plaza: `/popout/plaza/community:${community.id}`,
+        }}
+        chat={({ actions, handle }) => (
           <ChatView
             key={channel.id}
             channelId={channel.id}
@@ -60,15 +64,18 @@ export function CommunityPage() {
             lastReadMessageId={channel.lastReadMessageId}
             people={members.data?.map((m) => m.user) ?? []}
             communityId={community.id}
+            handle={handle}
             actions={
-              <>
-                <MembersToggle />
-                {actions}
-              </>
+              actions && (
+                <>
+                  <MembersToggle />
+                  {actions}
+                </>
+              )
             }
           />
         )}
-        plaza={(actions) => (
+        plaza={({ actions, handle }) => (
           <PlazaPanel
             plazaId={`community:${community.id}`}
             title={`${community.name} 광장`}
@@ -76,6 +83,7 @@ export function CommunityPage() {
             me={me}
             channelLabels={textChannelLabels(community)}
             voiceLabels={voiceChannelLabels(community)}
+            handle={handle}
             actions={
               actions && (
                 <>
@@ -105,7 +113,8 @@ export function DmPage() {
       <DmSidebar activeId={channelId} />
       {dm ? (
         <SplitView
-          chat={(actions) => (
+          popoutPaths={{ chat: `/popout/chat/${dm.id}`, plaza: `/popout/plaza/dm:${dm.id}` }}
+          chat={({ actions, handle }) => (
             <ChatView
               key={dm.id}
               channelId={dm.id}
@@ -114,6 +123,7 @@ export function DmPage() {
               me={me}
               lastReadMessageId={dm.lastReadMessageId}
               people={dm.participants}
+              handle={handle}
               actions={
                 <>
                   <CallButton channelId={dm.id} />
@@ -122,7 +132,7 @@ export function DmPage() {
               }
             />
           )}
-          plaza={(actions) => (
+          plaza={({ actions, handle }) => (
             <PlazaPanel
               plazaId={`dm:${dm.id}`}
               title="모닥불 캠프"
@@ -130,6 +140,7 @@ export function DmPage() {
               me={me}
               channelLabels={new Map([[dm.id, null]])}
               voiceLabels={new Map([[dm.id, '📞 통화 중']])}
+              handle={handle}
               actions={actions}
             />
           )}
@@ -227,14 +238,14 @@ function MembersToggle() {
 }
 
 /** 분수 광장에는 커뮤니티의 모든 텍스트 채널 메시지가 채널 이름과 함께 뜬다 */
-function textChannelLabels(community: CommunitySummary): Map<string, string> {
+export function textChannelLabels(community: CommunitySummary): Map<string, string> {
   return new Map(
     community.channels.filter((c) => c.type === 'TEXT').map((c) => [c.id, `#${c.name}`]),
   );
 }
 
 /** 광장 캐릭터 위에 참여 중인 음성 채널을 보여 준다 */
-function voiceChannelLabels(community: CommunitySummary): Map<string, string> {
+export function voiceChannelLabels(community: CommunitySummary): Map<string, string> {
   return new Map(
     community.channels.filter((c) => c.type === 'VOICE').map((c) => [c.id, `🔊 ${c.name}`]),
   );

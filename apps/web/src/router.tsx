@@ -9,6 +9,7 @@ import {
 } from 'react-router';
 import { CommunityRail } from './features/communities/CommunityRail';
 import { ProfilePopup } from './features/communities/ProfilePopup';
+import { PopoutChat, PopoutPlaza } from './layout/Popout';
 import { CommunityPage, DmPage, HomeRedirect, InvitePage, takePendingInvite } from './pages';
 import { isDesktop } from './platform';
 
@@ -35,6 +36,9 @@ function AppLayout() {
 }
 
 const routes = [
+  // 분리한 창 (채팅이나 광장 하나만)
+  { path: '/popout/chat/:channelId', element: <PopoutChat /> },
+  { path: '/popout/plaza/:plazaId', element: <PopoutPlaza /> },
   {
     path: '/',
     element: <AppLayout />,

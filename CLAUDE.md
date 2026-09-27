@@ -123,6 +123,10 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
   - 링크: `ui/links.ts`의 `splitLinks`로 http(s) 주소만 나눠 React 요소로 그립니다 (HTML을 해석하지 않음, javascript: 주소는 글자로 남음). 새 창으로 열리고, 데스크톱은 setWindowOpenHandler가 시스템 브라우저로 엽니다.
   - 앱 화면의 글자는 고르거나 끌 수 없게(`user-select: none`) 하고, 메시지 내용·입력칸·정보 팝업만 고를 수 있습니다.
   - 사용자 정보 팝업(`stores/profile.ts`, `ProfilePopup`): 메시지·멤버 목록·통화 참여자의 아바타나 이름을 누르면 뜹니다. 멤버 목록은 예전처럼 바로 DM을 열지 않고 팝업의 "메시지 보내기"로 엽니다. 멤버 목록 보이기/숨기기(👥)는 localStorage에 기억합니다.
+- **패널 배치와 분리:** `layout/SplitView.tsx`, `layout/arrangement.ts`, `stores/layout.ts`, `layout/Popout.tsx`
+  - 머리글의 ⠿를 끌어 분할 영역의 가장자리(상하좌우 중 가장 가까운 쪽)에 놓으면 그쪽으로 옮깁니다. 배치(방향, 앞 패널)는 localStorage에 기억하고, 크기는 방향별로 기억합니다.
+  - 창 밖에 놓거나(드래그 끝의 화면 좌표가 창 밖이고 아무 데도 놓지 않았을 때) ⧉를 누르면 `/popout/chat/:channelId`, `/popout/plaza/:plazaId`를 새 창으로 엽니다. 분리한 창은 앱 전체를 따로 띄워 실시간 연결을 따로 엽니다. 메인 창은 그 패널을 숨기고, 분리한 창이 닫히면(0.8초마다 확인) 다시 보여 줍니다. 브라우저가 드래그 끝의 팝업을 막으면 ⧉로 다시 시도하라고 안내합니다. 마지막 패널은 분리하지 않습니다.
+  - 데스크톱: `setWindowOpenHandler`가 앱 출처의 `/popout/` 주소만 같은 보안 설정(preload, sandbox)의 앱 창으로 열고, 그 창에도 같은 규칙을 겁니다 (`main/windows.ts`). 다른 http(s) 주소는 시스템 브라우저로 엽니다.
 - **Windows에서 파일 수정:** Windows PowerShell 5.1의 `Get-Content`/`Set-Content`는 UTF-8 한글을 깨뜨립니다. 파일 수정은 편집 도구나 bash를 씁니다.
 
 ## 확정된 결정

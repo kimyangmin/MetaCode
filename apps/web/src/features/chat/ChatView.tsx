@@ -39,6 +39,8 @@ interface ChatViewProps {
   actions?: ReactNode;
   /** 커뮤니티 채널이면 그 커뮤니티 (프로필 팝업에 역할 표시) */
   communityId?: string;
+  /** 머리글 왼쪽의 옮기기·분리 손잡이 */
+  handle?: ReactNode;
 }
 
 /** 채팅 모드: 한 채널의 대화 기록, 입력 중 표시, 입력창 */
@@ -51,6 +53,7 @@ export function ChatView({
   people,
   actions,
   communityId,
+  handle,
 }: ChatViewProps) {
   const queryClient = useQueryClient();
   const { socket } = useRealtime();
@@ -181,6 +184,7 @@ export function ChatView({
         </div>
       )}
       <header className="chat__header">
+        {handle}
         <span className="chat__prefix">{prefix}</span>
         <h1>{title}</h1>
         {actions && <div className="chat__actions">{actions}</div>}

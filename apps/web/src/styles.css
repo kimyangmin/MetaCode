@@ -2249,3 +2249,123 @@ a {
   flex: none;
   white-space: nowrap;
 }
+
+/* ── 패널 옮기기·분리 ─────────────── */
+
+.split-host {
+  position: relative;
+  min-width: 0;
+  height: 100%;
+}
+
+.split--single {
+  display: flex;
+  flex-direction: column;
+}
+
+.split--single > * {
+  flex: 1;
+  min-height: 0;
+}
+
+/* 머리글 왼쪽 손잡이: ⠿ 끌기, ⧉ 새 창 */
+.panel-handle {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 2px;
+  margin-right: 4px;
+}
+
+.panel-handle__grip {
+  padding: 2px 4px;
+  border-radius: 4px;
+  color: var(--muted);
+  cursor: grab;
+}
+
+.panel-handle__grip:hover {
+  background: var(--bg-hover);
+  color: var(--fg);
+}
+
+.panel-handle__popout {
+  width: 24px;
+  height: 24px;
+  font-size: 14px;
+}
+
+/* 끄는 동안: 분할 영역 전체가 놓을 자리. 가장 가까운 가장자리 쪽 절반을 파랗게 보여 준다 */
+.split-drop {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+}
+
+.split-drop__preview {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  border: 2px dashed var(--accent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  color: var(--accent);
+  font-weight: 700;
+  pointer-events: none;
+}
+
+.split-drop__preview[data-edge='left'] {
+  inset: 4px 50% 4px 4px;
+}
+
+.split-drop__preview[data-edge='right'] {
+  inset: 4px 4px 4px 50%;
+}
+
+.split-drop__preview[data-edge='top'] {
+  inset: 4px 4px 50% 4px;
+}
+
+.split-drop__preview[data-edge='bottom'] {
+  inset: 50% 4px 4px 4px;
+}
+
+.split__notice {
+  position: fixed;
+  bottom: 16px;
+  left: 50%;
+  z-index: 70;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--bg-active);
+  color: var(--fg);
+  font-size: 0.85rem;
+  transform: translateX(-50%);
+}
+
+.view-toggles__button--solo {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+/* 분리한 창: 패널 하나를 창 가득 */
+.popout {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+.popout > .chat,
+.popout > .plaza-panel {
+  flex: 1;
+  min-height: 0;
+}
+
+.popout__status {
+  margin: auto;
+  color: var(--muted);
+}
