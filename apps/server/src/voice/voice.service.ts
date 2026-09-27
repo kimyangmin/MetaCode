@@ -13,7 +13,7 @@ import {
   type VoiceCall,
   type VoiceJoinResult,
   type VoiceMember,
-  type VoiceUpdateRequest,
+  type VoiceUpdateState,
   getPlazaId,
   proximityGain,
 } from '@metacode/shared';
@@ -38,11 +38,12 @@ interface Call {
   members: Map<string, Member>;
 }
 
-const publicMember = ({ user, muted, deafened, speaking }: Member): VoiceMember => ({
+const publicMember = ({ user, muted, deafened, speaking, sharing }: Member): VoiceMember => ({
   user,
   muted,
   deafened,
   speaking,
+  sharing,
 });
 
 /**
@@ -123,7 +124,14 @@ export class VoiceService implements OnModuleDestroy {
       member.socketId = socketId;
     } else {
       const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
-      member = { user: toProfile(user), muted: false, deafened: false, speaking: false, socketId };
+      member = {
+        user: toProfile(user),
+        muted: false,
+        deafened: false,
+        speaking: false,
+        sharing: false,
+        socketId,
+      };
       call.members.set(userId, member);
       this.callOf.set(userId, channelId);
       this.realtime.emit(room.channel(channelId), SocketEvent.VoiceJoined, {
@@ -147,13 +155,14 @@ export class VoiceService implements OnModuleDestroy {
     await this.removeMember(userId, this.callOf.get(userId)!, false);
   }
 
-  update(userId: string, socketId: string, state: VoiceUpdateRequest): void {
+  update(userId: string, socketId: string, state: VoiceUpdateState): void {
     const member = this.memberOf(userId);
     if (member?.socketId !== socketId) return;
     if (
       member.muted === state.muted &&
       member.deafened === state.deafened &&
-      member.speaking === state.speaking
+      member.speaking === state.speaking &&
+      member.sharing === state.sharing
     ) {
       return;
     }

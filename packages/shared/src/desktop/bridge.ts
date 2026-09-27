@@ -12,6 +12,27 @@ export interface MetaCodeDesktopBridge {
   auth: DesktopAuthBridge;
   /** 인증이 필요한 주소(첨부 파일 등)를 내려받는다. 저장 위치는 OS 저장 창에서 고른다. */
   download(url: string): Promise<void>;
+  /** 화면 공유할 화면/창 고르기. 0.1.0 앱에는 없다 (앱을 업데이트해야 화면 공유를 쓸 수 있음) */
+  screen?: DesktopScreenBridge;
+}
+
+/** 공유할 수 있는 화면이나 창 */
+export interface ScreenSource {
+  id: string;
+  name: string;
+  kind: 'screen' | 'window';
+  /** 미리보기 이미지 (data URL) */
+  thumbnail: string;
+}
+
+/**
+ * 데스크톱 화면 공유. Electron은 브라우저처럼 고르는 창을 띄우지 않으므로 웹 화면이 목록을 보여 주고,
+ * 고른 것을 select로 알린 뒤 getDisplayMedia를 부른다.
+ */
+export interface DesktopScreenBridge {
+  getSources(): Promise<ScreenSource[]>;
+  /** 다음 getDisplayMedia 요청에 쓸 화면. 30초 안에 쓰지 않으면 잊는다 */
+  select(sourceId: string): Promise<void>;
 }
 
 /**

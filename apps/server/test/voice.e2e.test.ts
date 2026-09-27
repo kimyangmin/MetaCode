@@ -124,7 +124,13 @@ describe('통화 참여', () => {
     expect(result.call.members.map((m) => m.user.id)).toEqual([alice.me.id]);
     expect(await joined).toMatchObject({
       channelId: lounge.id,
-      member: { user: { id: alice.me.id }, muted: false, deafened: false, speaking: false },
+      member: {
+        user: { id: alice.me.id },
+        muted: false,
+        deafened: false,
+        speaking: false,
+        sharing: false,
+      },
     });
 
     // 입장권: 신원은 사용자 ID, 이 채널의 방에만, 마이크만 올릴 수 있다.
@@ -136,7 +142,7 @@ describe('통화 참여', () => {
     expect(claims.video).toMatchObject({
       roomJoin: true,
       room: `channel-${lounge.id}`,
-      canPublishSources: ['microphone'],
+      canPublishSources: ['microphone', 'screen_share', 'screen_share_audio'],
     });
   });
 
@@ -185,6 +191,16 @@ describe('통화 참여', () => {
     const updated = nextEvent(bobSocket, SocketEvent.VoiceUpdated);
     aliceSocket.emit(SocketEvent.VoiceUpdate, { muted: true, deafened: false, speaking: false });
     expect((await updated).member).toMatchObject({ user: { id: alice.me.id }, muted: true });
+
+    // 화면 공유를 시작하면 볼 수 있게 알린다.
+    const sharing = nextEvent(bobSocket, SocketEvent.VoiceUpdated, (p) => p.member.sharing);
+    aliceSocket.emit(SocketEvent.VoiceUpdate, {
+      muted: true,
+      deafened: false,
+      speaking: false,
+      sharing: true,
+    });
+    expect((await sharing).member).toMatchObject({ user: { id: alice.me.id }, sharing: true });
 
     aliceOtherTab.emit(SocketEvent.VoiceUpdate, { muted: false, deafened: true, speaking: true });
     await expectNoEvent(bobSocket, SocketEvent.VoiceUpdated);
