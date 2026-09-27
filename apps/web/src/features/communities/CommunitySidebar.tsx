@@ -15,9 +15,11 @@ import { UserPanel } from '../auth/UserPanel';
 import { useCall, useVoiceStore } from '../voice/store';
 import { VoiceMembers } from '../voice/VoiceMembers';
 import { useVoice } from '../voice/VoiceProvider';
+import { ChannelAccessFields, ChannelSettings } from './ChannelSettings';
+import { CommunitySettings } from './CommunitySettings';
 import { useMeRequired } from './hooks';
 
-type Modal = 'invite' | 'channel' | null;
+type Modal = 'invite' | 'channel' | 'settings' | { edit: ChannelSummary } | null;
 
 /** 커뮤니티 화면 왼쪽: 이름과 메뉴, 텍스트 채널과 음성 채널 목록, 내 프로필 */
 export function CommunitySidebar({
@@ -77,6 +79,11 @@ export function CommunitySidebar({
                 채널 만들기
               </button>
             )}
+            {canManage && (
+              <button role="menuitem" onClick={() => (setMenuOpen(false), setModal('settings'))}>
+                커뮤니티 설정 (역할)
+              </button>
+            )}
             <button role="menuitem" className="menu__danger" onClick={leaveOrDelete}>
               {isOwner ? '커뮤니티 삭제' : '커뮤니티 나가기'}
             </button>
@@ -94,11 +101,16 @@ export function CommunitySidebar({
               communityId={community.id}
               channel={channel}
               active={channel.id === activeChannelId}
+              onEdit={canManage ? () => setModal({ edit: channel }) : undefined}
             />
           ))}
         {voiceChannels.length > 0 && <h3 className="sidebar__section">음성 채널</h3>}
         {voiceChannels.map((channel) => (
-          <VoiceChannelItem key={channel.id} channel={channel} />
+          <VoiceChannelItem
+            key={channel.id}
+            channel={channel}
+            onEdit={canManage ? () => setModal({ edit: channel }) : undefined}
+          />
         ))}
       </nav>
 
@@ -108,7 +120,17 @@ export function CommunitySidebar({
         <InviteDialog communityId={community.id} onClose={() => setModal(null)} />
       )}
       {modal === 'channel' && (
-        <CreateChannelDialog communityId={community.id} onClose={() => setModal(null)} />
+        <CreateChannelDialog community={community} onClose={() => setModal(null)} />
+      )}
+      {modal === 'settings' && (
+        <CommunitySettings community={community} onClose={() => setModal(null)} />
+      )}
+      {modal && typeof modal === 'object' && (
+        <ChannelSettings
+          community={community}
+          channel={modal.edit}
+          onClose={() => setModal(null)}
+        />
       )}
     </aside>
   );
@@ -118,39 +140,76 @@ function ChannelLink({
   communityId,
   channel,
   active,
+  onEdit,
 }: {
   communityId: string;
   channel: ChannelSummary;
   active: boolean;
+  /** 관리자면 채널 설정 버튼을 보인다 */
+  onEdit?: () => void;
 }) {
   const unread = !active && hasUnread(channel);
   return (
-    <NavLink to={`/c/${communityId}/${channel.id}`} className="sidebar__item" data-unread={unread}>
-      <span className="sidebar__hash">#</span>
-      <span className="sidebar__label">{channel.name}</span>
-    </NavLink>
+    <div className="channel-row">
+      <NavLink
+        to={`/c/${communityId}/${channel.id}`}
+        className="sidebar__item"
+        data-unread={unread}
+      >
+        <span className="sidebar__hash">#</span>
+        <span className="sidebar__label">{channel.name}</span>
+        {channel.private && <PrivateMark />}
+      </NavLink>
+      {onEdit && <EditButton name={channel.name ?? ''} onClick={onEdit} />}
+    </div>
+  );
+}
+
+function PrivateMark() {
+  return (
+    <span className="sidebar__lock" role="img" aria-label="비공개" title="비공개 채널">
+      🔒
+    </span>
+  );
+}
+
+function EditButton({ name, onClick }: { name: string; onClick(): void }) {
+  return (
+    <button
+      type="button"
+      className="icon-button channel-row__edit"
+      onClick={onClick}
+      aria-label={`${name} 채널 설정`}
+      title="채널 설정"
+    >
+      ⚙
+    </button>
   );
 }
 
 /** 음성 채널: 누르면 통화에 들어간다 (보던 텍스트 채널은 그대로). 아래에 참여자를 보여 준다 */
-function VoiceChannelItem({ channel }: { channel: ChannelSummary }) {
+function VoiceChannelItem({ channel, onEdit }: { channel: ChannelSummary; onEdit?: () => void }) {
   const voice = useVoice();
   const call = useCall(channel.id);
   const joined = useVoiceStore((s) => s.session?.channelId === channel.id);
   return (
     <div className="voice-channel">
-      <button
-        type="button"
-        className="sidebar__item sidebar__item--voice"
-        data-joined={joined}
-        onClick={() => void voice.join(channel.id)}
-        title={joined ? '통화 중' : '눌러서 통화에 들어가기'}
-      >
-        <span className="sidebar__hash" aria-hidden>
-          🔊
-        </span>
-        <span className="sidebar__label">{channel.name}</span>
-      </button>
+      <div className="channel-row">
+        <button
+          type="button"
+          className="sidebar__item sidebar__item--voice"
+          data-joined={joined}
+          onClick={() => void voice.join(channel.id)}
+          title={joined ? '통화 중' : '눌러서 통화에 들어가기'}
+        >
+          <span className="sidebar__hash" aria-hidden>
+            🔊
+          </span>
+          <span className="sidebar__label">{channel.name}</span>
+          {channel.private && <PrivateMark />}
+        </button>
+        {onEdit && <EditButton name={channel.name ?? ''} onClick={onEdit} />}
+      </div>
       <VoiceMembers channelId={channel.id} members={call?.members ?? []} />
     </div>
   );
@@ -202,11 +261,19 @@ function InviteDialog({ communityId, onClose }: { communityId: string; onClose()
   );
 }
 
-function CreateChannelDialog({ communityId, onClose }: { communityId: string; onClose(): void }) {
+function CreateChannelDialog({
+  community,
+  onClose,
+}: {
+  community: CommunitySummary;
+  onClose(): void;
+}) {
+  const communityId = community.id;
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [name, setName] = useState('');
   const [type, setType] = useState<'TEXT' | 'VOICE'>('TEXT');
+  const [access, setAccess] = useState({ isPrivate: false, roleIds: [] as string[] });
   const [error, setError] = useState<string | null>(null);
 
   const submit = async (e: FormEvent) => {
@@ -214,7 +281,7 @@ function CreateChannelDialog({ communityId, onClose }: { communityId: string; on
     try {
       const channel = await apiFetch<ChannelSummary>(`/communities/${communityId}/channels`, {
         method: 'POST',
-        ...jsonBody({ name, type }),
+        ...jsonBody({ name, type, private: access.isPrivate, roleIds: access.roleIds }),
       });
       queryClient.setQueryData<CommunitySummary[]>(queryKeys.communities, (list) =>
         list?.map((c) =>
@@ -265,6 +332,12 @@ function CreateChannelDialog({ communityId, onClose }: { communityId: string; on
           </div>
         </label>
         <p className="form__hint">공백은 하이픈(-)으로, 영문은 소문자로 바뀝니다.</p>
+        <ChannelAccessFields
+          roles={community.roles}
+          isPrivate={access.isPrivate}
+          roleIds={access.roleIds}
+          onChange={setAccess}
+        />
         {error && <p className="form__error">{error}</p>}
         <button className="button button--primary" disabled={!name.trim()}>
           만들기

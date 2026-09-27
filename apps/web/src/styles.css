@@ -1718,3 +1718,192 @@ h3 {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* ── 역할과 채널 권한 ─────────────── */
+
+/* 채널 줄: 채널 링크 + (관리자) 설정 버튼. 설정 버튼은 줄에 마우스를 올렸을 때만 보인다 */
+.channel-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.channel-row > .sidebar__item {
+  flex: 1;
+  min-width: 0;
+}
+
+.channel-row__edit {
+  position: absolute;
+  right: 4px;
+  width: 22px;
+  height: 22px;
+  font-size: 13px;
+  opacity: 0;
+}
+
+.channel-row:hover .channel-row__edit,
+.channel-row__edit:focus-visible {
+  opacity: 1;
+}
+
+.sidebar__lock {
+  margin-left: auto;
+  font-size: 0.7rem;
+  opacity: 0.8;
+}
+
+.settings {
+  display: grid;
+  gap: 12px;
+}
+
+.settings__tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--border);
+}
+
+.settings__tabs button {
+  padding: 6px 12px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  cursor: pointer;
+}
+
+.settings__tabs button[aria-selected='true'] {
+  border-bottom-color: var(--accent);
+  color: var(--fg);
+  font-weight: 600;
+}
+
+.settings__empty {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.role-list,
+.member-roles {
+  display: grid;
+  gap: 6px;
+  max-height: 40vh;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+  scrollbar-width: none;
+}
+
+.role-list::-webkit-scrollbar,
+.member-roles::-webkit-scrollbar {
+  display: none;
+}
+
+.role-list__item,
+.role-form {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.role-list__item input:not([type='color']),
+.role-form input:not([type='color']) {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-input);
+  color: var(--fg);
+  font: inherit;
+}
+
+.role-list__item input[type='color'],
+.role-form input[type='color'] {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.role-list__remove:hover {
+  color: var(--danger);
+}
+
+.member-roles__item {
+  display: grid;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.member-roles__who {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--fg);
+  font-size: 0.9rem;
+}
+
+.form .member-roles__admin {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  font-size: 0.8rem;
+}
+
+.member-roles__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* 역할 고르기 칩: 역할 색으로 테두리, 골랐으면 채운다 */
+.form .role-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border: 1px solid var(--role-color);
+  border-radius: 999px;
+  color: var(--fg);
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.role-chip input {
+  display: none;
+}
+
+.role-chip:has(input:checked) {
+  background: color-mix(in srgb, var(--role-color) 30%, transparent);
+}
+
+.role-chip:has(input:focus-visible) {
+  outline: 2px solid var(--accent);
+}
+
+.channel-access {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.form .channel-access__private {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--fg);
+}

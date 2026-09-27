@@ -2,7 +2,8 @@ import type { CommunityMember } from '@metacode/shared';
 import { usePresenceStore } from '../../stores/presence';
 import { Avatar } from '../../ui/Avatar';
 import { displayName } from '../../ui/format';
-import { useMeRequired, useMembers, useOpenDm } from './hooks';
+import { useCommunities, useMeRequired, useMembers, useOpenDm } from './hooks';
+import { memberColor, roleNames } from './roles';
 
 const ROLE_LABEL = { OWNER: '소유자', ADMIN: '관리자', MEMBER: '' } as const;
 
@@ -12,6 +13,7 @@ export function MemberList({ communityId }: { communityId: string }) {
   const online = usePresenceStore((s) => s.online);
   const me = useMeRequired();
   const openDm = useOpenDm();
+  const roles = useCommunities().data?.find((c) => c.id === communityId)?.roles ?? [];
 
   if (!members.data) return <aside className="members" aria-label="멤버" />;
 
@@ -42,7 +44,13 @@ export function MemberList({ communityId }: { communityId: string }) {
                   }
                 >
                   <Avatar user={m.user} size={32} showStatus />
-                  <span className="members__name">{displayName(m.user)}</span>
+                  <span
+                    className="members__name"
+                    style={{ color: memberColor(m.roleIds, roles) ?? undefined }}
+                    title={roleNames(m.roleIds, roles).join(', ') || undefined}
+                  >
+                    {displayName(m.user)}
+                  </span>
                   {ROLE_LABEL[m.role] && (
                     <span className="members__role">{ROLE_LABEL[m.role]}</span>
                   )}
