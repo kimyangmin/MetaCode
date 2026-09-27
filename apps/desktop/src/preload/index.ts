@@ -8,6 +8,7 @@ const IPC = {
   logout: 'metacode:auth:logout',
   getAccessToken: 'metacode:auth:get-access-token',
   changed: 'metacode:auth:changed',
+  download: 'metacode:download',
 } as const;
 
 const bridge: MetaCodeDesktopBridge = {
@@ -17,6 +18,7 @@ const bridge: MetaCodeDesktopBridge = {
     electron: process.versions.electron ?? '',
     chrome: process.versions.chrome ?? '',
   },
+  download: (url) => ipcRenderer.invoke(IPC.download, url) as Promise<void>,
   auth: {
     login: () => ipcRenderer.invoke(IPC.login) as Promise<void>,
     logout: () => ipcRenderer.invoke(IPC.logout) as Promise<void>,

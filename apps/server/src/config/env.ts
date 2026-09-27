@@ -18,6 +18,16 @@ export const envSchema = z.object({
   GITHUB_OAUTH_URL: url.default('https://github.com'),
   GITHUB_API_URL: url.default('https://api.github.com'),
 
+  /** 서버가 파일 저장소에 접속하는 주소 (운영: 내부 주소 http://seaweedfs:9000) */
+  S3_ENDPOINT: url.default('http://localhost:9000'),
+  /** 브라우저가 파일을 올리고 받는 주소. presigned URL을 이 주소로 서명한다 (운영: https://<FILES_DOMAIN>) */
+  S3_PUBLIC_ENDPOINT: url.optional(),
+  S3_REGION: z.string().min(1).default('us-east-1'),
+  S3_BUCKET: z.string().min(1).default('metacode-uploads'),
+  S3_ACCESS_KEY: z.string().min(1),
+  S3_SECRET_KEY: z.string().min(1),
+  UPLOAD_MAX_SIZE_MB: z.coerce.number().int().positive().default(50),
+
   JWT_SECRET: z
     .string()
     .min(32, 'JWT_SECRET은 32자 이상이어야 합니다. 예: openssl rand -base64 48'),

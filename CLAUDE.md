@@ -15,7 +15,7 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
 
 ## 현재 상태
 
-- **Phase 1 (인증과 사용자) 완료, Phase 2 (채팅 모드 MVP) 구현 완료.** 다음은 Phase 3 (파일·이미지 첨부)입니다.
+- **Phase 1~2 완료, Phase 3 (파일·이미지 첨부) 구현 완료.** 다음은 Phase 4 (메타버스 모드 MVP)입니다.
 - **운영 중:** https://metacode.kimyangmin.me (2026-09-26 첫 배포, `main` 기준). 서버는 SSH 별칭 `myserver3`(ubuntu, `~/MetaCode`)로 접속할 수 있고, 업데이트는 `git pull` 후 `docker compose -f infra/docker-compose.prod.yml --env-file .env.production up -d --build`입니다. DB 백업은 서버 crontab이 매일 04:00 KST(19:00 UTC)에 `infra/backup.sh`를 실행합니다 (`~/MetaCode/backups/`, 14일 보관, 로그 `backups/backup.log`). 운영 서버에서 무언가를 바꾸기 전에는 사용자에게 확인받습니다.
 - 개발용 GitHub OAuth App(`localhost` 콜백)으로 웹·데스크톱, 운영용 OAuth App으로 운영 웹의 실제 로그인을 확인했습니다 (2026-09-26).
 - 기술 스택은 README 표대로 확정되었습니다 (2026-09-26).
@@ -41,7 +41,8 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
   - 서버 이미지(`apps/server/Dockerfile`)는 `pnpm deploy --legacy --prod`로 운영 의존성만 담습니다. 마이그레이션은 같은 Dockerfile의 `migrate` 단계가 서버보다 먼저 실행합니다.
   - 웹은 `infra/caddy/Dockerfile`에서 `WEB_BASE=/`, `VITE_API_URL=https://<API_DOMAIN>`으로 빌드해 Caddy 이미지에 넣습니다 (Electron용 기본 빌드는 `base: './'`).
   - 서버 이미지가 740MB 정도로 큽니다. `@prisma/client`의 peer 의존성 때문에 Prisma CLI, Studio, TypeScript가 함께 들어갑니다. 필요하면 나중에 줄입니다.
-  - Phase 3에서 할 일: presigned URL은 `https://<FILES_DOMAIN>`으로 서명해야 하고(서버 내부 주소 `seaweedfs:9000`이 아님), 버킷 CORS와 첨부 파일 백업을 추가해야 합니다.
+  - 파일 저장소: 서버는 내부 주소(`S3_ENDPOINT=http://seaweedfs:9000`)로 읽고 쓰고, 브라우저에 줄 presigned URL은 공개 주소(`S3_PUBLIC_ENDPOINT=https://<FILES_DOMAIN>`)로 서명합니다 (서명에 호스트가 들어감). SeaweedFS는 기본으로 모든 출처의 CORS를 허용하므로(서명이 있어야 요청이 통함) Caddy에 CORS 설정은 필요 없습니다.
+  - 백업: `sh infra/backup.sh`(DB, 매일) + `sh infra/backup.sh files`(첨부 파일, 매주 권장).
 - **Oracle Cloud 주의점:**
   - 서버는 VM.Standard3.Flex(Intel, x86_64)라 amd64 이미지를 씁니다.
   - 포트를 열려면 VCN의 Security List(또는 NSG)와 서버 안의 iptables(`/etc/iptables/rules.v4`, Oracle Ubuntu 이미지는 기본으로 막혀 있음)를 **둘 다** 열어야 합니다.
@@ -71,6 +72,15 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
   - 라우터: 웹은 일반 주소, 데스크톱은 해시 주소(`#/c/...`). 로그인 전에 연 초대 링크는 sessionStorage에 기억했다가 로그인 후 이어 갑니다.
   - 아직 없는 것: 메시지 수정/삭제, 보내기 속도 제한, 모바일 화면(가로 1000px 미만이면 멤버 목록만 숨김).
 - **여러 사용자로 확인:** `tools/fake-github.mjs`(가짜 GitHub, 앨리스/밥/캐롤) + 서버를 `GITHUB_OAUTH_URL`/`GITHUB_API_URL`=`http://localhost:4010`으로 띄웁니다. 두 번째 사용자는 다른 브라우저나 스크립트(socket.io-client)로 접속합니다.
+- **첨부 파일 (Phase 3):** `apps/server/src/attachments/`, `apps/web/src/features/chat/uploads.ts`
+  - 흐름: `POST /uploads`(권한·크기 확인, 크기를 서명에 넣은 presigned PUT) → 브라우저가 저장소에 직접 PUT → `POST /uploads/:id/complete`(크기 재확인, 이미지면 썸네일) → `message:send`의 `attachmentIds`로 메시지에 붙임(트랜잭션, 실패하면 메시지도 안 남음).
+  - 이미지 판별은 파일 앞부분(매직 바이트)으로만 합니다: JPEG, PNG, GIF, WebP, AVIF. 확장자·브라우저가 준 형식은 믿지 않고, SVG(스크립트 가능)는 일반 파일입니다. 썸네일은 sharp로 긴 변 480px WebP를 만듭니다(압축 폭탄 방지: 1억 화소 제한).
+  - 이미지가 아닌 파일은 항상 `application/octet-stream` + `Content-Disposition: attachment`로 내려보냅니다 (HTML/SVG가 브라우저에서 실행되지 않게).
+  - 보기/받기는 `GET /attachments/:id` → 권한 확인 → 10분짜리 presigned URL로 302. 이 302는 `Cache-Control: no-store`여야 합니다. 브라우저 캐시는 사용자(쿠키)를 구분하지 않아서, 캐시하면 로그아웃 뒤에도 같은 브라우저에서 열렸습니다 (실제로 발견해 고침, 테스트 있음).
+  - 데스크톱은 쿠키가 없어 `<img>`에 토큰을 붙일 수 없으므로, 메인 프로세스가 `session.webRequest.onBeforeSendHeaders`로 `/attachments/*` 요청에만 `Authorization`을 붙입니다. 다운로드는 브리지 `window.metacode.download(url)`(첨부 주소만 허용).
+  - 보내지 않은 첨부(24시간 경과)는 서버가 한 시간마다 지우고, 커뮤니티를 지우면 저장소 파일도 지웁니다.
+  - 메타버스 모드에서 첨부 메시지를 말풍선 대신 캐릭터 모션으로 보일지는 `messagePresentation()`(packages/shared)으로 판단합니다.
+  - sharp는 운영 이미지(Alpine, linux x64)에서도 동작을 확인했습니다. 서버 이미지는 약 800MB입니다.
 - **Windows에서 파일 수정:** Windows PowerShell 5.1의 `Get-Content`/`Set-Content`는 UTF-8 한글을 깨뜨립니다. 파일 수정은 편집 도구나 bash를 씁니다.
 
 ## 확정된 결정
@@ -202,7 +212,7 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
   - 광장은 테이블이 아닙니다. 채널에서 계산합니다: `TEXT`·`VOICE` → `community:<communityId>`(분수 광장), `DM`·`GROUP_DM` → `dm:<channelId>`(모닥불 캠프)
 - `Message` (구현됨): channelId, authorId, content(최대 4000자), createdAt. id가 UUIDv7이라 id 순서 = 시간 순서
 - `ChannelReadState` (구현됨): channelId, userId, lastReadMessageId. 앞으로만 옮긴다
-- `Attachment` (Phase 3): messageId, url, mimeType, size(기본 최대 50MB)
+- `Attachment` (구현됨): channelId(권한 판단), uploaderId, messageId(보내기 전 null), status(`PENDING` | `READY`), kind(`IMAGE` | `FILE`), objectKey, thumbnailKey, fileName, contentType, size, width, height
 - `Character`: 에셋 키, 커스터마이징 값
 
 ## 도트 에셋 규격

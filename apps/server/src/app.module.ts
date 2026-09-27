@@ -9,6 +9,7 @@ import { PresenceModule } from './presence/presence.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
 import { RealtimeModule } from './realtime/realtime.module.js';
 import { RedisModule } from './redis/redis.module.js';
+import { StorageModule } from './storage/storage.module.js';
 import { UsersModule } from './users/users.module.js';
 
 @Module({
@@ -24,6 +25,7 @@ import { UsersModule } from './users/users.module.js';
     PrismaModule,
     RedisModule,
     RealtimeModule,
+    StorageModule,
     AuthCoreModule,
     AuthModule,
     UsersModule,

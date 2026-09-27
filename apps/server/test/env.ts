@@ -12,4 +12,10 @@ export const testEnv = {
   WEB_ORIGIN: 'http://localhost:5173',
   GITHUB_CLIENT_ID: 'test-client-id',
   GITHUB_CLIENT_SECRET: 'test-client-secret',
+  S3_ENDPOINT: process.env.TEST_S3_ENDPOINT ?? 'http://localhost:9000',
+  S3_BUCKET: 'metacode-test',
+  S3_ACCESS_KEY: 'metacode',
+  S3_SECRET_KEY: 'metacode-secret',
+  // 크기 제한을 빨리 확인할 수 있게 작게 둔다.
+  UPLOAD_MAX_SIZE_MB: '1',
 };

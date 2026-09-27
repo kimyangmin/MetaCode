@@ -47,6 +47,15 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      # 첨부 파일 테스트용 S3 호환 저장소. 서비스 컨테이너는 실행 명령을 지정할 수 없어 직접 띄운다.
+      - name: Start SeaweedFS
+        run: |
+          docker run -d --name seaweedfs -p 9000:9000 \
+            -v "$PWD/infra/seaweedfs/s3.json:/etc/seaweedfs/s3.json:ro" \
+            chrislusf/seaweedfs:4.47 \
+            server -dir=/data -s3 -s3.port=9000 -s3.config=/etc/seaweedfs/s3.json
+          for i in $(seq 1 60); do curl -s -o /dev/null localhost:9000 && break; sleep 1; done
+
       - run: pnpm format:check
       - run: pnpm lint
       - run: pnpm typecheck
