@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { RouterProvider } from 'react-router';
 import { LoginScreen } from './features/auth/LoginScreen';
+import { UpdateNotice } from './features/desktop/UpdateNotice';
 import { takeLoginError, useMe } from './features/auth/auth';
 import { rememberPendingInvite } from './pages';
 import { ScreenViewer } from './features/voice/ScreenViewer';
@@ -9,6 +10,15 @@ import { RealtimeProvider } from './realtime/RealtimeProvider';
 import { createAppRouter } from './router';
 
 export function App() {
+  return (
+    <>
+      <Screen />
+      <UpdateNotice />
+    </>
+  );
+}
+
+function Screen() {
   const [loginError] = useState(takeLoginError);
   const [router] = useState(createAppRouter);
   const me = useMe();
