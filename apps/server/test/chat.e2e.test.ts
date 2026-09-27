@@ -147,8 +147,10 @@ describe('커뮤니티', () => {
     expect((await bob.fetch(`/communities/${community.id}/leave`, post())).status).toBe(204);
     expect((await left).userId).toBe(bob.me.id);
 
+    // 받지 않는지는 보내기 전부터 지켜본다 (보내기 확인보다 이벤트가 먼저 올 수 있다).
+    const notReceived = expectNoEvent(bobSocket, SocketEvent.MessageCreated);
     await sendOk(aliceSocket, general.id, '나간 뒤 메시지');
-    await expectNoEvent(bobSocket, SocketEvent.MessageCreated);
+    await notReceived;
     expect((await bob.fetch(`/channels/${general.id}/messages`)).status).toBe(404);
     expect((await alice.fetch(`/communities/${community.id}/leave`, post())).status).toBe(403);
   });
@@ -222,8 +224,9 @@ describe('메시지', () => {
     const ack = await send(carolSocket, general.id, '끼어들기');
     expect(ack.ok).toBe(false);
 
+    const notReceived = expectNoEvent(carolSocket, SocketEvent.MessageCreated);
     await sendOk(aliceSocket, general.id, '멤버끼리만');
-    await expectNoEvent(carolSocket, SocketEvent.MessageCreated);
+    await notReceived;
   });
 
   it('빈 메시지나 너무 긴 메시지는 거절한다', async () => {
@@ -337,10 +340,10 @@ describe('DM', () => {
     const bobSocket = await connect(bob);
 
     const received = nextEvent(aliceSocket, SocketEvent.MessageCreated);
+    const notReceived = expectNoEvent(bobSocket, SocketEvent.MessageCreated);
     await sendOk(carolSocket, dm.id, '비밀 이야기');
     expect((await received).content).toBe('비밀 이야기');
-
-    await expectNoEvent(bobSocket, SocketEvent.MessageCreated);
+    await notReceived;
     expect((await bob.fetch(`/channels/${dm.id}/messages`)).status).toBe(404);
     expect((await send(bobSocket, dm.id, '엿보기')).ok).toBe(false);
   });

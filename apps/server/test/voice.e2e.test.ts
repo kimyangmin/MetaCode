@@ -244,9 +244,10 @@ describe('통화 참여', () => {
     const carolSocket = await connect(carol);
 
     const joined = nextEvent(bobSocket, SocketEvent.VoiceJoined);
+    const notJoined = expectNoEvent(carolSocket, SocketEvent.VoiceJoined);
     await joinOk(aliceSocket, dm.id);
     expect((await joined).channelId).toBe(dm.id);
-    await expectNoEvent(carolSocket, SocketEvent.VoiceJoined);
+    await notJoined;
     expect((await join(carolSocket, dm.id)).ok).toBe(false);
   });
 
