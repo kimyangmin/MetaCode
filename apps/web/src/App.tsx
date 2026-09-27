@@ -3,12 +3,22 @@ import { RouterProvider } from 'react-router';
 import { LoginScreen } from './features/auth/LoginScreen';
 import { takeLoginError, useMe } from './features/auth/auth';
 import { rememberPendingInvite } from './pages';
+import { UpdateNotice } from './layout/UpdateNotice';
 import { ScreenViewer } from './features/voice/ScreenViewer';
 import { VoiceProvider } from './features/voice/VoiceProvider';
 import { RealtimeProvider } from './realtime/RealtimeProvider';
 import { createAppRouter } from './router';
 
 export function App() {
+  return (
+    <>
+      <AppContent />
+      <UpdateNotice />
+    </>
+  );
+}
+
+function AppContent() {
   const [loginError] = useState(takeLoginError);
   const [router] = useState(createAppRouter);
   const me = useMe();

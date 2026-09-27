@@ -2413,3 +2413,33 @@ a {
 .live-wrap {
   display: inline-flex;
 }
+
+/* 데스크톱 앱 업데이트 안내 (layout/UpdateNotice.tsx) */
+.update-notice {
+  position: fixed;
+  top: 12px;
+  left: 50%;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: calc(100vw - 32px);
+  padding: 8px 8px 8px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  box-shadow: 0 4px 16px rgb(0 0 0 / 18%);
+  color: var(--fg);
+  font-size: 0.875rem;
+  transform: translateX(-50%);
+}
+
+.update-notice > span {
+  min-width: 0;
+}
+
+.update-notice .button {
+  flex: none;
+  padding: 4px 12px;
+  text-decoration: none;
+}

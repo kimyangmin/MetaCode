@@ -8,9 +8,11 @@ import {
   session,
   shell,
 } from 'electron';
+import { autoUpdater } from 'electron-updater';
 import { AuthManager } from './auth';
 import { allowPermission } from './permissions';
 import { createTokenStorage } from './token-storage';
+import { Updater } from './updater';
 import { isPopoutUrl } from './windows';
 
 /**
@@ -35,6 +37,9 @@ const IPC = {
   download: 'metacode:download',
   screenSources: 'metacode:screen:sources',
   screenSelect: 'metacode:screen:select',
+  updateReady: 'metacode:update:ready',
+  updateGetReady: 'metacode:update:get-ready',
+  updateInstall: 'metacode:update:install',
 } as const;
 
 /** 인증이 필요한 첨부 파일 주소 */
@@ -196,6 +201,41 @@ function registerScreenShare() {
   });
 }
 
+/** 새 버전을 다시 확인하는 간격 */
+const UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
+
+/**
+ * 자동 업데이트 (설치한 앱만). GitHub Releases의 최신 정식 릴리스(electron-builder.yml의 publish)에서
+ * latest.yml을 읽어 새 버전을 뒤에서 받고, 다 받으면 앱 화면에 알린다. 설치는 사용자가 다시 시작을 누르거나 앱을 끌 때.
+ * 서명하지 않은 앱이라 서명 확인은 하지 않는다 (app-update.yml에 publisherName이 없음).
+ */
+function registerUpdater() {
+  let updater: Updater | null = null;
+  if (app.isPackaged) {
+    autoUpdater.autoDownload = true;
+    autoUpdater.autoInstallOnAppQuit = true;
+    updater = new Updater({
+      source: {
+        check: () => autoUpdater.checkForUpdates(),
+        // 조용히 설치하고 다시 연다.
+        install: () => autoUpdater.quitAndInstall(true, true),
+        onDownloaded: (listener) =>
+          autoUpdater.on('update-downloaded', (info) => listener({ version: info.version })),
+      },
+      onReady: (info) => mainWindow?.webContents.send(IPC.updateReady, info),
+      log: (message) => console.log(`[update] ${message}`),
+      intervalMs: UPDATE_CHECK_INTERVAL_MS,
+    });
+    updater.start();
+  }
+  ipcMain.handle(IPC.updateGetReady, (event) =>
+    fromApp(event) ? (updater?.getReady() ?? null) : null,
+  );
+  ipcMain.handle(IPC.updateInstall, (event) => {
+    if (fromApp(event)) updater?.install();
+  });
+}
+
 /** 권한은 앱 화면에만, 통화에 필요한 것만 준다 (permissions.ts) */
 function restrictPermissions() {
   session.defaultSession.setPermissionRequestHandler(
@@ -232,6 +272,7 @@ function main() {
     registerIpc(auth);
     restrictPermissions();
     registerScreenShare();
+    registerUpdater();
     attachAuthHeader(auth);
     mainWindow = createMainWindow();
 

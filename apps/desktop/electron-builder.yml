@@ -10,8 +10,14 @@ directories:
 files:
   - dist/**/*.js
   - package.json
-# 런타임 의존성이 없어서 다시 빌드할 네이티브 모듈이 없다.
+# 런타임 의존성(electron-updater)은 electron-builder가 알아서 넣는다. 네이티브 모듈이 없어서 다시 빌드하지 않는다.
 npmRebuild: false
+# 자동 업데이트가 새 버전을 찾는 곳. 설치 파일과 함께 release/latest.yml이 만들어지고,
+# 둘을 GitHub 릴리스(정식, 태그 desktop-v<버전>)에 올리면 설치된 앱이 받아 간다 (.github/workflows/desktop-release.yml).
+publish:
+  provider: github
+  owner: kimyangmin
+  repo: MetaCode
 win:
   target:
     - target: nsis

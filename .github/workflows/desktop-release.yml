@@ -1,0 +1,61 @@
+name: Desktop release
+
+# desktop-v<버전> 태그를 올리면 Windows 설치 파일을 만들어 GitHub 릴리스 **초안**에 올린다.
+# 초안을 확인하고 정식 릴리스로 공개하면(pre-release 아님) 설치된 앱(0.2.0 이상)이 자동 업데이트로 받아 간다.
+# 순서: apps/desktop/package.json의 version 올리기 → dev/main에 반영 → git tag desktop-v<버전> → git push origin desktop-v<버전>
+on:
+  push:
+    tags: ['desktop-v*']
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Check version
+        id: version
+        shell: bash
+        run: |
+          version=$(node -p "require('./apps/desktop/package.json').version")
+          if [ "desktop-v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "태그($GITHUB_REF_NAME)와 앱 버전($version)이 다릅니다." >&2
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - run: pnpm --filter @metacode/shared build
+
+      - run: pnpm --filter @metacode/desktop test
+
+      # 인증서가 없으므로 서명하지 않는다 (CLAUDE.md "확정된 결정").
+      - run: pnpm --filter @metacode/desktop dist:win
+
+      # latest.yml은 자동 업데이트가 읽는 파일, blockmap은 바뀐 부분만 받는 데 쓴다.
+      - name: Create draft release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        working-directory: apps/desktop/release
+        run: |
+          gh release create "$GITHUB_REF_NAME" --draft \
+            --title "MetaCode 데스크톱 $VERSION" \
+            --notes "Windows: MetaCode-Setup-$VERSION.exe를 내려받아 실행하세요. 서명하지 않은 앱이라 'Windows의 PC 보호' 창이 뜨면 추가 정보 → 실행을 누릅니다. 0.2.0 이상이 설치되어 있으면 앱이 알아서 업데이트합니다." \
+            "MetaCode-Setup-$VERSION.exe" \
+            "MetaCode-Setup-$VERSION.exe.blockmap" \
+            latest.yml

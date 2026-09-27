@@ -112,6 +112,10 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
   - 설치한 앱은 운영 사이트(`https://metacode.kimyangmin.me`)를 앱 창에서 엽니다 (웹 빌드를 앱에 넣지 않음). 개발 중(`app.isPackaged`가 아님)에는 `localhost:5173`, 둘 다 `METACODE_WEB_URL`/`METACODE_API_URL`로 바꿀 수 있습니다. 앱 안에는 메인 프로세스와 preload만 들어갑니다.
   - 브리지 호출, 권한, 창 이동은 웹 주소와 **같은 출처**인지로 판단합니다 (`isAppUrl`). 다른 사이트로 이동하지 못하고, 외부 링크는 시스템 브라우저로 엽니다.
   - 설치한 앱은 이름(productName)이 MetaCode라 사용자 데이터가 `%APPDATA%\MetaCode`에 따로 생깁니다. 개발용 앱(`@metacode/desktop`)과 로그인, 한 번에 하나만 실행 잠금(`requestSingleInstanceLock`)이 섞이지 않습니다 (처음엔 이름이 같아서 개발용 앱이 켜져 있으면 설치한 앱이 바로 꺼졌음).
+  - 자동 업데이트(0.2.0부터): electron-updater가 GitHub의 **최신 정식 릴리스**(`/releases/latest`, pre-release 제외)에서 `latest.yml`을 읽습니다. 태그 이름은 상관없어서 `desktop-v<버전>`을 씁니다. 켤 때와 6시간마다 확인하고, 다 받으면 브리지 `update.onReady`로 알리고 웹의 `layout/UpdateNotice.tsx`가 "지금 다시 시작"(`quitAndInstall(true, true)`)을 권합니다. 확인·설치 로직은 electron 없이 테스트하려고 `main/updater.ts`에 나눠 뒀습니다. 개발 중(`app.isPackaged` 아님)에는 확인하지 않습니다.
+  - 브리지에 `update`가 없는 0.1.0 앱에는 새로 설치하라는 안내를 한 번 띄웁니다 (닫으면 localStorage에 기억).
+  - 릴리스: `desktop-v*` 태그를 올리면 `.github/workflows/desktop-release.yml`이 Windows에서 빌드해 릴리스 **초안**을 만듭니다. 공개(정식)는 사람이 합니다. 태그와 `package.json` 버전이 다르면 실패합니다.
+  - 로컬에서 업데이트 흐름을 확인하려면: 빌드한 `win-unpacked/resources/app-update.yml`을 `provider: generic` + 로컬 주소로 바꾸고, 그 주소에 버전만 올린 `latest.yml`과 설치 파일을 둡니다. 설치한 앱이 켜져 있으면 한 번에 하나만 실행 잠금 때문에 바로 꺼지므로 `--user-data-dir`로 띄웁니다. "지금 다시 시작"을 누르면 실제로 설치되니 누르지 않습니다.
 - **역할과 채널 권한 (Phase 7):** `apps/server/src/chat/roles.service.ts`, `access.service.ts`, 웹 `features/communities/CommunitySettings.tsx`, `ChannelSettings.tsx`
   - 소유자와 관리자(`CommunityMember.role`)는 역할·채널을 관리하고 모든 채널을 봅니다. 관리자는 소유자만 정합니다. 사용자 정의 역할(`Role`)은 비공개 채널을 누구에게 보여 줄지 정하는 데 쓰고, 멤버 이름 색도 정합니다 (가장 위 역할의 색).
   - 채널이 보이는지는 `AccessService` 한 곳에서 판단합니다: 공개 채널은 멤버 전원, 비공개 채널은 관리자 + 허용된 역할을 가진 멤버. 목록 조회(`visibleChannelsWhere`), 접속할 때 들어가는 채널 방, 메시지·기록·첨부·통화(`getChannel`)가 모두 이 판단을 씁니다. 광장 말풍선도 채널 방으로 오는 `message:created`라서 그대로 따릅니다.
