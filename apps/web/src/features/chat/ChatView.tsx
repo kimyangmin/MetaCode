@@ -6,7 +6,15 @@ import {
   hasUnread,
 } from '@metacode/shared';
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
-import { type DragEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  type DragEvent,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { addMessageToCache, fetchMessages, markChannelRead, queryKeys } from '../../api/queries';
 import { useRealtime } from '../../realtime/RealtimeProvider';
 import { useTypingUsers } from '../../stores/typing';
@@ -26,6 +34,8 @@ interface ChatViewProps {
   lastReadMessageId: string | null;
   /** 입력 중인 사람 이름을 찾을 때 쓴다 */
   people: UserProfile[];
+  /** 머리글 오른쪽 (보기 전환 버튼) */
+  actions?: ReactNode;
 }
 
 /** 채팅 모드: 한 채널의 대화 기록, 입력 중 표시, 입력창 */
@@ -36,6 +46,7 @@ export function ChatView({
   me,
   lastReadMessageId,
   people,
+  actions,
 }: ChatViewProps) {
   const queryClient = useQueryClient();
   const { socket } = useRealtime();
@@ -160,6 +171,7 @@ export function ChatView({
       <header className="chat__header">
         <span className="chat__prefix">{prefix}</span>
         <h1>{title}</h1>
+        {actions && <div className="chat__actions">{actions}</div>}
       </header>
       {history.isError ? (
         <p className="chat__error" role="alert">

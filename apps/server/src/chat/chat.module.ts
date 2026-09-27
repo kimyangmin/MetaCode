@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { AttachmentsController } from '../attachments/attachments.controller.js';
 import { AttachmentsService } from '../attachments/attachments.service.js';
+import { PlazaService } from '../plaza/plaza.service.js';
 import { PresenceModule } from '../presence/presence.module.js';
 import { AccessService } from './access.service.js';
 import { ChannelSummaryService } from './channel-summary.service.js';
@@ -12,7 +13,7 @@ import { DmsController } from './dms.controller.js';
 import { DmsService } from './dms.service.js';
 import { MessagesService } from './messages.service.js';
 
-/** 채팅 모드: 커뮤니티, 채널, DM, 메시지, 첨부 파일, 실시간 게이트웨이 */
+/** 채팅 모드와 메타버스 모드의 서버: 커뮤니티, 채널, DM, 메시지, 첨부, 광장, 실시간 게이트웨이 */
 @Module({
   imports: [PresenceModule],
   controllers: [CommunitiesController, ChannelsController, DmsController, AttachmentsController],
@@ -23,6 +24,7 @@ import { MessagesService } from './messages.service.js';
     DmsService,
     MessagesService,
     AttachmentsService,
+    PlazaService,
     ChatGateway,
   ],
 })
