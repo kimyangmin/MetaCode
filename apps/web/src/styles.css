@@ -1081,3 +1081,246 @@ h3 {
   margin-bottom: 8px;
   font-size: 1.6rem;
 }
+
+/* ── 분할 화면: 채팅 모드 | 광장 ─────────────── */
+
+.split {
+  min-width: 0;
+  height: 100%;
+}
+
+.split__content {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-width: 0;
+}
+
+.split__content > * {
+  flex: 1;
+  min-height: 0;
+}
+
+.split__separator {
+  flex: none;
+  width: 5px;
+  margin: 0 -2px;
+  z-index: 2;
+  background: linear-gradient(to right, transparent 2px, var(--border) 2px 3px, transparent 3px);
+  transition: background 0.15s;
+}
+
+.split__separator:hover,
+.split__separator[data-separator='active'],
+.split__separator:focus-visible {
+  outline: none;
+  background: linear-gradient(to right, transparent 1px, var(--accent) 1px 4px, transparent 4px);
+}
+
+.chat__actions {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.view-toggles {
+  display: flex;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.view-toggles__button {
+  padding: 3px 10px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.view-toggles__button + .view-toggles__button {
+  border-left: 1px solid var(--border);
+}
+
+.view-toggles__button[aria-pressed='true'] {
+  background: var(--bg-active);
+  color: var(--fg);
+  font-weight: 600;
+}
+
+.view-toggles__button:disabled {
+  cursor: default;
+}
+
+/* ── 광장 (메타버스 모드) ─────────────── */
+
+.plaza-panel {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.plaza {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  background: #11161d;
+  outline: none;
+}
+
+/* 방향키가 광장으로 가는 동안 */
+.plaza[data-focused='true']::after {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  border: 2px solid var(--accent);
+  content: '';
+  pointer-events: none;
+}
+
+.plaza__stage {
+  position: absolute;
+  inset: 0;
+}
+
+.plaza__stage canvas {
+  display: block;
+  image-rendering: pixelated;
+}
+
+.plaza__overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.plaza__status,
+.plaza__hint {
+  position: absolute;
+  left: 50%;
+  z-index: 2;
+  margin: 0;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  font-size: 0.8rem;
+  white-space: nowrap;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.plaza__status {
+  top: 50%;
+}
+
+.plaza__hint {
+  bottom: 12px;
+}
+
+/* 캐릭터 머리 위: 0×0 기준점에서 위로 쌓는다 */
+.plaza-actor {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  width: 0;
+  height: 0;
+}
+
+.plaza-actor__name {
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 11px;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.plaza-actor--me .plaza-actor__name {
+  background: var(--accent);
+}
+
+.plaza-actor__bubbles {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  margin: 0 0 6px;
+  padding: 0;
+  list-style: none;
+}
+
+.plaza-bubble {
+  position: relative;
+  width: max-content;
+  max-width: 200px;
+  padding: 4px 8px;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+  color: #1f2328;
+  font-size: 12px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  animation: plaza-bubble-in 0.15s ease-out;
+}
+
+.plaza-bubble:last-child::after {
+  position: absolute;
+  bottom: -5px;
+  left: calc(50% + var(--tail-shift, 0px));
+  border: 5px solid transparent;
+  border-bottom: 0;
+  border-top-color: #fff;
+  content: '';
+  transform: translateX(-50%);
+}
+
+.plaza-bubble__label {
+  display: block;
+  color: #59636e;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.plaza-bubble--emote {
+  background: #fff8c5;
+  animation: plaza-emote 0.6s ease-out;
+}
+
+.plaza-bubble--emote:last-child::after {
+  border-top-color: #fff8c5;
+}
+
+@keyframes plaza-bubble-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
+@keyframes plaza-emote {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  30% {
+    transform: translateY(-6px);
+  }
+  60% {
+    transform: translateY(0);
+  }
+  80% {
+    transform: translateY(-3px);
+  }
+}
