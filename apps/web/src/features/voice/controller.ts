@@ -5,6 +5,7 @@ import {
   type VoiceJoinResult,
   type VoiceJoined,
   type VoiceLeft,
+  type VoiceMember,
   type VoiceProximityChanged,
 } from '@metacode/shared';
 import type { AppSocket } from '../../realtime/RealtimeProvider';
@@ -13,8 +14,6 @@ import type { VoiceConnection } from './connection';
 import { useVoiceStore } from './store';
 
 const REQUEST_TIMEOUT_MS = 10_000;
-/** 말을 멈췄다고 알리기 전에 기다리는 시간 (단어 사이에 깜빡이지 않게) */
-const SPEAKING_RELEASE_MS = 300;
 
 const store = useVoiceStore.getState;
 
@@ -25,8 +24,8 @@ const store = useVoiceStore.getState;
 export class VoiceController {
   private socket: AppSocket | null = null;
   private connection: VoiceConnection | null = null;
+  /** 내가 말하는 중 (이 기기의 마이크로 직접 감지한 값) */
   private speaking = false;
-  private speakingTimer: ReturnType<typeof setTimeout> | undefined;
 
   constructor(private readonly meId: string) {}
 
@@ -35,7 +34,7 @@ export class VoiceController {
     this.socket = socket;
     const resync = () => void this.resync();
     const onMember = ({ channelId, member }: VoiceJoined) =>
-      store().upsertMember(channelId, member);
+      store().upsertMember(channelId, this.withLocalSpeaking(channelId, member));
     const onLeft = ({ channelId, userId }: VoiceLeft) => {
       store().removeMember(channelId, userId);
       // 내가 들어가 있던 통화에서 빠졌다: 다른 기기가 통화를 가져갔거나, 커뮤니티를 나갔거나, 오래 끊겼다.
@@ -331,7 +330,6 @@ export class VoiceController {
     const current = this.connection;
     this.connection = null;
     this.speaking = false;
-    clearTimeout(this.speakingTimer);
     store().patch({ playbackBlocked: false });
     this.closeScreens();
     await current?.disconnect();
@@ -347,15 +345,25 @@ export class VoiceController {
     });
   }
 
+  /** 말하기 시작했거나 멈췄다. 내 화면에는 바로 보이고, 다른 사람에게는 서버로 알린다 */
   private onSpeaking(value: boolean) {
-    clearTimeout(this.speakingTimer);
-    const apply = () => {
-      if (this.speaking === value) return;
-      this.speaking = value;
-      this.sendState();
-    };
-    if (value) apply();
-    else this.speakingTimer = setTimeout(apply, SPEAKING_RELEASE_MS);
+    if (this.speaking === value) return;
+    this.speaking = value;
+    const { session, calls } = store();
+    if (!session) return;
+    const me = calls[session.channelId]?.members.find((m) => m.user.id === this.meId);
+    if (me) store().upsertMember(session.channelId, { ...me, speaking: value });
+    this.sendState();
+  }
+
+  /**
+   * 이 기기로 통화 중이면 내 말하는 중은 직접 감지한 값이 기준이다.
+   * 서버가 되돌려 준 값은 조금 전의 것이라, 그대로 쓰면 내 표시가 잠깐 거꾸로 바뀐다.
+   */
+  private withLocalSpeaking(channelId: string, member: VoiceMember): VoiceMember {
+    const mine =
+      member.user.id === this.meId && this.connection && store().session?.channelId === channelId;
+    return mine ? { ...member, speaking: this.speaking } : member;
   }
 
   private setStatus(status: 'connected' | 'reconnecting') {

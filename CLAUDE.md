@@ -100,7 +100,7 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
   - 한 사람은 통화 하나: 다른 통화에 들어가면 서버가 앞의 통화에서 빼고 `voice:left`를 본인 방에도 보냅니다. 다른 기기의 클라이언트는 이것을 받고 연결을 끊습니다.
   - 이벤트 대상: 통화 목록과 상태는 `channel:<id>` 방(음성 채널이면 커뮤니티 멤버 전원, DM이면 참여자)으로 보내므로, 통화에 없는 사람도 목록과 광장 표시를 봅니다.
   - 근접 음성: 서버가 광장 위치(Redis)로 참여자 쌍마다 음량을 계산해(`proximityGain`: 3타일 안 1, 10타일 밖 0, 0.1 단위) 바뀐 사람에게만 `voice:gains`로 보냅니다. 광장 이동(`plaza:move` 통과), 통화 참여/나감, 켜기 때 다시 계산합니다. 클라이언트는 LiveKit 자동 구독을 끄고, 0이면 구독을 끊고 아니면 그 음량으로 틉니다 (`volumeFor`). 구독 여부는 `isSubscribed`가 아니라 `isDesired`로 판단합니다 (구독 요청 중에 끊지 못하는 문제가 있었음). 설정은 `Channel.proximityVoice`에 저장합니다.
-  - 말하는 중: 각 클라이언트가 LiveKit의 음성 감지(`IsSpeakingChanged`, 멈출 때 300ms 늦춤)를 `voice:update`로 서버에 보내고 서버가 알립니다. 채팅 모드 목록(아바타 초록 테두리)과 광장(발밑 고리, 이름표 테두리, 캐릭터 위 `🔊 채널`/`📞 통화 중`)에 보입니다.
+  - 말하는 중: 각 클라이언트가 보내는 마이크 트랙의 음량을 직접 재서(`micLevel.ts`의 AudioWorklet이 20ms마다 RMS, `speech.ts`의 `SpeechDetector`가 -45dBFS 이상 40ms면 켜고 조용한 지 300ms면 끔) `voice:update`로 서버에 보내고 서버가 알립니다. 내 표시는 서버를 기다리지 않고 바로 바꿉니다. LiveKit의 음성 감지(`IsSpeakingChanged`)는 서버가 음량을 400ms씩 모아 판정해서 1~2초 늦으므로, 직접 잴 수 없을 때(AudioWorklet 불가, AudioContext 멈춤)에만 씁니다. 타이머 대신 AudioWorklet을 쓰는 이유는 가려진 창에서 타이머가 늦어지기 때문입니다. 채팅 모드 목록(아바타 초록 테두리)과 광장(발밑 고리, 이름표 테두리, 캐릭터 위 `🔊 채널`/`📞 통화 중`)에 보입니다.
   - 마이크가 없거나 권한이 없으면 듣기만 합니다(`listenOnly`, 음소거로 알림). 헤드셋을 끄면 마이크도 끄고 모든 구독을 끊습니다. 장치 선택은 localStorage에 기억합니다.
   - LiveKit 클라이언트(약 500KB)는 처음 통화에 들어갈 때 불러옵니다. 통화 제어는 React 밖의 `VoiceController`, 상태는 zustand(`useVoiceStore`)에 둡니다.
   - 로컬: `infra/docker-compose.yml`의 `livekit` (키 `devkey`, NODE_IP 127.0.0.1). 운영: `COMPOSE_PROFILES=voice`일 때만 뜨고, 신호는 Caddy가 `https://<API_DOMAIN>/livekit`으로 넘깁니다 (livekit-client가 주소의 경로를 유지함). 키가 비어 있으면 서버는 음성만 끈 채로 뜹니다.
