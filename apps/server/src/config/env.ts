@@ -1,6 +1,8 @@
 import { z } from 'zod';
 
 const url = z.url();
+/** .env에 빈 값으로 적어 둔 주소는 없는 것으로 본다 */
+const optionalUrl = z.preprocess((v) => (v === '' ? undefined : v), url.optional());
 
 export const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
@@ -27,6 +29,15 @@ export const envSchema = z.object({
   S3_ACCESS_KEY: z.string().min(1),
   S3_SECRET_KEY: z.string().min(1),
   UPLOAD_MAX_SIZE_MB: z.coerce.number().int().positive().default(50),
+
+  /** 서버가 LiveKit API에 접속하는 주소 (운영: 내부 주소 http://livekit:7880). 비우면 음성 통화를 쓸 수 없다 */
+  LIVEKIT_URL: optionalUrl,
+  /** 브라우저가 LiveKit에 접속하는 주소 (운영: wss://<LIVEKIT_DOMAIN>). 비우면 LIVEKIT_URL을 쓴다 */
+  LIVEKIT_PUBLIC_URL: optionalUrl,
+  LIVEKIT_API_KEY: z.string().default(''),
+  LIVEKIT_API_SECRET: z.string().default(''),
+  /** 실시간 연결이 끊긴 참여자를 통화에서 빼기 전에 기다리는 시간 (잠깐 끊겼다 다시 붙는 경우) */
+  VOICE_DISCONNECT_GRACE_MS: z.coerce.number().int().nonnegative().default(15_000),
 
   JWT_SECRET: z
     .string()

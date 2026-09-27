@@ -18,4 +18,11 @@ export const testEnv = {
   S3_SECRET_KEY: 'metacode-secret',
   // 크기 제한을 빨리 확인할 수 있게 작게 둔다.
   UPLOAD_MAX_SIZE_MB: '1',
+  // 음성 서버는 띄우지 않는다. 입장권은 서버가 직접 서명하므로 필요 없고, 참여자 끊기 요청은 실패해도 무시된다.
+  LIVEKIT_URL: 'http://127.0.0.1:59999',
+  LIVEKIT_PUBLIC_URL: 'ws://localhost:7880',
+  LIVEKIT_API_KEY: 'test-livekit-key',
+  LIVEKIT_API_SECRET: 'test-livekit-secret-test-livekit-secret',
+  // 연결이 끊긴 참여자를 빼는 것을 빨리 확인할 수 있게 짧게 둔다.
+  VOICE_DISCONNECT_GRACE_MS: '300',
 };

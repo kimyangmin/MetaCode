@@ -9,6 +9,7 @@ import {
   type PlazaMoved,
   type PlazaOccupant,
   type PlazaSnapshot,
+  type Position,
   DEFAULT_THEME,
   getPlazaMap,
   isValidMove,
@@ -147,6 +148,18 @@ export class PlazaService {
         moving: next.moving,
       },
     };
+  }
+
+  /** 여러 사람의 이 광장 위치 (근접 음성 거리 계산). 처음이면 스폰 자리 */
+  async positions(plazaId: PlazaId, userIds: string[]): Promise<Record<string, Position>> {
+    const layout = this.layoutOf(plazaId);
+    const entries = await Promise.all(
+      userIds.map(async (id) => {
+        const { x, y } = await this.positionOf(plazaId, id, layout);
+        return [id, { x, y }] as const;
+      }),
+    );
+    return Object.fromEntries(entries);
   }
 
   private async occupants(plazaId: PlazaId, userIds: string[]): Promise<PlazaOccupant[]> {

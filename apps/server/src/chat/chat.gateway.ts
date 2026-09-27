@@ -13,10 +13,15 @@ import {
   type ServerToClientEvents,
   type SocketAck,
   SocketEvent,
+  type VoiceCall,
+  type VoiceJoinResult,
   plazaMoveSchema,
   plazaWatchSchema,
   sendMessageSchema,
   typingStartSchema,
+  voiceJoinSchema,
+  voiceSetProximitySchema,
+  voiceUpdateSchema,
 } from '@metacode/shared';
 import type { Socket } from 'socket.io';
 import { AccessTokenService } from '../auth/access-token.service.js';
@@ -29,6 +34,7 @@ import {
   type SocketData,
   room,
 } from '../realtime/realtime.service.js';
+import { VoiceService } from '../voice/voice.service.js';
 import { AccessService } from './access.service.js';
 import { MessagesService } from './messages.service.js';
 
@@ -51,6 +57,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     private readonly messages: MessagesService,
     private readonly realtime: RealtimeService,
     private readonly plaza: PlazaService,
+    private readonly voice: VoiceService,
   ) {}
 
   afterInit(server: AppServer) {
@@ -73,6 +80,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
   async handleDisconnect(socket: AppSocket) {
     try {
       const { userId } = socket.data;
+      if (userId) this.voice.disconnected(userId, socket.id);
       if (userId && (await this.presence.disconnect(userId, socket.id))) {
         await this.broadcastPresence(userId, false);
       }
@@ -166,11 +174,73 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     if (!socket.rooms.has(target)) return;
     try {
       const result = await this.plaza.move(socket.data.userId!, parsed.data);
-      if (result.ok) socket.to(target).emit(SocketEvent.PlazaMoved, result.moved);
-      else socket.emit(SocketEvent.PlazaCorrected, result.correction);
+      if (!result.ok) return void socket.emit(SocketEvent.PlazaCorrected, result.correction);
+      socket.to(target).emit(SocketEvent.PlazaMoved, result.moved);
+      await this.voice.moved(parsed.data.plazaId, socket.data.userId!);
     } catch (error) {
       this.logger.error('광장 이동 처리 실패', error);
     }
+  }
+
+  /** 볼 수 있는 진행 중인 통화 전부. 접속할 때와 커뮤니티 목록이 바뀔 때 부른다. */
+  @SubscribeMessage(SocketEvent.VoiceSync)
+  async onVoiceSync(socket: AppSocket): Promise<SocketAck<VoiceCall[]>> {
+    try {
+      return { ok: true, data: await this.voice.sync(socket.data.userId!) };
+    } catch (error) {
+      return this.fail(error, '통화 목록을 불러오지 못했습니다.');
+    }
+  }
+
+  /** 통화에 들어간다: 권한을 확인하고 음성 서버 입장권을 준다. 다른 통화에 있었으면 거기서 나온다. */
+  @SubscribeMessage(SocketEvent.VoiceJoin)
+  async onVoiceJoin(socket: AppSocket, payload: unknown): Promise<SocketAck<VoiceJoinResult>> {
+    const parsed = voiceJoinSchema.safeParse(payload);
+    if (!parsed.success) return { ok: false, error: '채널 ID 형식이 올바르지 않습니다.' };
+    try {
+      const result = await this.voice.join(socket.data.userId!, socket.id, parsed.data.channelId);
+      return { ok: true, data: result };
+    } catch (error) {
+      return this.fail(error, '통화에 들어가지 못했습니다.');
+    }
+  }
+
+  @SubscribeMessage(SocketEvent.VoiceLeave)
+  async onVoiceLeave(socket: AppSocket): Promise<void> {
+    try {
+      await this.voice.leave(socket.data.userId!, socket.id);
+    } catch (error) {
+      this.logger.error('통화 나가기 처리 실패', error);
+    }
+  }
+
+  @SubscribeMessage(SocketEvent.VoiceUpdate)
+  onVoiceUpdate(socket: AppSocket, payload: unknown): void {
+    const parsed = voiceUpdateSchema.safeParse(payload);
+    if (parsed.success) this.voice.update(socket.data.userId!, socket.id, parsed.data);
+  }
+
+  @SubscribeMessage(SocketEvent.VoiceSetProximity)
+  async onVoiceSetProximity(socket: AppSocket, payload: unknown): Promise<SocketAck<null>> {
+    const parsed = voiceSetProximitySchema.safeParse(payload);
+    if (!parsed.success) return { ok: false, error: '요청 형식이 올바르지 않습니다.' };
+    try {
+      await this.voice.setProximity(
+        socket.data.userId!,
+        parsed.data.channelId,
+        parsed.data.enabled,
+      );
+      return { ok: true, data: null };
+    } catch (error) {
+      return this.fail(error, '근접 음성을 바꾸지 못했습니다.');
+    }
+  }
+
+  /** 예상한 거절(HttpException)은 그 메시지를, 나머지는 기록하고 일반 메시지를 돌려준다 */
+  private fail(error: unknown, fallback: string): { ok: false; error: string } {
+    if (error instanceof HttpException) return { ok: false, error: error.message };
+    this.logger.error(error);
+    return { ok: false, error: fallback };
   }
 
   private async broadcastPresence(userId: string, online: boolean) {
