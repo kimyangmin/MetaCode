@@ -161,11 +161,13 @@ curl https://api.metacode.kimyangmin.me/health
 
 ## 7. 업데이트
 
-`main` 브랜치의 새 코드를 받아 다시 빌드합니다. 새 마이그레이션은 `migrate`가 자동으로 적용합니다.
+9단계를 설정해 두면 `main`에 push될 때(dev → main PR 병합 포함) CI가 통과한 뒤 자동으로 배포됩니다. 손으로 배포할 때는 서버에서 같은 스크립트를 실행합니다. `main`의 새 코드를 받아 다시 빌드하고, 새 마이그레이션은 `migrate`가 자동으로 적용합니다.
 
 ```bash
-git pull && docker compose -f infra/docker-compose.prod.yml --env-file .env.production up -d --build
+bash infra/deploy.sh
 ```
+
+서버 저장소에 고친 파일이 있거나 `main` 기록이 갈라져 있으면 덮어쓰지 않고 멈춥니다. 배포한 코드에 문제가 있으면 되돌리는 커밋(revert)을 `main`에 올려 다시 배포합니다.
 
 ## 8. 백업
 
@@ -198,6 +200,46 @@ sh infra/backup.sh files
 ```bash
 gzip -dc backups/postgres-YYYYMMDD-HHMMSS.sql.gz | docker compose -f infra/docker-compose.prod.yml --env-file .env.production exec -T postgres psql -U metacode -d metacode
 ```
+
+## 9. 자동 배포 (GitHub Actions)
+
+[ci.yml](../.github/workflows/ci.yml)의 `deploy` 작업이 `main` push에서 검사(`check`)가 통과하면 SSH로 서버에 접속합니다. 배포 전용 키는 서버에서 `infra/deploy.sh`만 실행할 수 있게 묶어 두므로, 키가 새더라도 셸을 얻을 수는 없습니다.
+
+GitHub Actions 러너의 IP는 정해져 있지 않으므로 서버의 SSH(22) 포트가 인터넷에 열려 있어야 합니다 (Oracle 기본 설정).
+
+### 9-1. 배포 전용 키 만들기 (서버에서)
+
+```bash
+ssh-keygen -t ed25519 -N '' -C github-actions-deploy -f ~/deploy_key
+```
+
+공개 키를 `authorized_keys`에 **이 스크립트만 실행하도록** 추가합니다 (경로는 클론한 위치에 맞게).
+
+```bash
+echo "command=\"bash $HOME/MetaCode/infra/deploy.sh\",restrict $(cat ~/deploy_key.pub)" >> ~/.ssh/authorized_keys
+```
+
+### 9-2. GitHub에 비밀값 등록
+
+저장소 → Settings → Environments → **production** 환경을 만들고(없으면 첫 배포 때 자동으로 생김), 그 안의 Environment secrets에 넣습니다.
+
+| 이름 | 값 |
+| --- | --- |
+| `DEPLOY_SSH_KEY` | 서버에서 `cat ~/deploy_key`로 본 개인 키 전체 (`-----BEGIN`부터 `END-----`까지) |
+| `DEPLOY_HOST` | 서버 공인 IP |
+| `DEPLOY_KNOWN_HOSTS` | 서버에서 `ssh-keyscan -t ed25519 localhost \| sed "s/^localhost/<서버 공인 IP>/"`로 만든 한 줄 |
+
+`DEPLOY_KNOWN_HOSTS`는 러너가 접속한 서버가 진짜 이 서버인지 확인하는 데 씁니다. 등록했으면 서버의 개인 키 파일은 지웁니다.
+
+```bash
+rm ~/deploy_key ~/deploy_key.pub
+```
+
+production 환경의 **Required reviewers**를 켜면 배포 전에 GitHub에서 승인을 한 번 거치게 할 수도 있습니다.
+
+### 9-3. 확인
+
+Actions 탭에서 `main`의 CI를 **Re-run all jobs**로 다시 돌리거나 `main`에 새 커밋을 올리면 `deploy` 작업의 로그에 `배포 완료: <커밋>`이 나옵니다. 키를 없애려면 `~/.ssh/authorized_keys`에서 `github-actions-deploy` 줄을 지웁니다.
 
 ## 문제 해결
 
