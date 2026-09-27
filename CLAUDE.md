@@ -136,6 +136,8 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
   - 머리글의 ⠿를 끌어 분할 영역의 가장자리(상하좌우 중 가장 가까운 쪽)에 놓으면 그쪽으로 옮깁니다. 배치(방향, 앞 패널)는 localStorage에 기억하고, 크기는 방향별로 기억합니다.
   - 창 밖에 놓거나(드래그 끝의 화면 좌표가 창 밖이고 아무 데도 놓지 않았을 때) ⧉를 누르면 `/popout/chat/:channelId`, `/popout/plaza/:plazaId`를 새 창으로 엽니다. 분리한 창은 앱 전체를 따로 띄워 실시간 연결을 따로 엽니다. 메인 창은 그 패널을 숨기고, 분리한 창이 닫히면(0.8초마다 확인) 다시 보여 줍니다. 브라우저가 드래그 끝의 팝업을 막으면 ⧉로 다시 시도하라고 안내합니다. 마지막 패널은 분리하지 않습니다.
   - 데스크톱: `setWindowOpenHandler`가 앱 출처의 `/popout/` 주소만 같은 보안 설정(preload, sandbox)의 앱 창으로 열고, 그 창에도 같은 규칙을 겁니다 (`main/windows.ts`). 다른 http(s) 주소는 시스템 브라우저로 엽니다.
+  - **dragstart에서 화면을 바꾸지 않는다:** Chromium은 dragstart 직후 누른 자리에 끄는 요소가 그대로 있는지 확인하고, 다른 요소가 덮으면 드래그를 취소합니다. 처음에는 dragstart에서 놓을 자리 덮개를 그려서 실제 마우스로는 전혀 끌리지 않았습니다 (JS로 만든 DragEvent 확인으로는 못 잡음). 지금은 끄는 패널을 ref에만 두고, `.split-host`가 dragover/drop을 받으며, 미리보기는 `pointer-events: none`입니다.
+  - **그리드 행 높이 고정:** `.app`은 `grid-template-rows: minmax(0, 1fr)`입니다. `.split-host` 래퍼를 넣었을 때 긴 채팅이 행을 늘려서 입력창이 화면 밖으로 밀리고 광장이 확대된 것처럼 보였습니다 (예전엔 react-resizable-panels의 Group이 `overflow: hidden`이라 드러나지 않았음).
 - **Windows에서 파일 수정:** Windows PowerShell 5.1의 `Get-Content`/`Set-Content`는 UTF-8 한글을 깨뜨립니다. 파일 수정은 편집 도구나 bash를 씁니다.
 
 ## 확정된 결정
