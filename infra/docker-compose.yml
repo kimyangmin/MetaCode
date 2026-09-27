@@ -1,6 +1,5 @@
 # 로컬 개발용 인프라. 계정/비밀번호는 로컬 전용 값이다.
 # 포트는 127.0.0.1에만 연다. Linux에서 Docker가 연 포트는 방화벽(ufw)을 우회하므로 0.0.0.0으로 열지 않는다.
-# LiveKit은 Phase 5(음성 통화)에서 추가한다.
 name: metacode
 
 services:
@@ -57,6 +56,25 @@ services:
       echo 's3.bucket.list' | weed shell -master=seaweedfs:9333 | grep -q metacode-uploads ||
       echo 's3.bucket.create -name metacode-uploads' | weed shell -master=seaweedfs:9333
       "
+
+  # 음성 통화 서버(WebRTC SFU). 키는 로컬 전용 값이고 .env의 LIVEKIT_API_KEY/SECRET과 같아야 한다.
+  # 브라우저는 7880(신호)으로 접속하고, 음성은 7882/udp(막히면 7881/tcp)로 오간다.
+  livekit:
+    image: livekit/livekit-server:v1.13.7
+    environment:
+      LIVEKIT_KEYS: 'devkey: metacode-dev-livekit-secret-0123456789'
+      # 브라우저에 알려 줄 주소. 컨테이너 안의 주소가 아니라 이 PC의 주소여야 한다.
+      NODE_IP: 127.0.0.1
+      LIVEKIT_CONFIG: |
+        port: 7880
+        rtc:
+          tcp_port: 7881
+          udp_port: 7882
+          use_external_ip: false
+    ports:
+      - '127.0.0.1:7880:7880'
+      - '127.0.0.1:7881:7881'
+      - '127.0.0.1:7882:7882/udp'
 
 volumes:
   postgres-data:
