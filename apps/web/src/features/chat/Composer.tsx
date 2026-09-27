@@ -22,7 +22,10 @@ export function Composer({ placeholder, onSend, onTyping }: ComposerProps) {
     const el = ref.current;
     if (!el) return;
     el.style.height = 'auto';
-    el.style.height = `${Math.min(el.scrollHeight, MAX_HEIGHT_PX)}px`;
+    // box-sizing: border-box라 높이에 테두리도 들어간다. scrollHeight만 쓰면 테두리만큼 모자라
+    // 한 줄에서도 넘침(스크롤)이 생긴다.
+    const border = el.offsetHeight - el.clientHeight;
+    el.style.height = `${Math.min(el.scrollHeight + border, MAX_HEIGHT_PX)}px`;
   }, [value]);
 
   const submit = () => {
