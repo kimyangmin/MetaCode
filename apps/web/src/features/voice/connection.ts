@@ -13,9 +13,11 @@ import {
 } from 'livekit-client';
 import type { TrackKind } from './calls';
 import { MicGainProcessor } from './micGain';
+import { MicLevelMeter } from './micLevel';
+import { SPEECH_RELEASE_MS, SpeechDetector } from './speech';
 
 export interface ConnectionHandlers {
-  /** 내가 말하기 시작하거나 멈췄다 (LiveKit의 음성 감지) */
+  /** 내가 말하기 시작하거나 멈췄다 (마이크 음량으로 직접 감지) */
   onSpeaking(speaking: boolean): void;
   onReconnecting(): void;
   onReconnected(): void;
@@ -51,6 +53,10 @@ const kindOf = (source: Track.Source): TrackKind | null => {
  * 통화 하나의 LiveKit 연결. 자동 구독은 끄고, 무엇을 얼마나 크게 받을지는 applyVolumes로 정한다
  * (근접 음성: 들리지 않는 사람은 구독하지 않아 대역폭도 아낀다. 화면 공유: 보고 있는 것만 받는다).
  * 받은 소리는 화면에 보이지 않는 <audio>로 틀고, 화면 공유 영상은 onScreen으로 넘긴다.
+ *
+ * 말하는 중은 보내는 마이크 트랙의 음량을 직접 재서 판단한다 (MicLevelMeter + SpeechDetector).
+ * LiveKit의 음성 감지는 서버가 음량을 모아 판정한 뒤 알려 주는 것이라 1초쯤 늦어서,
+ * 직접 잴 수 없을 때(AudioWorklet 불가, AudioContext가 멈춤)에만 쓴다.
  */
 export class VoiceConnection {
   private readonly room = new Room({
@@ -68,6 +74,11 @@ export class VoiceConnection {
   private inputGain = 1;
   private micGain: MicGainProcessor | null = null;
   private audioContext: AudioContext | null = null;
+  private readonly speech = new SpeechDetector();
+  private meter: MicLevelMeter | null = null;
+  /** 측정기를 만드는 중이거나 만들지 못했다 (못 만들었으면 다시 시도하지 않는다) */
+  private meterState: 'none' | 'loading' | 'failed' = 'none';
+  private fallbackTimer: ReturnType<typeof setTimeout> | undefined;
 
   constructor(private readonly handlers: ConnectionHandlers) {
     this.audioHost.hidden = true;
@@ -97,6 +108,10 @@ export class VoiceConnection {
       .on(RoomEvent.LocalTrackUnpublished, (publication: LocalTrackPublication) => {
         if (publication.source === Track.Source.ScreenShare) handlers.onScreenShareEnded();
       })
+      // 장치가 바뀌면(고르거나 뽑혀서) 마이크 트랙이 새로 만들어진다.
+      .on(RoomEvent.ActiveDeviceChanged, (kind: MediaDeviceKind) => {
+        if (kind === 'audioinput') void this.syncMeter();
+      })
       .on(RoomEvent.Reconnecting, () => handlers.onReconnecting())
       .on(RoomEvent.Reconnected, () => handlers.onReconnected())
       .on(RoomEvent.AudioPlaybackStatusChanged, () =>
@@ -110,9 +125,9 @@ export class VoiceConnection {
           );
         }
       });
-    this.localParticipant.on(ParticipantEvent.IsSpeakingChanged, (speaking: boolean) =>
-      handlers.onSpeaking(speaking),
-    );
+    this.localParticipant.on(ParticipantEvent.IsSpeakingChanged, (speaking: boolean) => {
+      if (!this.measuring) this.onFallbackSpeaking(speaking);
+    });
   }
 
   private get localParticipant(): LocalParticipant {
@@ -139,8 +154,10 @@ export class VoiceConnection {
         deviceId ? { deviceId: { ideal: deviceId } } : undefined,
       );
       if (enabled) await this.applyGain();
+      await this.syncMeter();
       return true;
     } catch {
+      await this.syncMeter();
       return !enabled;
     }
   }
@@ -149,6 +166,62 @@ export class VoiceConnection {
   async setInputGain(value: number): Promise<void> {
     this.inputGain = value;
     await this.applyGain();
+    // 증폭 처리기를 붙이면 보내는 트랙이 바뀐다.
+    await this.syncMeter();
+  }
+
+  /** 직접 재고 있다 (아니면 LiveKit의 음성 감지를 쓴다) */
+  private get measuring(): boolean {
+    return !!this.meter?.track && this.audioContext?.state === 'running';
+  }
+
+  /**
+   * 음량 측정기를 지금 보내는 마이크 트랙에 맞춘다. 마이크가 꺼져 있으면 떼고 말하는 중을 끈다.
+   * 마이크를 켜고 끌 때, 장치나 증폭을 바꿀 때 부른다.
+   */
+  private async syncMeter(): Promise<void> {
+    const publication = this.localParticipant.getTrackPublication(Track.Source.Microphone);
+    const track = publication && !publication.isMuted ? publication.track : undefined;
+    const target = track instanceof LocalAudioTrack ? track.mediaStreamTrack : null;
+    if (!target || this.leaving) {
+      this.meter?.detach();
+      this.stopSpeaking();
+      return;
+    }
+    if (!this.meter) {
+      if (this.meterState !== 'none') return;
+      this.meterState = 'loading';
+      try {
+        this.audioContext ??= new AudioContext();
+        if (this.audioContext.state === 'suspended') await this.audioContext.resume();
+        this.meter = await MicLevelMeter.create(this.audioContext, (level, time) => {
+          const changed = this.speech.push(level, time);
+          if (changed !== null) this.handlers.onSpeaking(changed);
+        });
+        this.meterState = 'none';
+      } catch {
+        this.meterState = 'failed';
+        return;
+      }
+      // 만드는 사이 마이크가 바뀌었거나 통화가 끝났을 수 있으니 처음부터 다시 맞춘다.
+      return this.syncMeter();
+    }
+    if (this.meter.track === target) return;
+    this.meter.attach(target);
+    this.stopSpeaking();
+  }
+
+  private stopSpeaking() {
+    clearTimeout(this.fallbackTimer);
+    this.speech.reset();
+    this.handlers.onSpeaking(false);
+  }
+
+  /** LiveKit의 음성 감지 (직접 잴 수 없을 때). 멈춤은 단어 사이에 깜빡이지 않게 늦춘다 */
+  private onFallbackSpeaking(speaking: boolean) {
+    clearTimeout(this.fallbackTimer);
+    if (speaking) this.handlers.onSpeaking(true);
+    else this.fallbackTimer = setTimeout(() => this.handlers.onSpeaking(false), SPEECH_RELEASE_MS);
   }
 
   private async applyGain() {
@@ -216,8 +289,10 @@ export class VoiceConnection {
     if (kind === 'screen-audio') participant.setVolume(volume, Track.Source.ScreenShareAudio);
   }
 
-  switchDevice(kind: 'audioinput' | 'audiooutput', deviceId: string): Promise<boolean> {
-    return this.room.switchActiveDevice(kind, deviceId).catch(() => false);
+  async switchDevice(kind: 'audioinput' | 'audiooutput', deviceId: string): Promise<boolean> {
+    const ok = await this.room.switchActiveDevice(kind, deviceId).catch(() => false);
+    if (kind === 'audioinput') await this.syncMeter();
+    return ok;
   }
 
   /** 브라우저가 소리 재생을 막았을 때, 사용자가 누른 버튼에서 부른다 */
@@ -234,6 +309,9 @@ export class VoiceConnection {
   private cleanup() {
     this.elements.clear();
     this.audioHost.remove();
+    clearTimeout(this.fallbackTimer);
+    this.meter?.dispose();
+    this.meter = null;
     void this.audioContext?.close().catch(() => {});
     this.audioContext = null;
   }
