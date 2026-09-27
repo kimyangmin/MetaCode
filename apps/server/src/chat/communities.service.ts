@@ -9,6 +9,7 @@ import {
   SocketEvent,
 } from '@metacode/shared';
 import { AttachmentsService } from '../attachments/attachments.service.js';
+import { PlazaService } from '../plaza/plaza.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { PresenceService } from '../presence/presence.service.js';
 import { RealtimeService, room } from '../realtime/realtime.service.js';
@@ -29,6 +30,7 @@ export class CommunitiesService {
     private readonly presence: PresenceService,
     private readonly realtime: RealtimeService,
     private readonly attachments: AttachmentsService,
+    private readonly plaza: PlazaService,
   ) {}
 
   /** 커뮤니티를 만들고 만든 사람을 OWNER로, 기본 텍스트 채널 하나를 함께 만든다. */
@@ -123,10 +125,18 @@ export class CommunitiesService {
     await this.prisma.communityMember.delete({
       where: { communityId_userId: { communityId, userId } },
     });
+    const plazaId = `community:${communityId}` as const;
     this.realtime.leaveUser(userId, [
       room.community(communityId),
+      room.plaza(plazaId),
       ...channels.map((c) => room.channel(c.id)),
     ]);
+    // 광장을 보고 있는 멤버들 화면에서 캐릭터를 없앤다.
+    this.realtime.emit(room.plaza(plazaId), SocketEvent.PlazaMember, {
+      plazaId,
+      userId,
+      occupant: null,
+    });
     // 남은 멤버와, 이 사용자의 다른 탭/기기에 알린다.
     this.realtime.emit(
       [room.community(communityId), room.user(userId)],
@@ -154,6 +164,7 @@ export class CommunitiesService {
     this.realtime.emit(room.community(communityId), SocketEvent.CommunityDeleted, { communityId });
     for (const target of [
       room.community(communityId),
+      room.plaza(`community:${communityId}`),
       ...channels.map((c) => room.channel(c.id)),
     ]) {
       this.realtime.clearRoom(target);
@@ -225,6 +236,15 @@ export class CommunitiesService {
         communityId,
         member: { user: toProfile(member.user), role: member.role, online: online ?? false },
       });
+      // 접속 중이면 광장에도 바로 나타난다.
+      if (online) {
+        const plazaId = `community:${communityId}` as const;
+        this.realtime.emit(room.plaza(plazaId), SocketEvent.PlazaMember, {
+          plazaId,
+          userId,
+          occupant: await this.plaza.occupant(plazaId, userId),
+        });
+      }
     }
 
     const community = (await this.list(userId)).find((c) => c.id === communityId);

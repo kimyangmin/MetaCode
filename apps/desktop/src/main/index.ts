@@ -118,7 +118,7 @@ function main() {
   void app.whenReady().then(() => {
     auth = new AuthManager({
       apiUrl: API_URL,
-      storage: createTokenStorage(),
+      storage: createTokenStorage(API_URL),
       openExternal: (url) => shell.openExternal(url),
       onChanged: () => mainWindow?.webContents.send(IPC.changed),
       onReturned: focusMainWindow,

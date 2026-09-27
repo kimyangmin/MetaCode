@@ -15,6 +15,8 @@ import {
   useMembers,
 } from './features/communities/hooks';
 import { DmSidebar } from './features/dms/DmSidebar';
+import { PlazaPanel } from './features/metaverse/PlazaPanel';
+import { SplitView } from './layout/SplitView';
 import { dmTitle } from './ui/format';
 
 /** 첫 화면: 첫 커뮤니티로, 없으면 DM으로 */
@@ -44,14 +46,29 @@ export function CommunityPage() {
   return (
     <>
       <CommunitySidebar community={community} activeChannelId={channel.id} />
-      <ChatView
-        key={channel.id}
-        channelId={channel.id}
-        title={channel.name ?? ''}
-        prefix="#"
-        me={me}
-        lastReadMessageId={channel.lastReadMessageId}
-        people={members.data?.map((m) => m.user) ?? []}
+      <SplitView
+        chat={(actions) => (
+          <ChatView
+            key={channel.id}
+            channelId={channel.id}
+            title={channel.name ?? ''}
+            prefix="#"
+            me={me}
+            lastReadMessageId={channel.lastReadMessageId}
+            people={members.data?.map((m) => m.user) ?? []}
+            actions={actions}
+          />
+        )}
+        plaza={(actions) => (
+          <PlazaPanel
+            plazaId={`community:${community.id}`}
+            title={`${community.name} 광장`}
+            icon="⛲"
+            me={me}
+            channelLabels={textChannelLabels(community)}
+            actions={actions}
+          />
+        )}
       />
       <MemberList communityId={community.id} />
     </>
@@ -70,14 +87,29 @@ export function DmPage() {
     <>
       <DmSidebar activeId={channelId} />
       {dm ? (
-        <ChatView
-          key={dm.id}
-          channelId={dm.id}
-          title={dmTitle(dm, me.id)}
-          prefix="@"
-          me={me}
-          lastReadMessageId={dm.lastReadMessageId}
-          people={dm.participants}
+        <SplitView
+          chat={(actions) => (
+            <ChatView
+              key={dm.id}
+              channelId={dm.id}
+              title={dmTitle(dm, me.id)}
+              prefix="@"
+              me={me}
+              lastReadMessageId={dm.lastReadMessageId}
+              people={dm.participants}
+              actions={actions}
+            />
+          )}
+          plaza={(actions) => (
+            <PlazaPanel
+              plazaId={`dm:${dm.id}`}
+              title="모닥불 캠프"
+              icon="🔥"
+              me={me}
+              channelLabels={new Map([[dm.id, null]])}
+              actions={actions}
+            />
+          )}
         />
       ) : (
         <section className="chat chat--empty">
@@ -150,6 +182,13 @@ export function InvitePage() {
         </>
       )}
     </section>
+  );
+}
+
+/** 분수 광장에는 커뮤니티의 모든 텍스트 채널 메시지가 채널 이름과 함께 뜬다 */
+function textChannelLabels(community: CommunitySummary): Map<string, string> {
+  return new Map(
+    community.channels.filter((c) => c.type === 'TEXT').map((c) => [c.id, `#${c.name}`]),
   );
 }
 
