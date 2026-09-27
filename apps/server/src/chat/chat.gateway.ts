@@ -15,6 +15,7 @@ import {
   SocketEvent,
   type VoiceCall,
   type VoiceJoinResult,
+  forwardMessageSchema,
   plazaMoveSchema,
   plazaWatchSchema,
   sendMessageSchema,
@@ -118,12 +119,30 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
         parsed.data.channelId,
         parsed.data.content,
         parsed.data.attachmentIds,
+        parsed.data.replyToId,
       );
       return { ok: true, data: message };
     } catch (error) {
       if (error instanceof HttpException) return { ok: false, error: error.message };
       this.logger.error(error);
       return { ok: false, error: '메시지를 보내지 못했습니다.' };
+    }
+  }
+
+  /** 메시지 전달 (다른 채널이나 DM으로) */
+  @SubscribeMessage(SocketEvent.MessageForward)
+  async onMessageForward(socket: AppSocket, payload: unknown): Promise<SocketAck<MessageDto>> {
+    const parsed = forwardMessageSchema.safeParse(payload);
+    if (!parsed.success) return { ok: false, error: '요청 형식이 올바르지 않습니다.' };
+    try {
+      const message = await this.messages.forward(
+        socket.data.userId!,
+        parsed.data.messageId,
+        parsed.data.channelId,
+      );
+      return { ok: true, data: message };
+    } catch (error) {
+      return this.fail(error, '메시지를 전달하지 못했습니다.');
     }
   }
 

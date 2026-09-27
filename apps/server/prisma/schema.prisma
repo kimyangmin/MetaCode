@@ -181,11 +181,17 @@ model Message {
   channelId String   @map("channel_id") @db.Uuid
   authorId  String   @map("author_id") @db.Uuid
   content   String
+  /// 답장한 메시지. 원래 메시지가 지워지면 비운다
+  replyToId String?  @map("reply_to_id") @db.Uuid
+  /// 다른 곳에서 전달한 메시지
+  forwarded Boolean  @default(false)
   createdAt DateTime @default(now()) @map("created_at")
 
   channel     Channel      @relation(fields: [channelId], references: [id], onDelete: Cascade)
   author      User         @relation(fields: [authorId], references: [id], onDelete: Cascade)
   attachments Attachment[]
+  replyTo     Message?     @relation("Replies", fields: [replyToId], references: [id], onDelete: SetNull)
+  replies     Message[]    @relation("Replies")
 
   @@index([channelId, id(sort: Desc)])
   @@map("messages")

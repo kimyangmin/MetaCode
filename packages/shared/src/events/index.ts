@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { ChannelSummary, DmSummary } from '../api/channel.js';
 import type { CommunityMember } from '../api/community.js';
-import type { MessageDto, SendMessageRequest } from '../api/message.js';
+import type { ForwardMessageRequest, MessageDto, SendMessageRequest } from '../api/message.js';
 import type {
   PlazaCorrection,
   PlazaMemberChange,
@@ -28,6 +28,8 @@ import type {
 export const SocketEvent = {
   MessageSend: 'message:send',
   MessageCreated: 'message:created',
+  /** 메시지 전달 (ack로 새 메시지) */
+  MessageForward: 'message:forward',
   TypingStart: 'typing:start',
   TypingStarted: 'typing:started',
   ChannelCreated: 'channel:created',
@@ -69,6 +71,10 @@ export type SocketAck<T> = { ok: true; data: T } | { ok: false; error: string };
 export interface ClientToServerEvents {
   [SocketEvent.MessageSend]: (
     payload: SendMessageRequest,
+    ack: (result: SocketAck<MessageDto>) => void,
+  ) => void;
+  [SocketEvent.MessageForward]: (
+    payload: ForwardMessageRequest,
     ack: (result: SocketAck<MessageDto>) => void,
   ) => void;
   [SocketEvent.TypingStart]: (payload: { channelId: string }) => void;

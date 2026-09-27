@@ -185,6 +185,45 @@ export class AttachmentsService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  /**
+   * 메시지 전달: 원래 메시지의 첨부를 새 채널로 복사한다 (저장소 파일도 복사해서, 원래 채널이 지워져도 남는다).
+   * 새 첨부 행을 돌려주고, 메시지에 붙이는 것은 호출한 쪽의 트랜잭션에서 한다.
+   */
+  async copyForForward(
+    sourceMessageId: string,
+    channelId: string,
+    userId: string,
+  ): Promise<Prisma.AttachmentCreateManyInput[]> {
+    const sources = await this.prisma.attachment.findMany({
+      where: { messageId: sourceMessageId, status: 'READY' },
+      orderBy: { createdAt: 'asc' },
+    });
+    const copies: Prisma.AttachmentCreateManyInput[] = [];
+    for (const source of sources) {
+      const id = uuidv7();
+      const objectKey = objectKeyFor(channelId, id);
+      await this.storage.copy(source.objectKey, objectKey);
+      const thumbnailKey = source.thumbnailKey ? thumbnailKeyFor(channelId, id) : null;
+      if (source.thumbnailKey && thumbnailKey)
+        await this.storage.copy(source.thumbnailKey, thumbnailKey);
+      copies.push({
+        id,
+        channelId,
+        uploaderId: userId,
+        status: 'READY',
+        kind: source.kind,
+        objectKey,
+        thumbnailKey,
+        fileName: source.fileName,
+        contentType: source.contentType,
+        size: source.size,
+        width: source.width,
+        height: source.height,
+      });
+    }
+    return copies;
+  }
+
   /** 채널을 볼 수 있는 사람에게만 짧게 유효한 저장소 주소를 준다. */
   async downloadUrl(
     userId: string,
