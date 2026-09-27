@@ -1,9 +1,27 @@
 import { Avatar } from '../../ui/Avatar';
 import { useCall, useVoiceStore } from './store';
+import { LiveButton } from './VoiceMembers';
 import { useVoice } from './VoiceProvider';
 
 /** DM 머리글의 통화 버튼. 진행 중인 통화가 있으면 참여자와 함께 "참여"로 보인다 */
 export function CallButton({ channelId }: { channelId: string }) {
+  return (
+    <>
+      <LiveButtons channelId={channelId} />
+      <CallToggle channelId={channelId} />
+    </>
+  );
+}
+
+/** DM에는 참여자 목록이 따로 없으므로, 화면을 공유 중인 사람의 LIVE를 머리글에 보여 준다 */
+function LiveButtons({ channelId }: { channelId: string }) {
+  const call = useCall(channelId);
+  return (call?.members ?? [])
+    .filter((m) => m.sharing)
+    .map((m) => <LiveButton key={m.user.id} channelId={channelId} member={m} />);
+}
+
+function CallToggle({ channelId }: { channelId: string }) {
   const voice = useVoice();
   const call = useCall(channelId);
   const inThisCall = useVoiceStore((s) => s.session?.channelId === channelId);

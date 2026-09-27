@@ -151,7 +151,7 @@ function VoiceChannelItem({ channel }: { channel: ChannelSummary }) {
         </span>
         <span className="sidebar__label">{channel.name}</span>
       </button>
-      <VoiceMembers members={call?.members ?? []} />
+      <VoiceMembers channelId={channel.id} members={call?.members ?? []} />
     </div>
   );
 }

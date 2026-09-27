@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import type { MetaCodeDesktopBridge } from '@metacode/shared';
+import type { MetaCodeDesktopBridge, ScreenSource } from '@metacode/shared';
 
 // sandbox 모드의 preload는 electron 일부 모듈만 require할 수 있다.
 // 그래서 @metacode/shared는 타입만 가져오고, IPC 이름은 main/index.ts와 똑같이 적는다.
@@ -9,6 +9,8 @@ const IPC = {
   getAccessToken: 'metacode:auth:get-access-token',
   changed: 'metacode:auth:changed',
   download: 'metacode:download',
+  screenSources: 'metacode:screen:sources',
+  screenSelect: 'metacode:screen:select',
 } as const;
 
 const bridge: MetaCodeDesktopBridge = {
@@ -19,6 +21,10 @@ const bridge: MetaCodeDesktopBridge = {
     chrome: process.versions.chrome ?? '',
   },
   download: (url) => ipcRenderer.invoke(IPC.download, url) as Promise<void>,
+  screen: {
+    getSources: () => ipcRenderer.invoke(IPC.screenSources) as Promise<ScreenSource[]>,
+    select: (sourceId) => ipcRenderer.invoke(IPC.screenSelect, sourceId) as Promise<void>,
+  },
   auth: {
     login: () => ipcRenderer.invoke(IPC.login) as Promise<void>,
     logout: () => ipcRenderer.invoke(IPC.logout) as Promise<void>,

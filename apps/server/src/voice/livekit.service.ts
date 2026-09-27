@@ -37,7 +37,7 @@ export class LiveKitService {
 
   /**
    * 이 채널의 통화 입장권. 신원은 사용자 ID라서, 같은 사람이 다른 탭이나 기기로 들어오면
-   * LiveKit이 앞의 연결을 끊는다 (한 사람은 통화 하나에 한 연결). 마이크만 올릴 수 있다.
+   * LiveKit이 앞의 연결을 끊는다 (한 사람은 통화 하나에 한 연결). 마이크와 화면 공유(영상, 소리)만 올릴 수 있다.
    */
   token(channelId: string, user: UserProfile): Promise<string> {
     const token = new AccessToken(this.apiKey, this.apiSecret, {
@@ -49,7 +49,11 @@ export class LiveKitService {
       roomJoin: true,
       room: livekitRoom(channelId),
       canPublish: true,
-      canPublishSources: [TrackSource.MICROPHONE],
+      canPublishSources: [
+        TrackSource.MICROPHONE,
+        TrackSource.SCREEN_SHARE,
+        TrackSource.SCREEN_SHARE_AUDIO,
+      ],
       canSubscribe: true,
       canPublishData: false,
     });

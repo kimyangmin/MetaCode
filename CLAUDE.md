@@ -15,7 +15,7 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
 
 ## 현재 상태
 
-- **Phase 1~4 완료, Phase 5 (음성 통화) 구현 완료** (화면 공유는 선택 항목이라 하지 않음). 운영 서버에서 음성을 쓰려면 `docs/deploy.md` 10단계(포트, LiveKit 키)가 필요합니다. 다음은 Phase 6 (캐릭터·맵 에셋)입니다.
+- **Phase 1~5 완료** (Phase 5 선택 항목인 화면 공유 포함). Phase 6(에셋)은 에셋이 준비될 때 하기로 하고, **Phase 7을 먼저 진행**합니다 (2026-09-27 사용자 결정). 운영 서버의 음성 통화는 2026-09-27에 켰습니다 (`docs/deploy.md` 10단계: 7882/udp, 7881/tcp, `.env.production`의 LiveKit 키).
 - **운영 중:** https://metacode.kimyangmin.me (2026-09-26 첫 배포, `main` 기준). 서버는 SSH 별칭 `myserver3`(ubuntu, `~/MetaCode`)로 접속할 수 있고, 업데이트는 `main`에 push되면 CI 통과 후 GitHub Actions가 SSH로 `infra/deploy.sh`를 실행해 자동으로 합니다 (배포 전용 키는 `authorized_keys`의 `command=`로 이 스크립트만 실행 가능, 설정은 `docs/deploy.md` 9단계). 손으로 할 때는 서버에서 `bash infra/deploy.sh`입니다. DB 백업은 서버 crontab이 매일 04:00 KST(19:00 UTC)에 `infra/backup.sh`를 실행합니다 (`~/MetaCode/backups/`, 14일 보관, 로그 `backups/backup.log`). 운영 서버에서 무언가를 바꾸기 전에는 사용자에게 확인받습니다.
 - 개발용 GitHub OAuth App(`localhost` 콜백)으로 웹·데스크톱, 운영용 OAuth App으로 운영 웹의 실제 로그인을 확인했습니다 (2026-09-26).
 - 기술 스택은 README 표대로 확정되었습니다 (2026-09-26). 메타버스 렌더링은 Phaser 3 대신 Phaser 4로 정했습니다 (2026-09-27).
@@ -103,6 +103,8 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
   - 마이크가 없거나 권한이 없으면 듣기만 합니다(`listenOnly`, 음소거로 알림). 헤드셋을 끄면 마이크도 끄고 모든 구독을 끊습니다. 장치 선택은 localStorage에 기억합니다.
   - LiveKit 클라이언트(약 500KB)는 처음 통화에 들어갈 때 불러옵니다. 통화 제어는 React 밖의 `VoiceController`, 상태는 zustand(`useVoiceStore`)에 둡니다.
   - 로컬: `infra/docker-compose.yml`의 `livekit` (키 `devkey`, NODE_IP 127.0.0.1). 운영: `COMPOSE_PROFILES=voice`일 때만 뜨고, 신호는 Caddy가 `https://<API_DOMAIN>/livekit`으로 넘깁니다 (livekit-client가 주소의 경로를 유지함). 키가 비어 있으면 서버는 음성만 끈 채로 뜹니다.
+  - 화면 공유: 통화 중인 사람이 음성 패널의 🖥️로 공유합니다 (영상 + 가능하면 시스템 소리). 상태는 `voice:update`의 `sharing`으로 알려 목록과 광장(`🖥️`)에 보이고, 목록의 LIVE를 누르면 보기 창이 뜹니다 (그 통화에 없으면 먼저 들어감). 영상과 공유 소리는 **보고 있는 동안에만** 구독합니다 (`trackVolume`). 입장권은 마이크, 화면 공유 영상, 화면 공유 소리만 올릴 수 있습니다.
+  - 데스크톱 화면 공유: Electron의 getDisplayMedia는 고르는 창이 없어서, 웹이 브리지(`screen.getSources`)로 받은 목록을 보여 주고 고른 것(`screen.select`, 30초 유효)을 메인 프로세스의 `setDisplayMediaRequestHandler`가 넘겨줍니다. 고르지 않은 요청과 앱 화면이 아닌 요청은 거절합니다. 시스템 소리(loopback)는 Windows에서만 됩니다. 데스크톱 0.1.0에는 이 브리지가 없어서 "새 버전 설치" 안내가 뜹니다.
   - 데스크톱: Electron은 권한 처리기가 없으면 모든 권한을 허락하므로, 앱 화면에만 마이크·스피커 선택·클립보드 쓰기를 허락하고 나머지(카메라 포함)는 거절합니다 (`apps/desktop/src/main/permissions.ts`).
   - 로컬에서 두 사람 음성 확인: 브라우저 패널은 마이크를 막으므로, 두 번째 사용자는 `@livekit/rtc-node`로 음을 보내는 스크립트로 확인했습니다. 실제 마이크로 말하는 확인은 사람이 해야 합니다.
 - **데스크톱 설치 파일:** `apps/desktop/electron-builder.yml`, `pnpm --filter @metacode/desktop dist:win` (NSIS, 현재 사용자에 설치, 서명 없음).
@@ -130,6 +132,10 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
 | 파일 크기 제한 | 기본 50MB |
 | 도트 에셋 크기 | 타일 16×16px, 캐릭터 한 프레임 16×32px |
 | 테마 | 계절·행사에 따라 테마를 바꿀 수 있어야 함. 기능은 추후에 만들지만, 맵·에셋 구조는 처음부터 테마 교체를 전제로 만듦 |
+| 진행 순서 | Phase 6(에셋)은 에셋이 준비되면 하고, Phase 7을 먼저 진행 (2026-09-27) |
+| 데스크톱 코드 서명 | 당분간 하지 않음 (테스트 단계). 설치 때 "Windows의 PC 보호" 경고는 추가 정보 → 실행으로 넘김. 정식 공개 때 다시 정함 (2026-09-27) |
+| 모니터링 | 셀프 호스팅 (같은 서버에 Uptime Kuma). 외부 서비스는 쓰지 않음 (2026-09-27) |
+| 채널 권한 | Discord식 사용자 정의 역할. 역할을 만들고 채널마다 역할별로 허용 (2026-09-27) |
 
 ## 용어
 
