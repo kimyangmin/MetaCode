@@ -67,7 +67,12 @@ interface Actor {
   renderedBubbles: string;
   bubblesWidth: number;
   hopUntil: number;
-  dom: { root: HTMLDivElement; bubbles: HTMLOListElement; voice: HTMLSpanElement };
+  dom: {
+    root: HTMLDivElement;
+    bubbles: HTMLOListElement;
+    voice: HTMLSpanElement;
+    name: HTMLSpanElement;
+  };
 }
 
 /**
@@ -172,6 +177,14 @@ export class PlazaScene extends Phaser.Scene {
     };
     this.actors.set(occupant.user.id, actor);
     this.applyVoice(actor);
+  }
+
+  /** 닉네임이 바뀌었다 (user:updated): 이름표를 고친다 */
+  updateUser(user: UserProfile): void {
+    const actor = this.actors.get(user.id);
+    if (!actor) return;
+    actor.user = user;
+    actor.dom.name.textContent = this.options.nameOf(user);
   }
 
   remove(userId: string): void {
@@ -446,7 +459,7 @@ export class PlazaScene extends Phaser.Scene {
     voice.hidden = true;
     root.append(bubbles, voice, name);
     this.options.overlay.append(root);
-    return { root, bubbles, voice };
+    return { root, bubbles, voice, name };
   }
 
   private updateOverlay(now: number): void {

@@ -144,6 +144,13 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
   - 프로필 사진: `POST /users/me/avatar/upload`(크기를 서명에 넣은 presigned PUT, 원본은 `avatar-uploads/<userId>` 한 칸) → 브라우저가 PUT → `PUT /users/me/avatar`(매직 바이트 확인, 256px 정사각형 WebP로 바꿔 `avatars/<userId>/<무작위>.webp`에 저장, 원본과 이전 사진 삭제). `DELETE /users/me/avatar`면 GitHub 사진으로 돌아갑니다.
   - 사진은 `GET /avatars/<userId>/<file>`로 **인증 없이** 줍니다 (데스크톱 `<img>`는 토큰을 못 붙이고, 주소에 무작위 ID가 있어 추측할 수 없음). 바꾸면 주소가 바뀌므로 1년 캐시(immutable)합니다. 주소는 `PUBLIC_SERVER_URL` 기준입니다.
   - 닉네임이나 사진이 바뀌면 `user:updated`(UserProfile)를 본인, 속한 커뮤니티, DM 방에 보냅니다.
+- **설정 창과 음성 버튼:** `features/settings/SettingsDialog.tsx`, `stores/settings.ts`, `features/voice/VoicePanel.tsx`, `features/voice/devices.tsx`
+  - 사이드바 아래 ⚙가 설정 창을 엽니다 (화면의 80%, 바깥은 어둡게, 바깥을 누르거나 Esc면 닫힘). 왼쪽 목록: 내 계정(사진, 사용자 ID, 닉네임, 자기소개), 음성(장치, 마이크 증폭, 출력 음량), 맨 아래 로그아웃. 로그아웃 버튼은 여기로 옮겼습니다.
+  - 음성 패널의 버튼은 마이크, 헤드셋, 화면 세 개입니다 (나가기 ✕는 머리글). 마이크·헤드셋은 우클릭하거나 옆의 ˄를 누르면 버튼 위에 팝업이 뜹니다: 마이크 = 입력 장치·증폭, 헤드셋 = 출력 장치·음량·근접 음성. 팝업의 "음성 설정 열기"는 설정 창의 음성 항목으로 갑니다.
+  - 출력 음량(0~100%)은 참여자별 음량(`trackVolume`)에 곱합니다. LiveKit의 `setVolume`은 WebAudio를 쓰지 않으면 1을 넘길 수 없어 100%까지입니다.
+  - 마이크 증폭(0~200%)은 LiveKit 오디오 처리기(`micGain.ts`, WebAudio GainNode)로 올리기 전에 바꿉니다. 100%면 처리기를 붙이지 않습니다. 장치·증폭·음량은 localStorage에 기억합니다.
+  - 닉네임·사진이 바뀌면(`user:updated`) `realtime/userUpdates.ts`의 `withUserProfile`로 모든 쿼리 캐시와 통화 목록, 정보 팝업의 사용자 정보를 바꾸고, 광장은 이름표를 고칩니다. 자기소개는 메시지·멤버 목록에 싣지 않고 정보 팝업을 열 때 `GET /users/:id`로 받습니다.
+- **데스크톱 로그인 유지:** 앱을 켤 때 네트워크가 아직 없거나 서버가 잠깐 응답하지 않으면, 예전에는 메인 프로세스가 토큰은 남긴 채 렌더러에 null을 줘서 로그인 화면이 떴습니다 (로그아웃처럼 보임). 지금은 1초, 2초 뒤 두 번 더 시도하고, 그래도 안 되면 `SessionUnavailableError`로 거절합니다 (토큰 유지). 웹은 이것을 "서버에 연결하지 못했습니다 + 다시 시도"로 보여 주고, `me` 조회도 401이 아니면 몇 번 더 시도합니다. 401(세션 끊김)일 때만 로그인 화면입니다. 이 변경은 데스크톱 0.3.1부터입니다.
 - **Windows에서 파일 수정:** Windows PowerShell 5.1의 `Get-Content`/`Set-Content`는 UTF-8 한글을 깨뜨립니다. 파일 수정은 편집 도구나 bash를 씁니다.
 
 ## 확정된 결정

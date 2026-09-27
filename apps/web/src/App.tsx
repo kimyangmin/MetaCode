@@ -4,6 +4,7 @@ import { LoginScreen } from './features/auth/LoginScreen';
 import { UpdateNotice } from './features/desktop/UpdateNotice';
 import { takeLoginError, useMe } from './features/auth/auth';
 import { rememberPendingInvite } from './pages';
+import { SettingsDialog } from './features/settings/SettingsDialog';
 import { ScreenViewer } from './features/voice/ScreenViewer';
 import { VoiceProvider } from './features/voice/VoiceProvider';
 import { RealtimeProvider } from './realtime/RealtimeProvider';
@@ -26,8 +27,16 @@ function Screen() {
   if (me.isPending) return <main className="center">불러오는 중…</main>;
   if (me.isError) {
     return (
-      <main className="center" role="alert">
-        서버에 연결하지 못했습니다.
+      <main className="center center--column" role="alert">
+        <p>서버에 연결하지 못했습니다.</p>
+        <button
+          type="button"
+          className="button button--primary"
+          onClick={() => void me.refetch()}
+          disabled={me.isFetching}
+        >
+          {me.isFetching ? '연결 중…' : '다시 시도'}
+        </button>
       </main>
     );
   }
@@ -41,6 +50,7 @@ function Screen() {
       <VoiceProvider meId={me.data.id}>
         <RouterProvider router={router} />
         <ScreenViewer />
+        <SettingsDialog />
       </VoiceProvider>
     </RealtimeProvider>
   );

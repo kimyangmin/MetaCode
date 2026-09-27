@@ -1,5 +1,6 @@
 import {
   DisconnectReason,
+  LocalAudioTrack,
   type LocalParticipant,
   type LocalTrackPublication,
   ParticipantEvent,
@@ -11,6 +12,7 @@ import {
   Track,
 } from 'livekit-client';
 import type { TrackKind } from './calls';
+import { MicGainProcessor } from './micGain';
 
 export interface ConnectionHandlers {
   /** 내가 말하기 시작하거나 멈췄다 (LiveKit의 음성 감지) */
@@ -31,6 +33,8 @@ export interface ConnectOptions {
   micEnabled: boolean;
   inputDeviceId: string | null;
   outputDeviceId: string | null;
+  /** 마이크 증폭 (1이 원래 크기) */
+  inputGain: number;
 }
 
 /** 트랙 종류별 구독 여부와 음량. 0이면 구독하지 않는다 */
@@ -60,6 +64,10 @@ export class VoiceConnection {
   /** 음량을 정하기 전에는 아무것도 구독하지 않는다 (근접 음성에서 먼 사람이 잠깐 들리지 않게) */
   private policy: VolumePolicy = () => 0;
   private leaving = false;
+  /** 마이크 증폭. 1(원래 크기)이면 처리기를 붙이지 않는다 */
+  private inputGain = 1;
+  private micGain: MicGainProcessor | null = null;
+  private audioContext: AudioContext | null = null;
 
   constructor(private readonly handlers: ConnectionHandlers) {
     this.audioHost.hidden = true;
@@ -119,6 +127,7 @@ export class VoiceConnection {
     }
     this.applyAll();
     this.handlers.onPlaybackBlocked(!this.room.canPlaybackAudio);
+    this.inputGain = options.inputGain;
     return this.setMicEnabled(options.micEnabled, options.inputDeviceId);
   }
 
@@ -129,10 +138,31 @@ export class VoiceConnection {
         enabled,
         deviceId ? { deviceId: { ideal: deviceId } } : undefined,
       );
+      if (enabled) await this.applyGain();
       return true;
     } catch {
       return !enabled;
     }
+  }
+
+  /** 마이크 증폭을 바꾼다 (통화 중이면 바로 적용) */
+  async setInputGain(value: number): Promise<void> {
+    this.inputGain = value;
+    await this.applyGain();
+  }
+
+  private async applyGain() {
+    const track = this.localParticipant.getTrackPublication(Track.Source.Microphone)?.track;
+    if (!(track instanceof LocalAudioTrack)) return;
+    if (!this.micGain) {
+      if (this.inputGain === 1) return;
+      this.micGain = new MicGainProcessor(this.inputGain);
+    }
+    this.micGain.setGain(this.inputGain);
+    if (track.getProcessor() === this.micGain) return;
+    this.audioContext ??= new AudioContext();
+    track.setAudioContext(this.audioContext);
+    await track.setProcessor(this.micGain).catch(() => {});
   }
 
   /**
@@ -204,5 +234,7 @@ export class VoiceConnection {
   private cleanup() {
     this.elements.clear();
     this.audioHost.remove();
+    void this.audioContext?.close().catch(() => {});
+    this.audioContext = null;
   }
 }

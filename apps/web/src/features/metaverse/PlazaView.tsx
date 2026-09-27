@@ -126,11 +126,14 @@ export default function PlazaView({ plazaId, me, channelLabels, voiceLabels }: P
       });
     };
 
+    const onUserUpdated = (user: UserProfile) => scene.updateUser(user);
+
     socket.on('connect', watch);
     socket.on(SocketEvent.PlazaMoved, onMoved);
     socket.on(SocketEvent.PlazaMember, onMember);
     socket.on(SocketEvent.PlazaCorrected, onCorrected);
     socket.on(SocketEvent.MessageCreated, onMessage);
+    socket.on(SocketEvent.UserUpdated, onUserUpdated);
     if (socket.connected) watch();
     return () => {
       socket.off('connect', watch);
@@ -138,6 +141,7 @@ export default function PlazaView({ plazaId, me, channelLabels, voiceLabels }: P
       socket.off(SocketEvent.PlazaMember, onMember);
       socket.off(SocketEvent.PlazaCorrected, onCorrected);
       socket.off(SocketEvent.MessageCreated, onMessage);
+      socket.off(SocketEvent.UserUpdated, onUserUpdated);
       if (socket.connected) socket.emit(SocketEvent.PlazaUnwatch, { plazaId });
     };
   }, [scene, socket, plazaId]);

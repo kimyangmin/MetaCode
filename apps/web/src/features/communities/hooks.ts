@@ -1,4 +1,4 @@
-import type { CommunitySummary, DmSummary, UserProfile } from '@metacode/shared';
+import type { CommunitySummary, DmSummary, UserDetail } from '@metacode/shared';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
 import { useNavigate } from 'react-router';
@@ -31,9 +31,9 @@ export function useMembers(communityId: string) {
 }
 
 /** 로그인한 사용자. 로그인 후 화면에서만 쓴다 (App이 로그인 전에는 이 화면을 그리지 않는다). */
-export function useMeRequired(): UserProfile {
+export function useMeRequired(): UserDetail {
   const queryClient = useQueryClient();
-  const me = queryClient.getQueryData<UserProfile | null>(meQueryKey);
+  const me = queryClient.getQueryData<UserDetail | null>(meQueryKey);
   if (!me) throw new Error('로그인이 필요합니다.');
   return me;
 }
