@@ -207,11 +207,12 @@ export default function PlazaView({ plazaId, me, channelLabels, voiceLabels }: P
 
   // 통화 상태 → 캐릭터 위 음성 채널 표시와 말하는 중 고리
   const calls = useVoiceStore((s) => s.calls);
+  const myCallId = useVoiceStore((s) => s.session?.channelId ?? null);
   const voiceKey = [...voiceLabels].join();
   useEffect(() => {
     // voiceLabels는 렌더마다 새로 만들어지므로 내용(voiceKey)이 바뀔 때만 다시 계산한다.
-    scene?.setVoice(plazaVoiceStates(calls, voiceLabelsRef.current));
-  }, [scene, calls, voiceKey]);
+    scene?.setVoice(plazaVoiceStates(calls, voiceLabelsRef.current, myCallId));
+  }, [scene, calls, voiceKey, myCallId]);
 
   // 창이 포커스를 잃으면 keyup을 못 받으므로 눌린 키를 비운다.
   useEffect(() => {

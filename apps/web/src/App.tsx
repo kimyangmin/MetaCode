@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { RouterProvider } from 'react-router';
+import { LiveUpdateNotice } from './features/app/LiveUpdateNotice';
 import { LoginScreen } from './features/auth/LoginScreen';
 import { UpdateNotice } from './features/desktop/UpdateNotice';
 import { takeLoginError, useMe } from './features/auth/auth';
@@ -15,6 +16,7 @@ export function App() {
     <>
       <Screen />
       <UpdateNotice />
+      <LiveUpdateNotice />
     </>
   );
 }

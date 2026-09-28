@@ -135,6 +135,18 @@ h3 {
   object-fit: cover;
 }
 
+/* 사진을 못 불러왔을 때: 이름 첫 글자 */
+.avatar__fallback {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  color: #fff;
+  font-weight: 700;
+  line-height: 1;
+}
+
 .avatar__status {
   position: absolute;
   right: -2px;

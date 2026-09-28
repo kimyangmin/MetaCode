@@ -19,6 +19,10 @@
 	encode zstd gzip
 	root * /srv/web
 	header /assets/* Cache-Control "public, max-age=31536000, immutable"
+	# index.html과 version.json은 늘 서버에 새것인지 물어본다 (ETag로 바뀌지 않았으면 304).
+	# 캐시해 두면 새로 배포해도 앱이 옛 화면을 계속 연다.
+	@notAssets not path /assets/*
+	header @notAssets Cache-Control "no-cache"
 	try_files {path} /index.html
 	file_server
 }
