@@ -73,10 +73,19 @@ export async function processImage(input: Buffer): Promise<ProcessedImage | null
  * 움직이는 이미지는 첫 프레임으로 만든다. 읽을 수 없는 파일이면 null
  */
 export async function makeAvatar(input: Buffer, size: number): Promise<Buffer | null> {
+  return makeCover(input, size, size);
+}
+
+/** 가운데를 채워 자른 WebP (커뮤니티 아이콘·배너). 이미지가 아니면 null */
+export async function makeCover(
+  input: Buffer,
+  width: number,
+  height: number,
+): Promise<Buffer | null> {
   try {
     return await sharp(input, { limitInputPixels: MAX_INPUT_PIXELS, animated: false })
       .rotate()
-      .resize(size, size, { fit: 'cover' })
+      .resize(width, height, { fit: 'cover' })
       .webp({ quality: 85 })
       .toBuffer();
   } catch {

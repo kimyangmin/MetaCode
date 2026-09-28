@@ -1,25 +1,55 @@
 import {
+  AVATAR_MAX_BYTES,
+  type AvatarUploadTicket,
+  COMMUNITY_IMAGE_SIZE,
+  type CommunityImageKind,
   type CommunityMember,
   CommunityRole,
   type CommunitySummary,
   type RoleDto,
 } from '@metacode/shared';
 import { useQueryClient } from '@tanstack/react-query';
-import { type CSSProperties, type FormEvent, useRef, useState } from 'react';
+import {
+  type CSSProperties,
+  type ChangeEvent,
+  type FormEvent,
+  Suspense,
+  lazy,
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
+import { useNavigate } from 'react-router';
 import { ApiError, apiFetch } from '../../api/client';
 import { jsonBody, queryKeys } from '../../api/queries';
 import { Avatar } from '../../ui/Avatar';
 import { Dialog } from '../../ui/Dialog';
-import { displayName } from '../../ui/format';
+import { displayName, initials } from '../../ui/format';
 import { useDragSort } from '../../ui/useDragSort';
+import { closeAssetEditors } from '../assets/AssetEditors';
 import { useMeRequired, useMembers } from './hooks';
 
 const DEFAULT_COLOR = '#3f8fdb';
 
-type Tab = 'roles' | 'members';
+// 광장 에셋 목록은 내장 에셋(약 150KB)을 쓰므로 열 때 따로 불러온다.
+const CommunityPlazaAssets = lazy(() =>
+  import('../assets/AssetSettings').then((m) => ({ default: m.CommunityPlazaAssets })),
+);
+
+type Tab = 'general' | 'plaza' | 'roles' | 'members';
+
+const TABS: { id: Tab; label: string }[] = [
+  { id: 'general', label: '일반' },
+  { id: 'plaza', label: '광장' },
+  { id: 'roles', label: '역할' },
+  { id: 'members', label: '멤버' },
+];
 
 /**
- * 커뮤니티 설정 (소유자, 관리자): 역할 만들기/바꾸기/지우기, 멤버에게 역할 주기, 관리자 정하기(소유자만).
+ * 커뮤니티 설정 (소유자, 관리자).
+ * - 일반: 이름, 아이콘, 배너, 커뮤니티 삭제(소유자만)
+ * - 광장: 커뮤니티 타일·오브젝트, 광장 맵 편집
+ * - 역할: 역할 만들기/바꾸기/지우기 / 멤버: 역할 주기, 관리자 정하기(소유자만), 내보내기
  * 비공개 채널을 누가 볼지는 채널 설정에서 역할로 정한다.
  */
 export function CommunitySettings({
@@ -29,35 +59,262 @@ export function CommunitySettings({
   community: CommunitySummary;
   onClose(): void;
 }) {
-  const [tab, setTab] = useState<Tab>('roles');
+  const [tab, setTab] = useState<Tab>('general');
+  // 여기서 연 도트 에디터·맵 에디터는 설정을 닫으면 함께 닫는다.
+  useEffect(() => closeAssetEditors, []);
   return (
-    <Dialog title="커뮤니티 설정" onClose={onClose}>
+    <Dialog title="커뮤니티 설정" onClose={onClose} className="dialog--wide">
       <div className="settings">
         <div className="settings__tabs" role="tablist">
-          <button
-            type="button"
-            role="tab"
-            aria-selected={tab === 'roles'}
-            onClick={() => setTab('roles')}
-          >
-            역할
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={tab === 'members'}
-            onClick={() => setTab('members')}
-          >
-            멤버
-          </button>
+          {TABS.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              role="tab"
+              aria-selected={tab === t.id}
+              onClick={() => setTab(t.id)}
+            >
+              {t.label}
+            </button>
+          ))}
         </div>
-        {tab === 'roles' ? (
-          <RolesTab community={community} />
-        ) : (
-          <MembersTab community={community} />
+        {tab === 'general' && <GeneralTab community={community} />}
+        {tab === 'plaza' && (
+          <Suspense fallback={<p className="form__hint">불러오는 중…</p>}>
+            <CommunityPlazaAssets community={community} />
+          </Suspense>
         )}
+        {tab === 'roles' && <RolesTab community={community} />}
+        {tab === 'members' && <MembersTab community={community} />}
       </div>
     </Dialog>
+  );
+}
+
+const IMAGE_LABEL: Record<CommunityImageKind, string> = { icon: '아이콘', banner: '배너' };
+/** 목적격 조사까지 붙인 이름 (아이콘을, 배너를) */
+const IMAGE_OBJECT: Record<CommunityImageKind, string> = { icon: '아이콘을', banner: '배너를' };
+
+/** 아이콘·배너 올리기: 저장소에 바로 올리고, 서버가 확인·변환해 적용한다 */
+async function uploadImage(communityId: string, kind: CommunityImageKind, file: File) {
+  const base = `/communities/${communityId}/images/${kind}`;
+  const ticket = await apiFetch<AvatarUploadTicket>(`${base}/upload`, {
+    method: 'POST',
+    ...jsonBody({ size: file.size }),
+  });
+  const put = await fetch(ticket.uploadUrl, { method: 'PUT', headers: ticket.headers, body: file });
+  if (!put.ok) throw new Error('이미지를 올리지 못했습니다.');
+  await apiFetch(base, { method: 'PUT' });
+}
+
+function GeneralTab({ community }: { community: CommunitySummary }) {
+  const refresh = useRefresh(community.id);
+  const { error, run } = useRequest();
+  const [name, setName] = useState(community.name);
+  const [busy, setBusy] = useState(false);
+  const [saved, setSaved] = useState<string | null>(null);
+  const isOwner = community.myRole === CommunityRole.Owner;
+
+  const act = async (request: () => Promise<unknown>, fallback: string, ok: string) => {
+    setBusy(true);
+    setSaved(null);
+    const done = await run(request, fallback);
+    setBusy(false);
+    if (done) {
+      setSaved(ok);
+      refresh();
+    }
+  };
+
+  const rename = (e: FormEvent) => {
+    e.preventDefault();
+    void act(
+      () =>
+        apiFetch(`/communities/${community.id}`, {
+          method: 'PATCH',
+          ...jsonBody({ name: name.trim() }),
+        }),
+      '이름을 바꾸지 못했습니다.',
+      '이름을 바꿨습니다.',
+    );
+  };
+
+  const upload = (kind: CommunityImageKind, file: File) => {
+    if (file.size > AVATAR_MAX_BYTES) {
+      void run(() => Promise.reject(new Error()), '8MB 이하의 이미지만 올릴 수 있습니다.');
+      return;
+    }
+    void act(
+      () => uploadImage(community.id, kind, file),
+      `${IMAGE_OBJECT[kind]} 올리지 못했습니다.`,
+      `${IMAGE_OBJECT[kind]} 바꿨습니다.`,
+    );
+  };
+
+  const remove = (kind: CommunityImageKind) =>
+    void act(
+      () => apiFetch(`/communities/${community.id}/images/${kind}`, { method: 'DELETE' }),
+      `${IMAGE_OBJECT[kind]} 지우지 못했습니다.`,
+      `${IMAGE_OBJECT[kind]} 지웠습니다.`,
+    );
+
+  const trimmed = name.trim();
+  return (
+    <div className="community-general">
+      <form className="settings-field" onSubmit={rename}>
+        <span className="settings-field__label">이름</span>
+        <div className="settings__row">
+          <input value={name} onChange={(e) => setName(e.target.value)} maxLength={50} />
+          <button
+            className="button button--primary"
+            disabled={busy || !trimmed || trimmed === community.name}
+          >
+            저장
+          </button>
+        </div>
+      </form>
+
+      <ImageField
+        kind="icon"
+        community={community}
+        busy={busy}
+        onPick={(file) => upload('icon', file)}
+        onRemove={() => remove('icon')}
+      />
+      <ImageField
+        kind="banner"
+        community={community}
+        busy={busy}
+        onPick={(file) => upload('banner', file)}
+        onRemove={() => remove('banner')}
+      />
+
+      {(error || saved) && (
+        <p className={error ? 'form__error' : 'form__ok'} role="status">
+          {error ?? saved}
+        </p>
+      )}
+
+      {isOwner && <DeleteCommunity community={community} />}
+    </div>
+  );
+}
+
+function ImageField({
+  kind,
+  community,
+  busy,
+  onPick,
+  onRemove,
+}: {
+  kind: CommunityImageKind;
+  community: CommunitySummary;
+  busy: boolean;
+  onPick(file: File): void;
+  onRemove(): void;
+}) {
+  const fileRef = useRef<HTMLInputElement>(null);
+  const url = kind === 'icon' ? community.iconUrl : community.bannerUrl;
+  const { width, height } = COMMUNITY_IMAGE_SIZE[kind];
+  const onChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (file) onPick(file);
+  };
+  return (
+    <div className="settings-field">
+      <span className="settings-field__label">{IMAGE_LABEL[kind]}</span>
+      <div className="community-image">
+        <div className={`community-image__preview community-image__preview--${kind}`}>
+          {url ? (
+            <img src={url} alt="" />
+          ) : kind === 'icon' ? (
+            <span>{initials(community.name)}</span>
+          ) : (
+            <span className="form__hint">배너 없음</span>
+          )}
+        </div>
+        <div className="community-image__actions">
+          <button
+            type="button"
+            className="button"
+            disabled={busy}
+            onClick={() => fileRef.current?.click()}
+          >
+            {url ? '바꾸기' : '올리기'}
+          </button>
+          {url && (
+            <button type="button" className="button" disabled={busy} onClick={onRemove}>
+              지우기
+            </button>
+          )}
+          <p className="form__hint">
+            {kind === 'icon'
+              ? '왼쪽 커뮤니티 목록과 초대 화면에 보입니다.'
+              : '채널 목록 위에 보입니다.'}{' '}
+            {width}×{height}로 가운데를 잘라 씁니다 · 8MB 이하
+          </p>
+        </div>
+        <input
+          ref={fileRef}
+          type="file"
+          accept="image/png,image/jpeg,image/gif,image/webp,image/avif"
+          hidden
+          onChange={onChange}
+        />
+      </div>
+    </div>
+  );
+}
+
+/** 커뮤니티 삭제 (소유자만). 실수로 지우지 않게 이름을 그대로 입력해야 한다 */
+function DeleteCommunity({ community }: { community: CommunitySummary }) {
+  const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const { error, run } = useRequest();
+  const [confirm, setConfirm] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const remove = async (e: FormEvent) => {
+    e.preventDefault();
+    setBusy(true);
+    const ok = await run(
+      () => apiFetch(`/communities/${community.id}`, { method: 'DELETE' }),
+      '커뮤니티를 삭제하지 못했습니다.',
+    );
+    setBusy(false);
+    if (!ok) return;
+    // 목록에서 빠지면 이 설정 창도 함께 사라진다.
+    queryClient.setQueryData<CommunitySummary[]>(queryKeys.communities, (list) =>
+      list?.filter((c) => c.id !== community.id),
+    );
+    navigate('/');
+  };
+
+  return (
+    <form className="danger-zone" onSubmit={(e) => void remove(e)}>
+      <h3>커뮤니티 삭제</h3>
+      <p className="form__hint">
+        모든 채널, 메시지, 첨부 파일, 광장 에셋과 맵이 지워지고 되돌릴 수 없습니다. 확인하려면
+        커뮤니티 이름 <strong>{community.name}</strong>을(를) 입력하세요.
+      </p>
+      <div className="settings__row">
+        <input
+          value={confirm}
+          onChange={(e) => setConfirm(e.target.value)}
+          placeholder={community.name}
+          aria-label="삭제할 커뮤니티 이름"
+        />
+        <button className="button button--danger" disabled={busy || confirm !== community.name}>
+          커뮤니티 삭제
+        </button>
+      </div>
+      {error && (
+        <p className="form__error" role="alert">
+          {error}
+        </p>
+      )}
+    </form>
   );
 }
 

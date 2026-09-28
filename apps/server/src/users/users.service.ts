@@ -247,12 +247,17 @@ type ProfileSource = Pick<
   'id' | 'username' | 'nickname' | 'avatarUrl' | 'avatarKey' | 'character'
 >;
 
+/** 인증 없이 주는 저장소 파일(프로필 사진, 커뮤니티 이미지)의 주소 */
+export function publicFileUrl(key: string): string {
+  return `${publicServerUrl}/${key}`;
+}
+
 export function toProfile(user: ProfileSource): UserProfile {
   return {
     id: user.id,
     username: user.username,
     displayName: user.nickname,
-    avatarUrl: user.avatarKey ? `${publicServerUrl}/${user.avatarKey}` : user.avatarUrl,
+    avatarUrl: user.avatarKey ? publicFileUrl(user.avatarKey) : user.avatarUrl,
     character: (user.character as ProfileCharacter | null) ?? null,
   };
 }
