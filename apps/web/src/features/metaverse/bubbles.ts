@@ -5,7 +5,7 @@ export const BUBBLE_MAX_STACK = 3;
 const MIN_DURATION_MS = 3_000;
 const MAX_DURATION_MS = 8_000;
 const MS_PER_CHAR = 70;
-/** 첨부 메시지의 임시 표시 시간 */
+/** 첨부 메시지: 캐릭터가 첨부 모션을 하는 동안 머리 위에 잠깐 보이는 표시 */
 export const EMOTE_DURATION_MS = 2_500;
 
 export interface Bubble {
@@ -48,9 +48,9 @@ export function activeBubbles(stack: Bubble[], now: number): Bubble[] {
   return stack.filter((b) => b.expiresAt > now);
 }
 
-/** 첨부 메시지의 임시 표시 글 (최종 모션은 Phase 6 에셋으로 바꾼다) */
+/** 첨부 모션과 함께 보이는 작은 표시: 무엇을 몇 개 올렸는지만 */
 export function emoteText(attachments: { kind: 'image' | 'file' }[]): string {
   const images = attachments.filter((a) => a.kind === 'image').length;
-  if (images === attachments.length) return `🖼️ 사진 ${images}장`;
-  return `📎 파일 ${attachments.length}개`;
+  if (images === attachments.length) return `🖼️ ${images}`;
+  return `📎 ${attachments.length}`;
 }

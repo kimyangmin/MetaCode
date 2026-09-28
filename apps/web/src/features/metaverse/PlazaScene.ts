@@ -14,15 +14,23 @@ import {
 } from '@metacode/shared';
 import { builtinAsset } from '@metacode/shared/builtin-assets';
 import Phaser from 'phaser';
-import { drawCharacter, drawShadow, drawSpeakingRing, drawTargetMarker, paletteOf } from './art';
+import { drawShadow, drawSpeakingRing, drawTargetMarker } from './art';
 import { type Bubble, activeBubbles, pushBubble } from './bubbles';
 import { zoomFor } from './camera';
+import {
+  type CharacterLook,
+  animationName,
+  characterFrame,
+  characterLook,
+  emoteDurationMs,
+} from './characterSprite';
 import { RemoteTrack, directionOf, stepByInput, stepToward } from './motion';
 import { MapView } from './mapView';
 import { findPath, tileCenter } from './pathfinding';
 
-const DIRECTIONS: Direction[] = ['down', 'up', 'left', 'right'];
 const CHARACTER_HEIGHT = 32;
+/** 이만큼 움직이지 않아야 걷기를 멈춘다 (받은 위치 사이에서 걷기 모션이 끊겼다 이어지지 않게) */
+const WALK_HOLD_MS = 120;
 export interface MoveState extends Position {
   dir: Direction;
   moving: boolean;
@@ -50,16 +58,21 @@ interface Actor {
   shadow: Phaser.GameObjects.Image;
   /** 말하는 중이면 보이는 발밑 고리 */
   ring: Phaser.GameObjects.Image;
-  textureKey: string;
+  look: CharacterLook;
+  /** 지금 틀고 있는 애니메이션과 시작 시각 */
+  animation: { name: string; start: number };
   position: Position;
   dir: Direction;
   /** 다른 사람: 받은 위치 기록. 나는 없음 */
   track: RemoteTrack | null;
+  /** 이번 프레임에 움직였는지 (내 캐릭터는 서버에 보내는 moving) */
   walking: boolean;
+  lastMovedAt: number;
   bubbles: Bubble[];
   renderedBubbles: string;
   bubblesWidth: number;
-  hopUntil: number;
+  /** 첨부 모션이 끝나는 시각 */
+  emoteUntil: number;
   dom: {
     root: HTMLDivElement;
     bubbles: HTMLOListElement;
@@ -141,13 +154,7 @@ export class PlazaScene extends Phaser.Scene {
       );
       return;
     }
-    const palette = paletteOf(occupant.user.id);
-    for (const dir of DIRECTIONS) {
-      const key = `${palette.key}-${dir}`;
-      if (!this.textures.exists(key)) {
-        this.textures.addCanvas(key, drawCharacter(palette.shirt, palette.hair, dir));
-      }
-    }
+    const look = characterLook(this, occupant.user.id, null, builtinAsset);
     const isMe = occupant.user.id === this.options.meId;
     const position = { x: occupant.x, y: occupant.y };
     const actor: Actor = {
@@ -158,17 +165,24 @@ export class PlazaScene extends Phaser.Scene {
         .setOrigin(0.5, 0.6)
         .setVisible(false),
       sprite: this.add
-        .image(position.x, position.y, `${palette.key}-${occupant.dir}`)
+        .image(
+          position.x,
+          position.y,
+          look.key,
+          characterFrame(look.manifest, `idle-${occupant.dir}`, occupant.dir, 0),
+        )
         .setOrigin(0.5, 1),
-      textureKey: palette.key,
+      look,
+      animation: { name: `idle-${occupant.dir}`, start: 0 },
       position,
       dir: occupant.dir,
       track: isMe ? null : new RemoteTrack(position, performance.now()),
       walking: false,
+      lastMovedAt: 0,
       bubbles: [],
       renderedBubbles: '',
       bubblesWidth: 0,
-      hopUntil: 0,
+      emoteUntil: 0,
       dom: this.createActorDom(occupant.user, isMe),
     };
     this.actors.set(occupant.user.id, actor);
@@ -227,8 +241,13 @@ export class PlazaScene extends Phaser.Scene {
   say(userId: string, bubble: Bubble): void {
     const actor = this.actors.get(userId);
     if (!actor) return;
-    actor.bubbles = pushBubble(actor.bubbles, bubble, performance.now());
-    if (bubble.kind === 'attachment-emote') actor.hopUntil = performance.now() + 600;
+    const now = performance.now();
+    actor.bubbles = pushBubble(actor.bubbles, bubble, now);
+    // 첨부 메시지: 캐릭터의 첨부 모션(emote)을 처음부터 한 번 튼다.
+    if (bubble.kind === 'attachment-emote') {
+      actor.emoteUntil = now + emoteDurationMs(actor.look.manifest);
+      actor.animation = { name: 'emote', start: now };
+    }
   }
 
   // ── 키보드 ──
@@ -334,10 +353,23 @@ export class PlazaScene extends Phaser.Scene {
 
   private renderActor(actor: Actor, now: number): void {
     const { x, y } = actor.position;
-    let lift = actor.walking ? Math.floor(now / 140) % 2 : 0;
-    if (actor.hopUntil > now)
-      lift += Math.round(Math.abs(Math.sin((actor.hopUntil - now) / 60)) * 4);
-    actor.sprite.setTexture(`${actor.textureKey}-${actor.dir}`);
+    if (actor.walking) actor.lastMovedAt = now;
+    const name = animationName(
+      {
+        dir: actor.dir,
+        walking: now - actor.lastMovedAt < WALK_HOLD_MS,
+        emoteUntil: actor.emoteUntil,
+      },
+      now,
+    );
+    if (actor.animation.name !== name) actor.animation = { name, start: now };
+    const { manifest } = actor.look;
+    actor.sprite.setFrame(characterFrame(manifest, name, actor.dir, now - actor.animation.start));
+    // 첨부 모션 동안에는 제자리에서 뛴다.
+    const lift =
+      actor.emoteUntil > now
+        ? Math.round(Math.abs(Math.sin((actor.emoteUntil - now) / 60)) * 4)
+        : 0;
     actor.sprite.setPosition(x, y - lift).setDepth(y);
     actor.shadow.setPosition(x, y).setDepth(1);
     if (actor.ring.visible) {
