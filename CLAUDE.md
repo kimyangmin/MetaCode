@@ -82,13 +82,15 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
   - 보내지 않은 첨부(24시간 경과)는 서버가 한 시간마다 지우고, 커뮤니티를 지우면 저장소 파일도 지웁니다.
   - 메타버스 모드에서 첨부 메시지를 말풍선 대신 캐릭터 모션으로 보일지는 `messagePresentation()`(packages/shared)으로 판단합니다.
   - sharp는 운영 이미지(Alpine, linux x64)에서도 동작을 확인했습니다. 서버 이미지는 약 800MB입니다.
-- **광장 (Phase 4):** `packages/shared/src/plaza/`(맵 배치, 이동 규칙, 이벤트), `apps/server/src/plaza/`, `apps/web/src/features/metaverse/`, `apps/web/src/layout/SplitView.tsx`
+- **광장 (Phase 4):** `packages/shared/src/plaza/`(충돌 격자 `MapLayout`, 이동 규칙, 이벤트), `apps/server/src/plaza/`, `apps/web/src/features/metaverse/`, `apps/web/src/layout/SplitView.tsx`
   - 광장 ID는 `community:<id>` 또는 `dm:<channelId>`. 클라이언트가 `plaza:watch`(ack로 전체 상태)로 방 `plaza:<id>`에 들어가고, 나갈 때 `plaza:unwatch`. 다시 연결되면 방 참여가 끊기므로 `connect` 때마다 다시 연다.
   - 이동: 클라이언트가 자기 캐릭터를 먼저 움직이고 `MOVE_SEND_INTERVAL_MS`(100ms)마다, 멈출 때 한 번 더 `plaza:move`를 보낸다. 서버는 `isValidMove`(마지막으로 받은 위치에서 속도 ×1.5 + 4px 이내, 4px 간격으로 장애물 확인)로 검사해 통과하면 같은 방의 다른 연결에만 `plaza:moved`, 아니면 보낸 연결에 `plaza:corrected`. 방에 없는 연결의 이동은 무시한다.
   - 위치는 Redis 해시 `plaza:pos:<plazaId>`에만 둔다(휘발성). 처음이면 사용자 ID 해시로 스폰 영역 안의 칸을 고른다. 인원(온라인 멤버)이 바뀌면 `plaza:member`(occupant 또는 null)로 알린다: 접속/끊김, 커뮤니티 참여/탈퇴.
   - 다른 사람 캐릭터는 받은 위치를 150ms 늦게 그리며 사이를 보간하고(`RemoteTrack`), 64px 넘게 튀면 바로 옮긴다. 클릭 이동은 A*(8방향, 모서리 파고들기 금지) 경로를 따라간다.
-  - 맵 = 배치(shared `MAP_LAYOUTS`, 충돌·스폰) + 겉모습(web `themes.ts`의 색, `art.ts`가 캔버스에 그린 플레이스홀더). 에셋이 들어오면 `art.ts`를 스프라이트시트 로딩으로 바꾼다. 앞뒤는 발밑 y로 정한다(나무는 따로 그린 이미지).
-  - 배율(`camera.ts`): 모닥불 캠프는 맵 전체가 들어오는 가장 큰 정수, 분수 광장은 기본 3배이고 패널이 좁으면(10×8타일이 안 보이면) 낮춘다. 사용자가 배율을 고르는 UI는 아직 없다.
+  - 맵 = 맵 정의(`MapDefinition`). 스냅샷(`plaza:watch` ack)의 `definition`으로 오고, 서버와 클라이언트가 같은 정의에서 `buildCollision`으로 충돌 격자를 만든다. 내장 맵은 `packages/shared/src/assets/builtin-maps.ts`(코드로 칠한 Kenney 타일 + 분수·모닥불 등 오브젝트, `BUILTIN_MAPS`/`BUILTIN_LAYOUTS`).
+  - 그리기(`mapView.ts`): 정지 타일은 층(바닥, 장식)마다 캔버스 한 장으로 합치고, 움직이는 타일(물)과 오브젝트는 따로 두어 매 프레임 `frameAt`으로 프레임을 맞춘다. 에셋 하나 = 텍스처 하나(프레임 i = 텍스처 프레임 i, `asset:<참조>`). 깊이: 바닥 0 < 장식 0.2 < 클릭 표시·그림자·고리 < 캐릭터(발밑 y)·오브젝트(그림 아래쪽 끝 y). 16×16 solid 타일은 캐릭터를 가릴 일이 없어서(캐릭터는 발에서 위로만 그림) 타일 층에 두고, 두 칸 이상 높은 것만 오브젝트로 둔다.
+  - `art.ts`에는 그림자, 클릭 표시, 말하는 중 고리와 캐릭터 플레이스홀더(다음 단계에서 에셋으로 교체)만 남긴다. 매니페스트 → 캔버스 변환(`framePixels`, `sheetCanvas`, `frameAt`)은 `features/assets/render.ts`에 있다 (도트 에디터도 씀).
+  - 배율(`camera.ts`): 작은 맵(20×16타일 이하, 모닥불 캠프)은 맵 전체가 들어오는 가장 큰 정수, 넓은 맵(분수 광장)은 기본 3배이고 패널이 좁으면(10×8타일이 안 보이면) 낮춘다. 사용자가 배율을 고르는 UI는 아직 없다.
   - 말풍선: `message:created`를 채팅과 같이 받아서, 이 광장의 채널(분수 광장은 커뮤니티의 모든 텍스트 채널, 캠프는 그 DM)이면 작성자 위에 띄운다. 서버가 볼 수 있는 채널의 메시지만 보내므로 읽기 권한이 그대로 반영된다. 80자에서 줄이고, 글 길이에 따라 3~8초, 한 사람에 최대 3개까지 쌓는다. 첨부 메시지는 노란 임시 표시(🖼️ 사진 N장 / 📎 파일 N개) + 제자리 뛰기.
   - 이름표와 말풍선은 캔버스가 아니라 위에 겹친 DOM에 그린다(글자를 도트 배율로 키우지 않는 규칙). 패널 가장자리에서는 말풍선을 안쪽으로 밀고 꼬리만 캐릭터를 가리킨다.
   - 키보드: Phaser의 키보드 입력은 끄고(창 전체의 키를 가로채므로), 광장 패널(`tabIndex=0`)의 keydown/keyup으로만 받는다. 광장을 누르면 포커스가 가고, 채팅 입력창의 키는 캐릭터를 움직이지 않는다. 창이 포커스를 잃으면 눌린 키를 비운다.

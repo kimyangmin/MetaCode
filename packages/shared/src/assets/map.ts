@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { TILE_SIZE } from '../plaza/layout.js';
+import { type MapLayout, TILE_SIZE } from '../plaza/layout.js';
 import {
   type AssetKind,
   type AssetManifest,
@@ -102,20 +102,11 @@ export const mapDefinitionSchema = mapShape.superRefine((map, ctx) => {
   for (const message of mapProblems(map)) ctx.addIssue({ code: 'custom', message });
 });
 
-/** 이동 검증과 길찾기가 쓰는 충돌 격자 */
-export interface MapCollision {
-  width: number;
-  height: number;
-  /** 타일별 통행 불가 여부 (row-major, width × height) */
-  blocked: Uint8Array;
-  spawn: { x: number; y: number; w: number; h: number };
-}
-
 /** 타일의 solid와 오브젝트의 footprint로 막힌 칸을 계산한다. 모르는 에셋은 막지 않는다 */
 export function buildCollision(
   map: MapDefinition,
   metaOf: (ref: AssetRef) => AssetCollision | undefined,
-): MapCollision {
+): MapLayout {
   const cells = map.width * map.height;
   const blocked = new Uint8Array(cells);
   const solid = map.tiles.map((ref) => (metaOf(ref)?.solid ? 1 : 0));

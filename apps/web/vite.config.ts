@@ -9,8 +9,9 @@ export default defineConfig({
   // 모노레포 루트의 .env에서 VITE_ 변수를 읽는다.
   envDir: '../..',
   build: {
-    // Phaser(약 1.4MB)는 광장을 처음 열 때 따로 불러오는 청크라 첫 화면 크기와는 상관없다.
-    chunkSizeWarningLimit: 1500,
+    // Phaser(약 1.4MB)와 내장 에셋(약 150KB)은 광장을 처음 열 때 따로 불러오는 청크라
+    // 첫 화면 크기와는 상관없다.
+    chunkSizeWarningLimit: 1700,
   },
   server: {
     port: 5173,

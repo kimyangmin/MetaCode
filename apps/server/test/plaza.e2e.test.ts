@@ -2,7 +2,6 @@ import {
   type CommunitySummary,
   type DmSummary,
   type InviteInfo,
-  MAP_LAYOUTS,
   type PlazaId,
   type PlazaSnapshot,
   type SocketAck,
@@ -10,6 +9,7 @@ import {
   TILE_SIZE,
   isWalkable,
 } from '@metacode/shared';
+import { BUILTIN_LAYOUTS, BUILTIN_MAPS } from '@metacode/shared/builtin-assets';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import {
   type ClientSocket,
@@ -84,11 +84,12 @@ describe('광장 열기', () => {
 
     const snapshot = await watchOk(aliceSocket, plazaId);
     expect(snapshot).toMatchObject({ plazaId, map: 'fountain-square', theme: 'default' });
+    expect(snapshot.definition).toEqual(BUILTIN_MAPS['fountain-square']);
     expect(snapshot.occupants.map((o) => o.user.id).sort()).toEqual(
       [alice.me.id, bob.me.id].sort(),
     );
     for (const o of snapshot.occupants) {
-      expect(isWalkable(MAP_LAYOUTS['fountain-square'], o.x, o.y)).toBe(true);
+      expect(isWalkable(BUILTIN_LAYOUTS['fountain-square'], o.x, o.y)).toBe(true);
     }
   });
 
@@ -103,6 +104,7 @@ describe('광장 열기', () => {
     const dm = await alice.json<DmSummary>('/dms', post({ userIds: [bob.me.id] }));
     const snapshot = await watchOk(await connect(alice), `dm:${dm.id}`);
     expect(snapshot.map).toBe('campfire');
+    expect(snapshot.definition).toEqual(BUILTIN_MAPS.campfire);
 
     const carol = await loginUser(t);
     expect((await watch(await connect(carol), `dm:${dm.id}`)).ok).toBe(false);
@@ -151,10 +153,13 @@ describe('이동', () => {
     )!;
     await watchOk(bobSocket, plazaId);
 
-    const fountain = MAP_LAYOUTS['fountain-square'].obstacles.find((o) => o.kind === 'fountain')!;
+    // 분수(3×4타일)는 놓은 칸(왼쪽 아래)에서 한 칸 위 가운데가 막혀 있다.
+    const fountain = BUILTIN_MAPS['fountain-square'].objects.find(
+      (o) => o.asset === 'builtin:fountain',
+    )!;
     const insideFountain = {
-      x: (fountain.x + 2) * TILE_SIZE + 8,
-      y: (fountain.y + 2) * TILE_SIZE + 15,
+      x: (fountain.x + 1) * TILE_SIZE + 8,
+      y: (fountain.y - 1) * TILE_SIZE + 15,
     };
     for (const target of [{ x: start.x + 400, y: start.y }, insideFountain]) {
       const corrected = nextEvent(aliceSocket, SocketEvent.PlazaCorrected);

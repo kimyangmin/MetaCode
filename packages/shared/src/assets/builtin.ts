@@ -1,13 +1,6 @@
-import data from './builtin/assets.json' with { type: 'json' };
-import type { AssetManifest, AssetRef } from './manifest.js';
-
 /**
- * 내장 에셋: Kenney Tiny Town 타일(`builtin:tt-<번호>`), 직접 그린 오브젝트(분수, 모닥불 등), 기본 캐릭터.
- * `pnpm assets:build`가 assets/vendor의 원본과 tools/assets의 그림으로 만든다.
- * 약 150KB라 공용 패키지의 기본 export에 넣지 않고 `@metacode/shared/builtin-assets`로 따로 불러온다.
+ * 내장 에셋과 내장 맵. 약 150KB라 공용 패키지의 기본 export에 넣지 않고
+ * `@metacode/shared/builtin-assets`로 따로 불러온다.
  */
-export const BUILTIN_ASSETS = data as unknown as Readonly<Record<AssetRef, AssetManifest>>;
-
-export function builtinAsset(ref: AssetRef): AssetManifest | undefined {
-  return Object.hasOwn(BUILTIN_ASSETS, ref) ? BUILTIN_ASSETS[ref] : undefined;
-}
+export { BUILTIN_ASSETS, builtinAsset } from './builtin-data.js';
+export { BUILTIN_LAYOUTS, BUILTIN_MAPS } from './builtin-maps.js';

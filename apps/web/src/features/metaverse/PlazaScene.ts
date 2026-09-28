@@ -1,7 +1,7 @@
 import {
   type Direction,
-  MAP_LAYOUTS,
   MOVE_SEND_INTERVAL_MS,
+  type MapDefinition,
   type MapLayout,
   type PlazaCorrection,
   type PlazaMoved,
@@ -10,23 +10,16 @@ import {
   type Position,
   TILE_SIZE,
   type UserProfile,
+  buildCollision,
 } from '@metacode/shared';
+import { builtinAsset } from '@metacode/shared/builtin-assets';
 import Phaser from 'phaser';
-import {
-  drawCharacter,
-  drawFlames,
-  drawGround,
-  drawProps,
-  drawShadow,
-  drawSpeakingRing,
-  drawTargetMarker,
-  paletteOf,
-} from './art';
+import { drawCharacter, drawShadow, drawSpeakingRing, drawTargetMarker, paletteOf } from './art';
 import { type Bubble, activeBubbles, pushBubble } from './bubbles';
 import { zoomFor } from './camera';
 import { RemoteTrack, directionOf, stepByInput, stepToward } from './motion';
+import { MapView } from './mapView';
 import { findPath, tileCenter } from './pathfinding';
-import { appearanceFor } from './themes';
 
 const DIRECTIONS: Direction[] = ['down', 'up', 'left', 'right'];
 const CHARACTER_HEIGHT = 32;
@@ -85,8 +78,7 @@ export class PlazaScene extends Phaser.Scene {
   private resolveReady!: () => void;
 
   private layout: MapLayout | null = null;
-  private mapLayer: Phaser.GameObjects.GameObject[] = [];
-  private flames: { image: Phaser.GameObjects.Image; keys: string[] }[] = [];
+  private map: { key: string; view: MapView } | null = null;
   private actors = new Map<string, Actor>();
   private path: Position[] = [];
   private marker: Phaser.GameObjects.Image | null = null;
@@ -121,7 +113,11 @@ export class PlazaScene extends Phaser.Scene {
       if (pointer.button !== 0) return;
       this.walkTo(this.screenToWorld(pointer.x, pointer.y));
     });
-    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.clearActors());
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.clearActors();
+      this.map?.view.destroy();
+      this.map = null;
+    });
     this.resolveReady();
   }
 
@@ -129,7 +125,7 @@ export class PlazaScene extends Phaser.Scene {
 
   /** 광장을 (다시) 열었을 때: 맵을 그리고 인원을 전부 새로 둔다 */
   applySnapshot(snapshot: PlazaSnapshot): void {
-    this.drawMap(MAP_LAYOUTS[snapshot.map], snapshot.map, snapshot.theme);
+    this.drawMap(snapshot.definition);
     this.clearActors();
     this.path = [];
     this.lastSent = null;
@@ -267,9 +263,7 @@ export class PlazaScene extends Phaser.Scene {
       this.renderActor(actor, now);
     }
 
-    for (const flame of this.flames) {
-      flame.image.setTexture(flame.keys[Math.floor(now / 140) % flame.keys.length]!);
-    }
+    this.map?.view.tick(now);
     this.updateCamera(me?.position);
     this.updateOverlay(now);
   }
@@ -354,44 +348,16 @@ export class PlazaScene extends Phaser.Scene {
 
   // ── 화면 ──
 
-  private drawMap(layout: MapLayout, map: string, theme: string): void {
-    if (this.layout === layout) return;
-    for (const object of this.mapLayer) object.destroy();
-    this.mapLayer = [];
-    this.flames = [];
-    this.layout = layout;
-
-    const look = appearanceFor(layout.key, theme);
-    const prefix = `${map}-${theme}`;
-    if (!this.textures.exists(`${prefix}-ground`)) {
-      this.textures.addCanvas(`${prefix}-ground`, drawGround(layout, look));
-    }
-    this.mapLayer.push(this.add.image(0, 0, `${prefix}-ground`).setOrigin(0, 0).setDepth(0));
-
-    for (const prop of drawProps(layout, look)) {
-      const key = `${prefix}-${prop.key}`;
-      if (!this.textures.exists(key)) this.textures.addCanvas(key, prop.canvas);
-      this.mapLayer.push(this.add.image(prop.x, prop.y, key).setOrigin(0.5, 1).setDepth(prop.y));
-    }
-
-    const campfires = layout.obstacles.filter((o) => o.kind === 'campfire');
-    if (campfires.length > 0) {
-      const keys = drawFlames(look).map((frame, i) => {
-        const key = `${prefix}-flame-${i}`;
-        if (!this.textures.exists(key)) this.textures.addCanvas(key, frame);
-        return key;
-      });
-      for (const o of campfires) {
-        const x = (o.x + o.w / 2) * TILE_SIZE;
-        const y = (o.y + o.h / 2) * TILE_SIZE + 4;
-        const image = this.add
-          .image(x, y, keys[0]!)
-          .setOrigin(0.5, 1)
-          .setDepth((o.y + o.h) * TILE_SIZE);
-        this.mapLayer.push(image);
-        this.flames.push({ image, keys });
-      }
-    }
+  /**
+   * 맵을 (다시) 그린다. 같은 맵이면 그대로 둔다. 충돌 격자는 서버와 같은 맵 정의에서 계산한다.
+   * 지금은 내장 에셋만 쓴다.
+   */
+  private drawMap(definition: MapDefinition): void {
+    const key = JSON.stringify(definition);
+    if (this.map?.key === key) return;
+    this.map?.view.destroy();
+    this.layout = buildCollision(definition, builtinAsset);
+    this.map = { key, view: new MapView(this, definition, builtinAsset) };
     this.updateZoom();
   }
 

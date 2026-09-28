@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { UserProfile } from '../api/user.js';
+import type { MapDefinition } from '../assets/map.js';
 import type { PlazaId, PlazaMap } from '../domain/plaza.js';
 import type { Direction } from './movement.js';
 
@@ -44,6 +45,8 @@ export interface PlazaSnapshot {
   map: PlazaMap;
   /** 테마 키. 지금은 항상 default */
   theme: string;
+  /** 맵 정의. 클라이언트는 이것으로 그리고 충돌 격자를 만든다 (서버와 같은 격자) */
+  definition: MapDefinition;
   occupants: PlazaOccupant[];
 }
 

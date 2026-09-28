@@ -1,7 +1,7 @@
 import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import {
   type Direction,
-  MAP_LAYOUTS,
+  type MapDefinition,
   type MapLayout,
   type PlazaCorrection,
   type PlazaId,
@@ -16,6 +16,7 @@ import {
   parsePlazaId,
   spawnPosition,
 } from '@metacode/shared';
+import { BUILTIN_LAYOUTS, BUILTIN_MAPS } from '@metacode/shared/builtin-assets';
 import type { Redis } from 'ioredis';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { PresenceService } from '../presence/presence.service.js';
@@ -49,8 +50,14 @@ export class PlazaService {
     @Inject(REDIS) private readonly redis: Redis,
   ) {}
 
+  /** 광장의 맵 정의. 지금은 내장 맵(분수 광장, 모닥불 캠프)이다 */
+  mapOf(plazaId: PlazaId): MapDefinition {
+    return BUILTIN_MAPS[getPlazaMap(plazaId)];
+  }
+
+  /** 이동 검증에 쓰는 충돌 격자 (맵 정의에서 계산) */
   layoutOf(plazaId: PlazaId): MapLayout {
-    return MAP_LAYOUTS[getPlazaMap(plazaId)];
+    return BUILTIN_LAYOUTS[getPlazaMap(plazaId)];
   }
 
   /** 광장의 멤버(온라인 여부와 상관없이) */
@@ -105,6 +112,7 @@ export class PlazaService {
       plazaId,
       map: getPlazaMap(plazaId),
       theme: DEFAULT_THEME,
+      definition: this.mapOf(plazaId),
       occupants: await this.occupants(plazaId, onlineIds),
     };
   }
