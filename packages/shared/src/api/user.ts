@@ -1,4 +1,8 @@
 import { z } from 'zod';
+import { type CharacterChoice, characterChoiceSchema } from '../assets/character.js';
+
+/** 프로필에 실리는 캐릭터. 직접 그린 캐릭터면 version(에셋이 바뀐 시각)이 있어서 바뀌면 다시 받는다 */
+export type ProfileCharacter = CharacterChoice & { version?: string };
 
 export interface UserProfile {
   id: string;
@@ -8,6 +12,8 @@ export interface UserProfile {
   displayName: string | null;
   /** 프로필 사진: 올린 사진, 없으면 GitHub 프로필 사진 */
   avatarUrl: string;
+  /** 광장 캐릭터. 고르지 않았으면 null (사용자 ID로 고른 기본 캐릭터, defaultCharacter) */
+  character: ProfileCharacter | null;
 }
 
 /** 프로필 자세히 (정보 팝업, 내 설정) */
@@ -52,3 +58,7 @@ export interface AvatarUploadTicket {
   headers: Record<string, string>;
   expiresAt: string;
 }
+
+/** 캐릭터 고르기. null이면 기본 캐릭터로 돌아간다 */
+export const setCharacterSchema = z.object({ character: characterChoiceSchema.nullable() });
+export type SetCharacterRequest = z.infer<typeof setCharacterSchema>;

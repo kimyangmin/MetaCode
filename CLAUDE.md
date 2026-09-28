@@ -15,7 +15,7 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
 
 ## 현재 상태
 
-- **Phase 1~5 완료** (Phase 5 선택 항목인 화면 공유 포함). Phase 7을 먼저 진행하다가 2026-09-28 **Phase 6(에셋)을 시작**했습니다: CC0 에셋팩으로 기본 지형·캐릭터를 만들고, 앱 안의 도트 에디터와 맵 에디터를 더합니다 (작업 순서는 README 로드맵). 운영 서버의 음성 통화는 2026-09-27에 켰습니다 (`docs/deploy.md` 10단계: 7882/udp, 7881/tcp, `.env.production`의 LiveKit 키).
+- **Phase 1~6 완료.** Phase 7을 먼저 진행하다가 2026-09-28 Phase 6(에셋)을 했습니다: CC0 에셋팩으로 기본 지형·캐릭터, 캐릭터 애니메이션·첨부 모션, 도트 에디터, 캐릭터 고르기, 맵 에디터. PR은 `feature/asset-format` → `builtin-maps` → `character-animation` → `asset-editor` → `character-select` → `map-editor` 순서로 이어져 있습니다 (#33~#38). 운영 서버의 음성 통화는 2026-09-27에 켰습니다 (`docs/deploy.md` 10단계: 7882/udp, 7881/tcp, `.env.production`의 LiveKit 키).
 - **운영 중:** https://metacode.kimyangmin.me (2026-09-26 첫 배포, `main` 기준). 서버는 SSH 별칭 `myserver3`(ubuntu, `~/MetaCode`)로 접속할 수 있고, 업데이트는 `main`에 push되면 CI 통과 후 GitHub Actions가 SSH로 `infra/deploy.sh`를 실행해 자동으로 합니다 (배포 전용 키는 `authorized_keys`의 `command=`로 이 스크립트만 실행 가능, 설정은 `docs/deploy.md` 9단계). 손으로 할 때는 서버에서 `bash infra/deploy.sh`입니다. DB 백업은 서버 crontab이 매일 04:00 KST(19:00 UTC)에 `infra/backup.sh`를 실행합니다 (`~/MetaCode/backups/`, 14일 보관, 로그 `backups/backup.log`). 운영 서버에서 무언가를 바꾸기 전에는 사용자에게 확인받습니다.
 - Phase 7 진행 중: 데스크톱 자동 업데이트(GitHub Releases, `desktop-v*` 태그) 완료. 코드 서명은 정식 공개 때 정합니다.
 - 개발용 GitHub OAuth App(`localhost` 콜백)으로 웹·데스크톱, 운영용 OAuth App으로 운영 웹의 실제 로그인을 확인했습니다 (2026-09-26).
@@ -82,18 +82,21 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
   - 보내지 않은 첨부(24시간 경과)는 서버가 한 시간마다 지우고, 커뮤니티를 지우면 저장소 파일도 지웁니다.
   - 메타버스 모드에서 첨부 메시지를 말풍선 대신 캐릭터 모션으로 보일지는 `messagePresentation()`(packages/shared)으로 판단합니다.
   - sharp는 운영 이미지(Alpine, linux x64)에서도 동작을 확인했습니다. 서버 이미지는 약 800MB입니다.
-- **광장 (Phase 4):** `packages/shared/src/plaza/`(맵 배치, 이동 규칙, 이벤트), `apps/server/src/plaza/`, `apps/web/src/features/metaverse/`, `apps/web/src/layout/SplitView.tsx`
+- **광장 (Phase 4):** `packages/shared/src/plaza/`(충돌 격자 `MapLayout`, 이동 규칙, 이벤트), `apps/server/src/plaza/`, `apps/web/src/features/metaverse/`, `apps/web/src/layout/SplitView.tsx`
   - 광장 ID는 `community:<id>` 또는 `dm:<channelId>`. 클라이언트가 `plaza:watch`(ack로 전체 상태)로 방 `plaza:<id>`에 들어가고, 나갈 때 `plaza:unwatch`. 다시 연결되면 방 참여가 끊기므로 `connect` 때마다 다시 연다.
   - 이동: 클라이언트가 자기 캐릭터를 먼저 움직이고 `MOVE_SEND_INTERVAL_MS`(100ms)마다, 멈출 때 한 번 더 `plaza:move`를 보낸다. 서버는 `isValidMove`(마지막으로 받은 위치에서 속도 ×1.5 + 4px 이내, 4px 간격으로 장애물 확인)로 검사해 통과하면 같은 방의 다른 연결에만 `plaza:moved`, 아니면 보낸 연결에 `plaza:corrected`. 방에 없는 연결의 이동은 무시한다.
   - 위치는 Redis 해시 `plaza:pos:<plazaId>`에만 둔다(휘발성). 처음이면 사용자 ID 해시로 스폰 영역 안의 칸을 고른다. 인원(온라인 멤버)이 바뀌면 `plaza:member`(occupant 또는 null)로 알린다: 접속/끊김, 커뮤니티 참여/탈퇴.
   - 다른 사람 캐릭터는 받은 위치를 150ms 늦게 그리며 사이를 보간하고(`RemoteTrack`), 64px 넘게 튀면 바로 옮긴다. 클릭 이동은 A*(8방향, 모서리 파고들기 금지) 경로를 따라간다.
-  - 맵 = 배치(shared `MAP_LAYOUTS`, 충돌·스폰) + 겉모습(web `themes.ts`의 색, `art.ts`가 캔버스에 그린 플레이스홀더). 에셋이 들어오면 `art.ts`를 스프라이트시트 로딩으로 바꾼다. 앞뒤는 발밑 y로 정한다(나무는 따로 그린 이미지).
-  - 배율(`camera.ts`): 모닥불 캠프는 맵 전체가 들어오는 가장 큰 정수, 분수 광장은 기본 3배이고 패널이 좁으면(10×8타일이 안 보이면) 낮춘다. 사용자가 배율을 고르는 UI는 아직 없다.
-  - 말풍선: `message:created`를 채팅과 같이 받아서, 이 광장의 채널(분수 광장은 커뮤니티의 모든 텍스트 채널, 캠프는 그 DM)이면 작성자 위에 띄운다. 서버가 볼 수 있는 채널의 메시지만 보내므로 읽기 권한이 그대로 반영된다. 80자에서 줄이고, 글 길이에 따라 3~8초, 한 사람에 최대 3개까지 쌓는다. 첨부 메시지는 노란 임시 표시(🖼️ 사진 N장 / 📎 파일 N개) + 제자리 뛰기.
+  - 맵 = 맵 정의(`MapDefinition`). 스냅샷(`plaza:watch` ack)의 `definition`으로 오고, 서버와 클라이언트가 같은 정의에서 `buildCollision`으로 충돌 격자를 만든다. 내장 맵은 `packages/shared/src/assets/builtin-maps.ts`(코드로 칠한 Kenney 타일 + 분수·모닥불 등 오브젝트, `BUILTIN_MAPS`/`BUILTIN_LAYOUTS`).
+  - 그리기(`mapView.ts`): 정지 타일은 층(바닥, 장식)마다 캔버스 한 장으로 합치고, 움직이는 타일(물)과 오브젝트는 따로 두어 매 프레임 `frameAt`으로 프레임을 맞춘다. 에셋 하나 = 텍스처 하나(프레임 i = 텍스처 프레임 i, `asset:<참조>`). 깊이: 바닥 0 < 장식 0.2 < 클릭 표시·그림자·고리 < 캐릭터(발밑 y)·오브젝트(그림 아래쪽 끝 y). 16×16 solid 타일은 캐릭터를 가릴 일이 없어서(캐릭터는 발에서 위로만 그림) 타일 층에 두고, 두 칸 이상 높은 것만 오브젝트로 둔다.
+  - `art.ts`에는 그림자, 클릭 표시, 말하는 중 고리만 남긴다. 매니페스트 → 캔버스 변환(`framePixels`, `sheetCanvas`, `frameAt`)은 `features/assets/render.ts`에 있다 (도트 에디터도 씀).
+  - 배율(`camera.ts`): 작은 맵(20×16타일 이하, 모닥불 캠프)은 맵 전체가 들어오는 가장 큰 정수, 넓은 맵(분수 광장)은 기본 3배이고 패널이 좁으면(10×8타일이 안 보이면) 낮춘다. 사용자가 배율을 고르는 UI는 아직 없다.
+  - 말풍선: `message:created`를 채팅과 같이 받아서, 이 광장의 채널(분수 광장은 커뮤니티의 모든 텍스트 채널, 캠프는 그 DM)이면 작성자 위에 띄운다. 서버가 볼 수 있는 채널의 메시지만 보내므로 읽기 권한이 그대로 반영된다. 80자에서 줄이고, 글 길이에 따라 3~8초, 한 사람에 최대 3개까지 쌓는다. 첨부 메시지는 캐릭터의 첨부 모션(`emote`, 한 번 재생 + 제자리 뛰기)과 머리 위의 작은 표시(`🖼️ N` / `📎 N`, 2.5초).
   - 이름표와 말풍선은 캔버스가 아니라 위에 겹친 DOM에 그린다(글자를 도트 배율로 키우지 않는 규칙). 패널 가장자리에서는 말풍선을 안쪽으로 밀고 꼬리만 캐릭터를 가리킨다.
   - 키보드: Phaser의 키보드 입력은 끄고(창 전체의 키를 가로채므로), 광장 패널(`tabIndex=0`)의 keydown/keyup으로만 받는다. 광장을 누르면 포커스가 가고, 채팅 입력창의 키는 캐릭터를 움직이지 않는다. 창이 포커스를 잃으면 눌린 키를 비운다.
   - 분할 화면: react-resizable-panels v4. 두 패널 모두 접을 수 있고(채팅 최소 300px, 광장 240px), 크기와 접힘은 localStorage에 기억한다. 접힌 채팅은 입력 중이던 글이 남도록 그대로 두고(`inert`), 접힌 광장은 내려서(Phaser 게임 제거, `plaza:unwatch`) 그리기와 구독을 멈춘다. 보기 전환 버튼은 보이는 첫 패널의 머리글에 있다.
   - Phaser는 약 1.4MB라 광장을 처음 열 때 따로 불러온다(`React.lazy`).
+  - 캐릭터(`characterSprite.ts`): 고른 캐릭터(없으면 `defaultCharacter(userId)`, 사용자 ID로 고른 기본 캐릭터와 색)를 `characterPalette`로 색을 바꿔 텍스처 하나로 만들고, 같은 모습이면 함께 쓴다(`char:<characterKey>`). 멈추면 `idle-<방향>`, 움직이면 `walk-<방향>`(120ms 동안 안 움직여야 멈춘 것으로 봄, 받은 위치 사이에서 걷기가 끊기지 않게), 첨부 메시지면 `emote`를 한 번. 애니메이션이 바뀔 때 처음 프레임부터 튼다.
 - **음성 통화 (Phase 5):** `apps/server/src/voice/`, `apps/web/src/features/voice/`, `packages/shared/src/voice/`
   - LiveKit(셀프 호스팅, WebRTC SFU)이 음성을 나르고, 서버는 입장권(JWT)을 만들고 통화 목록과 상태를 관리합니다. 채널 하나 = LiveKit 방 `channel-<channelId>`, 신원 = 사용자 ID (같은 사람이 다른 곳에서 들어오면 LiveKit이 앞의 연결을 끊음). 입장권은 마이크만 올릴 수 있습니다.
   - 통화 상태는 서버 메모리에 둡니다 (Presence와 같이 서버 한 대 전제). 통화는 들어간 실시간 연결(socket)에 묶이고, 그 연결이 끊긴 뒤 `VOICE_DISCONNECT_GRACE_MS`(15초) 안에 다시 들어오지 않으면 빼고 LiveKit에서도 끊습니다. 서버가 다시 시작하면 웹 클라이언트가 `connect` 때 `voice:join`을 다시 보내 묶습니다 (이미 LiveKit에 붙어 있으면 새 입장권은 버림).
@@ -159,6 +162,27 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
   - 맵 = `MapDefinition`: 크기(12~64타일), 타일 목록 + 바닥·장식 두 층 격자(base64, 값 v = tiles[v-1]), 오브젝트 목록, 스폰 영역. `buildCollision`이 막힌 칸을 계산합니다.
   - 에셋 참조: `builtin:<이름>` 또는 직접 만든 에셋의 uuid. 내장 에셋(약 150KB)은 `@metacode/shared/builtin-assets`로 따로 불러옵니다 (기본 export에 넣지 않음).
   - 내장 에셋 JSON(`packages/shared/src/assets/builtin/assets.json`)은 빌드 스크립트가 만들고 커밋합니다. Prettier는 이 파일을 건너뜁니다. 기본 캐릭터는 base sprites(18×36, 그림 14×34)에서 프레임마다 머리의 겹치는 줄(맨 위+4)과 다리 줄(맨 아래-6)을 빼서 16×32에 맞추고, 몸의 세 음영(밝은 면·그림자·외곽선)을 부위별 색으로 바꿔 칠합니다.
+- **에셋 저장과 도트 에디터 (Phase 6):** `apps/server/src/assets/`, 웹 `features/assets/`
+  - `Asset` 테이블: kind, name, creatorId, communityId(캐릭터는 null), manifest(JSON). S3를 쓰지 않고 매니페스트를 그대로 저장합니다 (가장 큰 오브젝트도 요청 본문 100KB 안).
+  - 권한(`AssetsService`): 캐릭터는 만든 사람만 고치고 지우며 로그인한 누구나 읽습니다(광장에서 그려야 하므로). 타일·오브젝트는 멤버만 읽고 소유자·관리자(`requireManager`)만 만들고 고칩니다. 멤버가 아니면 404. 종류는 바꿀 수 없고, 캐릭터는 한 사람 20개, 커뮤니티 에셋은 200개까지.
+  - API: `GET /assets`(내 캐릭터), `GET /assets?communityId=`(커뮤니티 타일·오브젝트), `GET/PUT/DELETE /assets/:id`, `POST /assets {communityId?, manifest}`.
+  - 설정 → 에셋(`AssetSettings`, 지연 로딩): 내 캐릭터, 내가 소유자·관리자인 커뮤니티마다 타일·오브젝트. 새로 그리기, 내장 에셋 복제해서 시작, 편집, 삭제.
+  - 도트 에디터(`PixelEditor`, 편집 로직은 `editorModel.ts`의 `PixelDocument`): 연필·지우개·채우기·스포이트, 좌우 대칭, 앞 프레임 겹쳐 보기, 되돌리기(붓질 한 번 = 한 단계, 색 고르기 드래그도 한 단계), 팔레트 편집(지운 색의 픽셀은 투명), 프레임 넣기·복제·옮기기·지우기, 애니메이션 미리보기, PNG 가져오기(프레임 크기 또는 가로로 이어 붙인 시트, 64색이 넘으면 가까운 색)·내보내기. 오른쪽 버튼은 지우개.
+  - 에디터에서는 애니메이션마다 프레임을 따로 갖고, 저장할 때 같은 그림을 한 장으로 합칩니다 (`toManifest`). 캐릭터는 `missingAnimations`가 비어야 저장 버튼이 켜집니다.
+  - 에디터는 설정 창 위에 화면 전체로 뜹니다. Esc는 에디터가 먼저 받아 `preventDefault()`하고, 설정 창은 `defaultPrevented`면 닫지 않습니다. 설정 창을 닫으면 에디터 상태(`useAssetEditorStore`)도 비웁니다.
+- **캐릭터 고르기 (Phase 6):** `UsersService.setCharacter`, 웹 `features/assets/CharacterSettings.tsx`
+  - `User.character`(JSON `{asset, colors, version?}`), null이면 `defaultCharacter(userId)`. 프로필(`UserProfile.character`)에 실려 메시지·멤버·광장 인원 어디서나 같은 값을 씁니다.
+  - `PUT /users/me/character {character | null}`: 기본 캐릭터(`BUILTIN_CHARACTERS`)나 **직접 만든** 캐릭터만 고를 수 있습니다 (남의 캐릭터 400). 색은 부위(`colorSlots`)가 있는 캐릭터에만 적용됩니다 (내장 캐릭터를 복제해 그린 것도 부위가 남음).
+  - 직접 그린 캐릭터는 `version`(에셋 updatedAt)을 함께 저장합니다. 그 에셋을 고치면 version을 올리고, 지우면 기본 캐릭터로 돌려서 `user:updated`로 알립니다 (`characterAssetChanged`). 광장은 `['assets','one',id,version]`으로 에셋을 받아(`PlazaView.loadCharacters`) 씬에 등록한 뒤 다시 그리고, 받기 전에는 기본 캐릭터로 보입니다. 텍스처 키에 version이 들어가서 고친 그림이 바로 반영됩니다.
+  - `withUserProfile`은 닉네임·사진과 함께 캐릭터도 바꿉니다.
+- **맵 에디터 (Phase 6):** `apps/server/src/plaza/plaza-maps.service.ts`, `maps.controller.ts`, 웹 `features/assets/MapEditor.tsx`, `mapModel.ts`
+  - `CommunityMap`(communityId, definition JSON). 없으면 내장 분수 광장. DM 모닥불 캠프는 늘 내장 맵입니다.
+  - API: `GET /communities/:id/map`(멤버), `PUT`(소유자·관리자, `{definition}`), `DELETE`(내장 맵으로 되돌리기). 저장할 때 zod 검증 + 쓰는 에셋이 내장 에셋이거나 **이 커뮤니티의** 타일·오브젝트인지(`mapAssetProblems`) + 스폰 영역에 설 칸이 있는지(`hasStandableSpawn`) 확인합니다.
+  - 서버는 커뮤니티마다 맵(정의, 충돌 격자, 쓴 커뮤니티 에셋과 버전)을 메모리에 캐시합니다 (`PlazaMapsService.load`, 이동 검증이 자주 읽음). 서버 한 대 전제라 여러 대로 늘리면 캐시 무효화를 Redis pub/sub 등으로 나눠야 합니다.
+  - 맵을 저장·되돌리거나, 맵에 쓴 커뮤니티 에셋을 고치면: 캐시를 버리고 그 광장의 위치(`plaza:pos:<plazaId>`)를 지운 뒤 `plaza:mapChanged`를 `community:<id>` 방에 보냅니다. 광장을 보던 클라이언트는 다시 `plaza:watch`하고 모두 스폰 영역에서 다시 시작합니다 (막힌 칸이 바뀌었을 수 있으므로).
+  - 맵에 쓰고 있는 에셋은 지울 수 없습니다 (409).
+  - 스냅샷의 `assets`(쓴 커뮤니티 에셋 `{id, version}`)를 클라이언트가 `['assets','one',id,version]`으로 받아 씬에 등록한 뒤 맵을 그립니다. 텍스처 키는 매니페스트마다 달라서 고친 에셋이 바로 반영됩니다.
+  - 맵 에디터: 바닥 칠하기, 장식 칠하기, 바닥 채우기, 오브젝트 놓기(누른 칸 = 그림의 왼쪽 아래), 지우기(앞에 그려지는 오브젝트부터, 없으면 장식), 스폰 영역(끌어서), 막힌 칸 보기, 크기(12~64, 왼쪽 위 기준), 되돌리기. 팔레트는 내장 타일·오브젝트 + 커뮤니티 에셋(★). 열 때마다 맵을 새로 받습니다 (예전에 받아 둔 맵으로 시작해 다른 사람이 고친 것을 덮어쓰지 않게, 실제로 겪은 문제). 저장할 때 쓰지 않는 타일은 목록에서 뺍니다.
 - **Windows에서 파일 수정:** Windows PowerShell 5.1의 `Get-Content`/`Set-Content`는 UTF-8 한글을 깨뜨립니다. 파일 수정은 편집 도구나 bash를 씁니다.
 
 ## 확정된 결정
@@ -176,7 +200,7 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
 | 분할 화면 | 지금 보는 채널의 채팅 모드 + 그 채널이 속한 광장. 여러 채널 분할은 추후 별도 기능 |
 | 통화 구조 | Discord식 음성 채널을 따로 둠. DM에서도 통화 가능 |
 | 근접 음성 | 통화(음성 채널, DM 통화)마다 ON/OFF. 그 통화 참여자 누구나 변경 가능. ON이면 가까운 캐릭터끼리만 들리고, OFF면 거리와 상관없이 모두 들림 |
-| 첨부 표시 | 메타버스 모드에서 말풍선 대신 캐릭터 모션. 모션은 캐릭터 에셋 작업(Phase 6) 때 추가하고, 그 전까지는 임시 표시 |
+| 첨부 표시 | 메타버스 모드에서 말풍선 대신 캐릭터 모션(`emote`). 머리 위에는 무엇을 몇 개 올렸는지만 작게 표시 |
 | 파일 크기 제한 | 기본 50MB |
 | 도트 에셋 크기 | 타일 16×16px, 캐릭터 한 프레임 16×32px |
 | 테마 | 계절·행사에 따라 테마를 바꿀 수 있어야 함. 기능은 추후에 만들지만, 맵·에셋 구조는 처음부터 테마 교체를 전제로 만듦 |
@@ -254,11 +278,12 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
 - 클라이언트 → 서버는 명령형, 서버 → 클라이언트는 과거형으로 짓습니다.
   - `message:send` → `message:created`
   - `typing:start` → `typing:started` (보낸 연결 제외)
-  - 닉네임·프로필 사진 변경 → `user:updated`
+  - 닉네임·프로필 사진·캐릭터 변경 → `user:updated`
   - `channel:created`, `dm:created`, `community:member-joined` / `member-left` / `deleted`, `presence:changed`
   - `plaza:watch` / `plaza:unwatch`: 광장 화면을 열고 닫을 때 (위치 업데이트 구독)
   - `plaza:move` → `plaza:moved`
   - 광장 인원 변화 → `plaza:member` (나타남/사라짐 한 명씩), 되돌림 → `plaza:corrected`
+  - 커뮤니티 광장의 맵(또는 맵에 쓴 에셋)이 바뀜 → `plaza:mapChanged` (다시 `plaza:watch`)
   - `voice:sync`(ack로 볼 수 있는 통화 전부), `voice:join`(ack로 음성 서버 주소와 입장권) / `voice:leave` → `voice:joined` / `voice:left`
   - `voice:update`(내 음소거, 헤드셋, 말하는 중) → `voice:updated`
   - `voice:setProximity` → `voice:proximityChanged`, 근접 음성 음량 → `voice:gains` (받는 사람마다 다름, `user:` 방으로)
@@ -293,7 +318,7 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
 
 `apps/server/prisma/schema.prisma`가 기준입니다. 바꾸면 여기도 고칩니다.
 
-- `User` (구현됨): githubId, username(사용자 ID), displayName(GitHub 이름), avatarUrl(GitHub 사진), nickname, bio, avatarKey(올린 사진). characterId는 Phase 6에서 추가
+- `User` (구현됨): githubId, username(사용자 ID), displayName(GitHub 이름), avatarUrl(GitHub 사진), nickname, bio, avatarKey(올린 사진), character(광장 캐릭터 `{asset, colors, version?}`, null이면 기본)
 - `RefreshToken` (구현됨): userId, tokenHash, familyId, client, expiresAt, revokedAt
 - `Community` (구현됨): name, ownerId / `CommunityMember`: userId, communityId, role(`OWNER` | `ADMIN` | `MEMBER`) / `Invite`: code(8자), expiresAt(7일), uses
 - `Role` (구현됨): communityId, name(커뮤니티 안에서 고유), color(#rrggbb), position / `MemberRole`: 멤버 ↔ 역할 / `ChannelRoleAccess`: 비공개 채널 ↔ 볼 수 있는 역할
@@ -303,7 +328,8 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
 - `Message` (구현됨): channelId, authorId, content(최대 4000자), createdAt. id가 UUIDv7이라 id 순서 = 시간 순서
 - `ChannelReadState` (구현됨): channelId, userId, lastReadMessageId. 앞으로만 옮긴다
 - `Attachment` (구현됨): channelId(권한 판단), uploaderId, messageId(보내기 전 null), status(`PENDING` | `READY`), kind(`IMAGE` | `FILE`), objectKey, thumbnailKey, fileName, contentType, size, width, height
-- `Character`: 에셋 키, 커스터마이징 값
+- `Asset` (구현됨): kind(`TILE` | `OBJECT` | `CHARACTER`), name, creatorId, communityId(캐릭터는 null), manifest(에셋 매니페스트 JSON)
+- `CommunityMap` (구현됨): communityId, definition(맵 정의 JSON). 없으면 내장 분수 광장
 
 ## 도트 에셋 규격
 

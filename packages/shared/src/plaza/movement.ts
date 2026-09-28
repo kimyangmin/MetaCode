@@ -100,5 +100,18 @@ export function spawnPosition(layout: MapLayout, seed: string): Position {
     const y = (spawn.y + Math.floor(cell / spawn.w)) * TILE_SIZE + TILE_SIZE - 1;
     if (isWalkable(layout, x, y)) return { x, y };
   }
-  throw new Error(`${layout.key}: 스폰 영역에 설 수 있는 칸이 없습니다.`);
+  throw new Error('스폰 영역에 설 수 있는 칸이 없습니다.');
+}
+
+/** 스폰 영역에 설 수 있는 칸이 하나라도 있는지 (맵을 저장할 때 확인한다) */
+export function hasStandableSpawn(layout: MapLayout): boolean {
+  const { spawn } = layout;
+  for (let ty = spawn.y; ty < spawn.y + spawn.h; ty++) {
+    for (let tx = spawn.x; tx < spawn.x + spawn.w; tx++) {
+      if (isWalkable(layout, tx * TILE_SIZE + TILE_SIZE / 2, ty * TILE_SIZE + TILE_SIZE - 1)) {
+        return true;
+      }
+    }
+  }
+  return false;
 }

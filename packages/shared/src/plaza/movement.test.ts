@@ -1,23 +1,24 @@
 import { describe, expect, it } from 'vitest';
+import { BUILTIN_LAYOUTS } from '../assets/builtin.js';
 import { PlazaMap } from '../domain/plaza.js';
-import { MAP_LAYOUTS, TILE_SIZE } from './layout.js';
+import { TILE_SIZE } from './layout.js';
 import { MOVE_SPEED, isValidMove, isWalkable, spawnPosition } from './movement.js';
 
-const square = MAP_LAYOUTS[PlazaMap.FountainSquare];
-const camp = MAP_LAYOUTS[PlazaMap.Campfire];
+const square = BUILTIN_LAYOUTS[PlazaMap.FountainSquare];
+const camp = BUILTIN_LAYOUTS[PlazaMap.Campfire];
 /** 타일 (tx, ty)의 발밑 가운데 좌표 */
 const at = (tx: number, ty: number) => ({ x: tx * TILE_SIZE + 8, y: ty * TILE_SIZE + 15 });
 
 describe('isWalkable', () => {
-  it('빈 땅은 설 수 있고, 벽·분수·맵 밖은 설 수 없다', () => {
+  it('빈 땅은 설 수 있고, 가장자리 숲·분수·맵 밖은 설 수 없다', () => {
     expect(isWalkable(square, at(10, 10).x, at(10, 10).y)).toBe(true);
-    expect(isWalkable(square, at(0, 10).x, at(0, 10).y)).toBe(false); // 가장자리 벽
-    expect(isWalkable(square, at(23, 17).x, at(23, 17).y)).toBe(false); // 분수
+    expect(isWalkable(square, at(0, 10).x, at(0, 10).y)).toBe(false); // 가장자리 나무
+    expect(isWalkable(square, at(23, 18).x, at(23, 18).y)).toBe(false); // 분수
     expect(isWalkable(square, -5, 100)).toBe(false);
     expect(isWalkable(square, 100, square.height * TILE_SIZE + 5)).toBe(false);
   });
 
-  it('길(장식)은 막지 않는다', () => {
+  it('돌길은 막지 않는다', () => {
     expect(isWalkable(square, at(23, 3).x, at(23, 3).y)).toBe(true);
   });
 });
@@ -39,10 +40,10 @@ describe('isValidMove', () => {
   });
 
   it('장애물로 들어가거나 가로질러 가는 것은 거절한다', () => {
-    const nearFountain = at(20, 17);
-    expect(isValidMove(square, nearFountain, at(21, 17), 200)).toBe(false);
-    // 1칸짜리 벤치를 한 번에 넘어가기
-    const aboveBench = { x: at(15, 9).x, y: at(15, 9).y };
+    const nearFountain = at(21, 18);
+    expect(isValidMove(square, nearFountain, at(22, 18), 200)).toBe(false);
+    // 벤치(아래 한 줄이 막힘)를 한 번에 넘어가기
+    const aboveBench = { x: at(15, 11).x, y: at(15, 11).y };
     const belowBench = { x: aboveBench.x, y: aboveBench.y + 2 * TILE_SIZE };
     expect(isValidMove(square, aboveBench, belowBench, 500)).toBe(false);
   });

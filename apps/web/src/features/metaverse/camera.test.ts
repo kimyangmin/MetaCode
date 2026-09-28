@@ -1,9 +1,10 @@
-import { MAP_LAYOUTS, PlazaMap } from '@metacode/shared';
+import { PlazaMap } from '@metacode/shared';
+import { BUILTIN_LAYOUTS } from '@metacode/shared/builtin-assets';
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_ZOOM, zoomFor } from './camera';
 
-const square = MAP_LAYOUTS[PlazaMap.FountainSquare];
-const campfire = MAP_LAYOUTS[PlazaMap.Campfire];
+const square = BUILTIN_LAYOUTS[PlazaMap.FountainSquare];
+const campfire = BUILTIN_LAYOUTS[PlazaMap.Campfire];
 
 describe('zoomFor', () => {
   it('모닥불 캠프는 맵 전체가 들어오는 가장 큰 정수 배율', () => {

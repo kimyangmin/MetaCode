@@ -1,7 +1,6 @@
 import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import {
   type Direction,
-  MAP_LAYOUTS,
   type MapLayout,
   type PlazaCorrection,
   type PlazaId,
@@ -21,6 +20,7 @@ import { PrismaService } from '../prisma/prisma.service.js';
 import { PresenceService } from '../presence/presence.service.js';
 import { REDIS } from '../redis/redis.module.js';
 import { toProfile } from '../users/users.service.js';
+import { PlazaMapsService } from './plaza-maps.service.js';
 
 interface StoredPosition {
   x: number;
@@ -46,11 +46,13 @@ export class PlazaService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly presence: PresenceService,
+    private readonly maps: PlazaMapsService,
     @Inject(REDIS) private readonly redis: Redis,
   ) {}
 
-  layoutOf(plazaId: PlazaId): MapLayout {
-    return MAP_LAYOUTS[getPlazaMap(plazaId)];
+  /** 이동 검증에 쓰는 충돌 격자 (맵 정의에서 계산, 캐시됨) */
+  async layoutOf(plazaId: PlazaId): Promise<MapLayout> {
+    return (await this.maps.load(plazaId)).layout;
   }
 
   /** 광장의 멤버(온라인 여부와 상관없이) */
@@ -101,10 +103,13 @@ export class PlazaService {
     // 광장을 여는 사람은 지금 접속 중이다 (연결 직후 Presence 기록 전일 수 있어 직접 넣는다).
     if (!onlineIds.includes(userId)) onlineIds.push(userId);
 
+    const map = await this.maps.load(plazaId);
     return {
       plazaId,
       map: getPlazaMap(plazaId),
       theme: DEFAULT_THEME,
+      definition: map.definition,
+      assets: map.assets,
       occupants: await this.occupants(plazaId, onlineIds),
     };
   }
@@ -120,7 +125,7 @@ export class PlazaService {
    * 장애물을 지나지 않았으면 저장하고, 아니면 되돌릴 위치를 돌려준다.
    */
   async move(userId: string, request: PlazaMoveRequest): Promise<MoveResult> {
-    const layout = this.layoutOf(request.plazaId);
+    const layout = await this.layoutOf(request.plazaId);
     const now = Date.now();
     const current = await this.positionOf(request.plazaId, userId, layout);
     if (!isValidMove(layout, current, request, now - current.t)) {
@@ -152,7 +157,7 @@ export class PlazaService {
 
   /** 여러 사람의 이 광장 위치 (근접 음성 거리 계산). 처음이면 스폰 자리 */
   async positions(plazaId: PlazaId, userIds: string[]): Promise<Record<string, Position>> {
-    const layout = this.layoutOf(plazaId);
+    const layout = await this.layoutOf(plazaId);
     const entries = await Promise.all(
       userIds.map(async (id) => {
         const { x, y } = await this.positionOf(plazaId, id, layout);
@@ -164,7 +169,7 @@ export class PlazaService {
 
   private async occupants(plazaId: PlazaId, userIds: string[]): Promise<PlazaOccupant[]> {
     if (userIds.length === 0) return [];
-    const layout = this.layoutOf(plazaId);
+    const layout = await this.layoutOf(plazaId);
     const users = await this.prisma.user.findMany({ where: { id: { in: userIds } } });
     const positions = await Promise.all(users.map((u) => this.positionOf(plazaId, u.id, layout)));
     return users.map((user, i) => ({
