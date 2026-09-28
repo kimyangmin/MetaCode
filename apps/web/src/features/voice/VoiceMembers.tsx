@@ -3,10 +3,12 @@ import { Avatar } from '../../ui/Avatar';
 import { openProfile } from '../../stores/profile';
 import { displayName } from '../../ui/format';
 import { useSharePreview } from './SharePreview';
+import { useVoiceStore } from './store';
 import { useVoice } from './VoiceProvider';
 
 /**
  * 통화 참여자 목록 (채팅 모드). 말하는 사람은 테두리로 강조하고, 음소거·헤드셋 끔을 표시한다.
+ * 말하는 중은 내가 그 통화에 들어가 있을 때만 보인다 (밖에서는 누가 있는지만 보인다).
  * 화면을 공유 중이면 LIVE를 눌러 볼 수 있다.
  */
 export function VoiceMembers({
@@ -16,23 +18,32 @@ export function VoiceMembers({
   channelId: string;
   members: VoiceMember[];
 }) {
+  const inCall = useVoiceStore((s) => s.session?.channelId === channelId);
   if (members.length === 0) return null;
   return (
     <ul className="voice-members" aria-label="통화 참여자">
       {members.map((member) => (
-        <MemberRow key={member.user.id} channelId={channelId} member={member} />
+        <MemberRow key={member.user.id} channelId={channelId} member={member} inCall={inCall} />
       ))}
     </ul>
   );
 }
 
 /** 참여자 한 명. 화면을 공유 중이면 마우스를 올려 미리 본다 */
-function MemberRow({ channelId, member }: { channelId: string; member: VoiceMember }) {
+function MemberRow({
+  channelId,
+  member,
+  inCall,
+}: {
+  channelId: string;
+  member: VoiceMember;
+  inCall: boolean;
+}) {
   const { hoverProps, popup } = useSharePreview(channelId, member);
   return (
     <li
       className="voice-members__item"
-      data-speaking={member.speaking && !member.muted}
+      data-speaking={inCall && member.speaking && !member.muted}
       {...hoverProps}
     >
       <button
