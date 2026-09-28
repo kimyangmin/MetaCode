@@ -35,6 +35,7 @@ model User {
   messages           Message[]
   readStates         ChannelReadState[]
   attachments        Attachment[]
+  assets             Asset[]
 
   @@index([username])
   @@map("users")
@@ -65,6 +66,7 @@ model Community {
   channels Channel[]
   invites  Invite[]
   roles    Role[]
+  assets   Asset[]
 
   @@map("communities")
 }
@@ -274,4 +276,31 @@ model Attachment {
   @@index([messageId])
   @@index([status, createdAt])
   @@map("attachments")
+}
+
+enum AssetKind {
+  TILE
+  OBJECT
+  CHARACTER
+}
+
+/// 도트 에디터로 만든 에셋. 캐릭터는 만든 사람의 것(communityId null),
+/// 타일·오브젝트는 커뮤니티의 것(소유자·관리자가 만들고 고침)
+model Asset {
+  id          String    @id @default(uuid(7)) @db.Uuid
+  kind        AssetKind
+  name        String
+  creatorId   String    @map("creator_id") @db.Uuid
+  communityId String?   @map("community_id") @db.Uuid
+  /// 에셋 매니페스트 (packages/shared의 assetManifestSchema로 검증한 JSON)
+  manifest    Json
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  creator   User       @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  community Community? @relation(fields: [communityId], references: [id], onDelete: Cascade)
+
+  @@index([creatorId, kind])
+  @@index([communityId])
+  @@map("assets")
 }

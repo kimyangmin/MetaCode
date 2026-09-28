@@ -162,6 +162,14 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
   - 맵 = `MapDefinition`: 크기(12~64타일), 타일 목록 + 바닥·장식 두 층 격자(base64, 값 v = tiles[v-1]), 오브젝트 목록, 스폰 영역. `buildCollision`이 막힌 칸을 계산합니다.
   - 에셋 참조: `builtin:<이름>` 또는 직접 만든 에셋의 uuid. 내장 에셋(약 150KB)은 `@metacode/shared/builtin-assets`로 따로 불러옵니다 (기본 export에 넣지 않음).
   - 내장 에셋 JSON(`packages/shared/src/assets/builtin/assets.json`)은 빌드 스크립트가 만들고 커밋합니다. Prettier는 이 파일을 건너뜁니다. 기본 캐릭터는 base sprites(18×36, 그림 14×34)에서 프레임마다 머리의 겹치는 줄(맨 위+4)과 다리 줄(맨 아래-6)을 빼서 16×32에 맞추고, 몸의 세 음영(밝은 면·그림자·외곽선)을 부위별 색으로 바꿔 칠합니다.
+- **에셋 저장과 도트 에디터 (Phase 6):** `apps/server/src/assets/`, 웹 `features/assets/`
+  - `Asset` 테이블: kind, name, creatorId, communityId(캐릭터는 null), manifest(JSON). S3를 쓰지 않고 매니페스트를 그대로 저장합니다 (가장 큰 오브젝트도 요청 본문 100KB 안).
+  - 권한(`AssetsService`): 캐릭터는 만든 사람만 고치고 지우며 로그인한 누구나 읽습니다(광장에서 그려야 하므로). 타일·오브젝트는 멤버만 읽고 소유자·관리자(`requireManager`)만 만들고 고칩니다. 멤버가 아니면 404. 종류는 바꿀 수 없고, 캐릭터는 한 사람 20개, 커뮤니티 에셋은 200개까지.
+  - API: `GET /assets`(내 캐릭터), `GET /assets?communityId=`(커뮤니티 타일·오브젝트), `GET/PUT/DELETE /assets/:id`, `POST /assets {communityId?, manifest}`.
+  - 설정 → 에셋(`AssetSettings`, 지연 로딩): 내 캐릭터, 내가 소유자·관리자인 커뮤니티마다 타일·오브젝트. 새로 그리기, 내장 에셋 복제해서 시작, 편집, 삭제.
+  - 도트 에디터(`PixelEditor`, 편집 로직은 `editorModel.ts`의 `PixelDocument`): 연필·지우개·채우기·스포이트, 좌우 대칭, 앞 프레임 겹쳐 보기, 되돌리기(붓질 한 번 = 한 단계, 색 고르기 드래그도 한 단계), 팔레트 편집(지운 색의 픽셀은 투명), 프레임 넣기·복제·옮기기·지우기, 애니메이션 미리보기, PNG 가져오기(프레임 크기 또는 가로로 이어 붙인 시트, 64색이 넘으면 가까운 색)·내보내기. 오른쪽 버튼은 지우개.
+  - 에디터에서는 애니메이션마다 프레임을 따로 갖고, 저장할 때 같은 그림을 한 장으로 합칩니다 (`toManifest`). 캐릭터는 `missingAnimations`가 비어야 저장 버튼이 켜집니다.
+  - 에디터는 설정 창 위에 화면 전체로 뜹니다. Esc는 에디터가 먼저 받아 `preventDefault()`하고, 설정 창은 `defaultPrevented`면 닫지 않습니다. 설정 창을 닫으면 에디터 상태(`useAssetEditorStore`)도 비웁니다.
 - **Windows에서 파일 수정:** Windows PowerShell 5.1의 `Get-Content`/`Set-Content`는 UTF-8 한글을 깨뜨립니다. 파일 수정은 편집 도구나 bash를 씁니다.
 
 ## 확정된 결정
@@ -306,6 +314,7 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
 - `Message` (구현됨): channelId, authorId, content(최대 4000자), createdAt. id가 UUIDv7이라 id 순서 = 시간 순서
 - `ChannelReadState` (구현됨): channelId, userId, lastReadMessageId. 앞으로만 옮긴다
 - `Attachment` (구현됨): channelId(권한 판단), uploaderId, messageId(보내기 전 null), status(`PENDING` | `READY`), kind(`IMAGE` | `FILE`), objectKey, thumbnailKey, fileName, contentType, size, width, height
+- `Asset` (구현됨): kind(`TILE` | `OBJECT` | `CHARACTER`), name, creatorId, communityId(캐릭터는 null), manifest(에셋 매니페스트 JSON)
 - `Character`: 에셋 키, 커스터마이징 값
 
 ## 도트 에셋 규격

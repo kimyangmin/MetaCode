@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-export type SettingsSection = 'account' | 'voice';
+export type SettingsSection = 'account' | 'assets' | 'voice';
 
 interface SettingsState {
   /** 열린 설정 화면의 항목. 닫혀 있으면 null */
