@@ -7,7 +7,7 @@ const isProfileOf = (value: object, id: string): value is UserProfile =>
 
 /**
  * 데이터 안에 들어 있는 이 사용자의 정보(UserProfile 모양: 메시지 작성자, 멤버, 통화 참여자 등)를
- * 새 닉네임·사진으로 바꾼다 (`user:updated`). 바뀐 것이 없으면 같은 객체를 그대로 돌려준다
+ * 새 닉네임·사진·캐릭터로 바꾼다 (`user:updated`). 바뀐 것이 없으면 같은 객체를 그대로 돌려준다
  * (쓸데없이 다시 그리지 않도록). 일반 객체와 배열만 따라 들어간다.
  */
 export function withUserProfile<T>(data: T, user: UserProfile): T {
@@ -27,7 +27,8 @@ export function withUserProfile<T>(data: T, user: UserProfile): T {
       if (
         value.username === user.username &&
         value.displayName === user.displayName &&
-        value.avatarUrl === user.avatarUrl
+        value.avatarUrl === user.avatarUrl &&
+        JSON.stringify(value.character) === JSON.stringify(user.character)
       ) {
         return value;
       }
@@ -36,6 +37,7 @@ export function withUserProfile<T>(data: T, user: UserProfile): T {
         username: user.username,
         displayName: user.displayName,
         avatarUrl: user.avatarUrl,
+        character: user.character,
       };
     }
     let changed = false;

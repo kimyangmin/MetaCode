@@ -14,6 +14,7 @@ const user = (id: string): UserProfile => ({
   username: id,
   displayName: null,
   avatarUrl: `https://example.com/${id}.png`,
+  character: null,
 });
 const member = (id: string, patch: Partial<VoiceMember> = {}): VoiceMember => ({
   user: user(id),

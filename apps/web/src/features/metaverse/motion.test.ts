@@ -1,4 +1,5 @@
-import { MAP_LAYOUTS, MOVE_SPEED, PlazaMap, isValidMove, isWalkable } from '@metacode/shared';
+import { MOVE_SPEED, PlazaMap, isValidMove, isWalkable } from '@metacode/shared';
+import { BUILTIN_LAYOUTS } from '@metacode/shared/builtin-assets';
 import { describe, expect, it } from 'vitest';
 import {
   INTERPOLATION_DELAY_MS,
@@ -9,7 +10,7 @@ import {
 } from './motion';
 import { tileCenter } from './pathfinding';
 
-const square = MAP_LAYOUTS[PlazaMap.FountainSquare];
+const square = BUILTIN_LAYOUTS[PlazaMap.FountainSquare];
 
 describe('stepByInput', () => {
   it('속도만큼 움직이고, 대각선도 같은 속도다', () => {

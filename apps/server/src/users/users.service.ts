@@ -5,13 +5,16 @@ import {
   AVATAR_MAX_BYTES,
   AVATAR_SIZE_PX,
   type AvatarUploadTicket,
+  BUILTIN_CHARACTERS,
+  type CharacterChoice,
+  type ProfileCharacter,
   SocketEvent,
   type UserDetail,
   type UserProfile,
 } from '@metacode/shared';
 import { SNIFF_BYTES, makeAvatar, sniffRasterFormat } from '../attachments/image.js';
 import type { Env } from '../config/env.js';
-import type { User } from '../generated/prisma/client.js';
+import { Prisma, type User } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { RealtimeService } from '../realtime/realtime.service.js';
 import { StorageService } from '../storage/storage.service.js';
@@ -148,6 +151,58 @@ export class UsersService {
     return toDetail(user);
   }
 
+  /**
+   * 광장 캐릭터 고르기. 기본 캐릭터나 직접 그린 캐릭터만 고를 수 있다 (남의 캐릭터는 안 됨).
+   * null이면 사용자 ID로 고른 기본 캐릭터로 돌아간다.
+   */
+  async setCharacter(userId: string, choice: CharacterChoice | null): Promise<UserDetail> {
+    let character: ProfileCharacter | null = null;
+    if (choice) {
+      if (choice.asset.startsWith('builtin:')) {
+        if (!BUILTIN_CHARACTERS.includes(choice.asset)) {
+          throw new BadRequestException('기본 캐릭터가 아닙니다.');
+        }
+        character = { asset: choice.asset, colors: choice.colors };
+      } else {
+        const asset = await this.prisma.asset.findUnique({ where: { id: choice.asset } });
+        if (!asset || asset.kind !== 'CHARACTER' || asset.creatorId !== userId) {
+          throw new BadRequestException('직접 만든 캐릭터만 고를 수 있습니다.');
+        }
+        character = {
+          asset: asset.id,
+          colors: choice.colors,
+          version: asset.updatedAt.toISOString(),
+        };
+      }
+    }
+    const user = await this.prisma.user.update({
+      where: { id: userId },
+      data: { character: character ?? Prisma.DbNull },
+    });
+    await this.announce(user);
+    return toDetail(user);
+  }
+
+  /**
+   * 직접 그린 캐릭터를 고치거나 지웠다: 그 캐릭터를 쓰는 사람(만든 사람뿐)의 프로필을 고치고 알린다.
+   * 고쳤으면 version을 올려 다른 사람들이 새 그림을 받게 하고, 지웠으면 기본 캐릭터로 돌린다.
+   */
+  async characterAssetChanged(
+    creatorId: string,
+    assetId: string,
+    updatedAt: Date | null,
+  ): Promise<void> {
+    const user = await this.find(creatorId);
+    const current = user.character as ProfileCharacter | null;
+    if (current?.asset !== assetId) return;
+    const character = updatedAt ? { ...current, version: updatedAt.toISOString() } : null;
+    const updated = await this.prisma.user.update({
+      where: { id: creatorId },
+      data: { character: character ?? Prisma.DbNull },
+    });
+    await this.announce(updated);
+  }
+
   /** 프로필 사진 파일 (없으면 null). 누구나 받을 수 있다: 주소에 무작위 ID가 들어가 추측할 수 없다 */
   async readAvatar(userId: string, file: string): Promise<Buffer | null> {
     try {
@@ -163,7 +218,7 @@ export class UsersService {
     return user;
   }
 
-  /** 닉네임이나 사진이 바뀌었다: 같은 커뮤니티·DM 사람과 본인(다른 탭·기기)에게 알린다 */
+  /** 닉네임, 사진, 캐릭터가 바뀌었다: 같은 커뮤니티·DM 사람과 본인(다른 탭·기기)에게 알린다 */
   private async announce(user: User): Promise<void> {
     const [communities, channels] = await Promise.all([
       this.prisma.communityMember.findMany({
@@ -187,7 +242,10 @@ export class UsersService {
   }
 }
 
-type ProfileSource = Pick<User, 'id' | 'username' | 'nickname' | 'avatarUrl' | 'avatarKey'>;
+type ProfileSource = Pick<
+  User,
+  'id' | 'username' | 'nickname' | 'avatarUrl' | 'avatarKey' | 'character'
+>;
 
 export function toProfile(user: ProfileSource): UserProfile {
   return {
@@ -195,6 +253,7 @@ export function toProfile(user: ProfileSource): UserProfile {
     username: user.username,
     displayName: user.nickname,
     avatarUrl: user.avatarKey ? `${publicServerUrl}/${user.avatarKey}` : user.avatarUrl,
+    character: (user.character as ProfileCharacter | null) ?? null,
   };
 }
 

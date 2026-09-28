@@ -7,7 +7,7 @@ const call = (channelId: string, userId: string, speaking = false, sharing = fal
   proximity: false,
   members: [
     {
-      user: { id: userId, username: userId, displayName: null, avatarUrl: '' },
+      user: { id: userId, username: userId, displayName: null, avatarUrl: '', character: null },
       muted: false,
       deafened: false,
       speaking,

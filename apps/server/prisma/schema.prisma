@@ -24,6 +24,8 @@ model User {
   bio         String?
   /// 직접 올린 프로필 사진의 저장소 키 (avatars/<userId>/<id>.webp). null이면 GitHub 사진
   avatarKey   String?  @map("avatar_key")
+  /// 광장 캐릭터 {asset, colors, version?}. null이면 사용자 ID로 고른 기본 캐릭터
+  character   Json?
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
@@ -35,6 +37,7 @@ model User {
   messages           Message[]
   readStates         ChannelReadState[]
   attachments        Attachment[]
+  assets             Asset[]
 
   @@index([username])
   @@map("users")
@@ -65,6 +68,8 @@ model Community {
   channels Channel[]
   invites  Invite[]
   roles    Role[]
+  assets   Asset[]
+  map      CommunityMap?
 
   @@map("communities")
 }
@@ -274,4 +279,44 @@ model Attachment {
   @@index([messageId])
   @@index([status, createdAt])
   @@map("attachments")
+}
+
+enum AssetKind {
+  TILE
+  OBJECT
+  CHARACTER
+}
+
+/// 도트 에디터로 만든 에셋. 캐릭터는 만든 사람의 것(communityId null),
+/// 타일·오브젝트는 커뮤니티의 것(소유자·관리자가 만들고 고침)
+model Asset {
+  id          String    @id @default(uuid(7)) @db.Uuid
+  kind        AssetKind
+  name        String
+  creatorId   String    @map("creator_id") @db.Uuid
+  communityId String?   @map("community_id") @db.Uuid
+  /// 에셋 매니페스트 (packages/shared의 assetManifestSchema로 검증한 JSON)
+  manifest    Json
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  creator   User       @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  community Community? @relation(fields: [communityId], references: [id], onDelete: Cascade)
+
+  @@index([creatorId, kind])
+  @@index([communityId])
+  @@map("assets")
+}
+
+/// 맵 에디터로 만든 커뮤니티 광장의 맵. 없으면 내장 분수 광장을 쓴다.
+/// 충돌 격자는 저장하지 않고 맵 정의와 에셋에서 계산한다 (서버 메모리에 캐시).
+model CommunityMap {
+  communityId String   @id @map("community_id") @db.Uuid
+  /// 맵 정의 (packages/shared의 mapDefinitionSchema로 검증한 JSON)
+  definition  Json
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+
+  @@map("community_maps")
 }

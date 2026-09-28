@@ -60,7 +60,7 @@ describe('pushBubble', () => {
 
 describe('emoteText', () => {
   it('사진만 올렸는지, 파일이 섞였는지 알려 준다', () => {
-    expect(emoteText([{ kind: 'image' }, { kind: 'image' }])).toBe('🖼️ 사진 2장');
-    expect(emoteText([{ kind: 'image' }, { kind: 'file' }])).toBe('📎 파일 2개');
+    expect(emoteText([{ kind: 'image' }, { kind: 'image' }])).toBe('🖼️ 2');
+    expect(emoteText([{ kind: 'image' }, { kind: 'file' }])).toBe('📎 2');
   });
 });

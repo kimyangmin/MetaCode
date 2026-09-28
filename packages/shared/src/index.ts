@@ -7,6 +7,7 @@ export * from './api/presence.js';
 export * from './api/community.js';
 export * from './api/channel.js';
 export * from './api/attachment.js';
+export * from './api/asset.js';
 export * from './api/message.js';
 export * from './events/index.js';
 export * from './plaza/index.js';

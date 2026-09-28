@@ -16,8 +16,10 @@ import {
   type AvatarUploadRequest,
   type AvatarUploadTicket,
   type UserDetail,
+  type SetCharacterRequest,
   type UserProfile,
   avatarUploadSchema,
+  setCharacterSchema,
   updateProfileSchema,
 } from '@metacode/shared';
 import type { Response } from 'express';
@@ -76,6 +78,15 @@ export class UsersController {
   @Delete('me/avatar')
   removeAvatar(@CurrentUserId() userId: string): Promise<UserDetail> {
     return this.users.removeAvatar(userId);
+  }
+
+  /** 광장 캐릭터 고르기 (null이면 기본 캐릭터) */
+  @Put('me/character')
+  setCharacter(
+    @CurrentUserId() userId: string,
+    @Body(new ZodValidationPipe(setCharacterSchema)) body: SetCharacterRequest,
+  ): Promise<UserDetail> {
+    return this.users.setCharacter(userId, body.character);
   }
 
   /** 다른 사람의 프로필 (정보 팝업). 경로가 겹치지 않게 마지막에 둔다 */

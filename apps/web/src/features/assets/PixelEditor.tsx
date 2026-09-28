@@ -1,0 +1,780 @@
+import {
+  ASSET_NAME_MAX_LENGTH,
+  FRAME_LIMIT,
+  FRAME_MS_MAX,
+  FRAME_MS_MIN,
+  OBJECT_MAX_TILES,
+  PALETTE_MAX_COLORS,
+  REQUIRED_CHARACTER_ANIMATIONS,
+  TILE_SIZE,
+  assetManifestSchema,
+  missingAnimations,
+} from '@metacode/shared';
+import { useQueryClient } from '@tanstack/react-query';
+import {
+  type ChangeEvent,
+  type PointerEvent as ReactPointerEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
+import { ApiError } from '../../api/client';
+import { saveAsset } from './api';
+import {
+  type EditorDoc,
+  type FrameRef,
+  PixelDocument,
+  fromManifest,
+  toManifest,
+} from './editorModel';
+import type { EditorTarget } from './editorStore';
+import { downloadCanvas, indexImage, readImageFile } from './png';
+
+type Tool = 'pen' | 'eraser' | 'fill' | 'picker';
+
+const TOOLS: { id: Tool; label: string; icon: string; key: string }[] = [
+  { id: 'pen', label: '연필', icon: '✏️', key: 'b' },
+  { id: 'eraser', label: '지우개', icon: '🧽', key: 'e' },
+  { id: 'fill', label: '채우기', icon: '🪣', key: 'g' },
+  { id: 'picker', label: '스포이트', icon: '💧', key: 'i' },
+];
+
+const KIND_LABEL = { tile: '타일', object: '오브젝트', character: '캐릭터' } as const;
+
+const ANIMATION_LABEL = new Map(REQUIRED_CHARACTER_ANIMATIONS.map((a) => [a.name, a.label]));
+
+function rgb(hex: string): [number, number, number] {
+  const v = parseInt(hex.slice(1), 16);
+  return [(v >> 16) & 0xff, (v >> 8) & 0xff, v & 0xff];
+}
+
+/** 팔레트 픽셀 한 장을 원래 크기 캔버스로 */
+function frameCanvas(pixels: Uint8Array, width: number, height: number, palette: string[]) {
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const image = new ImageData(width, height);
+  const colors = palette.map(rgb);
+  pixels.forEach((v, i) => {
+    const c = v > 0 ? colors[v - 1] : undefined;
+    if (!c) return;
+    image.data.set([c[0], c[1], c[2], 255], i * 4);
+  });
+  canvas.getContext('2d')!.putImageData(image, 0, 0);
+  return canvas;
+}
+
+function initialDoc(target: EditorTarget): EditorDoc {
+  return target.mode === 'create' ? target.doc : fromManifest(target.asset.manifest);
+}
+
+/**
+ * 도트 에디터. 왼쪽 도구, 가운데 그림판, 오른쪽 팔레트·종류별 설정·애니메이션·미리보기, 아래 프레임 목록.
+ * 왼쪽 버튼은 고른 색, 오른쪽 버튼은 지우개로 칠한다.
+ */
+export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose(): void }) {
+  const queryClient = useQueryClient();
+  const [, setVersion] = useState(0);
+  const [editor] = useState(
+    () => new PixelDocument(initialDoc(target), () => setVersion((v) => v + 1)),
+  );
+  const [savedId, setSavedId] = useState(target.mode === 'edit' ? target.asset.id : undefined);
+  const communityId = target.mode === 'create' ? target.communityId : target.asset.communityId;
+
+  const doc = editor.doc;
+  const [selected, setSelected] = useState<FrameRef>({ animation: 0, frame: 0 });
+  const [tool, setTool] = useState<Tool>('pen');
+  const [color, setColor] = useState(1);
+  const [mirror, setMirror] = useState(false);
+  const [onion, setOnion] = useState(false);
+  const [zoom, setZoom] = useState(() =>
+    Math.max(4, Math.min(28, Math.floor(480 / Math.max(doc.width, doc.height)))),
+  );
+  const [status, setStatus] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  // 되돌리기 등으로 애니메이션·프레임 수가 바뀌어도 고른 프레임이 범위 안에 있게 한다.
+  const animation = doc.animations[Math.min(selected.animation, doc.animations.length - 1)]!;
+  const ref: FrameRef = {
+    animation: Math.min(selected.animation, doc.animations.length - 1),
+    frame: Math.min(selected.frame, animation.frames.length - 1),
+  };
+  const pixels = animation.frames[ref.frame]!;
+  const manifest = toManifest(doc);
+  const missing = doc.kind === 'character' ? missingAnimations(manifest) : [];
+  const missingNames = new Set(missing.map((m) => m.name));
+
+  const requestClose = useCallback(() => {
+    if (editor.dirty && !window.confirm('저장하지 않은 변경이 있습니다. 닫을까요?')) return;
+    onClose();
+  }, [editor, onClose]);
+
+  // ── 키보드 ──
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      if (e.key === 'Escape') {
+        // 설정 창이 함께 닫히지 않게 한다 (설정 창은 defaultPrevented를 보고 무시한다).
+        e.preventDefault();
+        requestClose();
+        return;
+      }
+      if (target.closest('input, textarea, select')) return;
+      const mod = e.ctrlKey || e.metaKey;
+      if (mod && e.key.toLowerCase() === 'z') {
+        e.preventDefault();
+        if (e.shiftKey) editor.redo();
+        else editor.undo();
+      } else if (mod && e.key.toLowerCase() === 'y') {
+        e.preventDefault();
+        editor.redo();
+      } else if (!mod) {
+        const found = TOOLS.find((t) => t.key === e.key.toLowerCase());
+        if (found) setTool(found.id);
+        else if (e.key.toLowerCase() === 'm') setMirror((v) => !v);
+        else if (e.key.toLowerCase() === 'o') setOnion((v) => !v);
+        else if (e.key === 'ArrowLeft')
+          setSelected((s) => ({ ...s, frame: Math.max(0, s.frame - 1) }));
+        else if (e.key === 'ArrowRight') setSelected((s) => ({ ...s, frame: s.frame + 1 }));
+      }
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [editor, requestClose]);
+
+  // ── 그림판 ──
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const stroke = useRef<{ last: { x: number; y: number }; value: number } | null>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d')!;
+    const { width, height } = doc;
+    ctx.imageSmoothingEnabled = false;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const previous = animation.frames[ref.frame - 1];
+    if (onion && previous) {
+      ctx.globalAlpha = 0.3;
+      ctx.drawImage(
+        frameCanvas(previous, width, height, doc.palette),
+        0,
+        0,
+        canvas.width,
+        canvas.height,
+      );
+      ctx.globalAlpha = 1;
+    }
+    ctx.drawImage(
+      frameCanvas(pixels, width, height, doc.palette),
+      0,
+      0,
+      canvas.width,
+      canvas.height,
+    );
+    // 막힌 칸 (오브젝트)
+    if (doc.kind === 'object') {
+      const cols = width / TILE_SIZE;
+      ctx.fillStyle = 'rgba(232, 69, 55, 0.18)';
+      doc.footprint.forEach((blocked, i) => {
+        if (!blocked) return;
+        const s = TILE_SIZE * zoom;
+        ctx.fillRect((i % cols) * s, Math.floor(i / cols) * s, s, s);
+      });
+    }
+    // 격자: 픽셀마다 옅게, 타일(16px)마다 진하게
+    if (zoom >= 6) {
+      ctx.strokeStyle = 'rgba(128, 128, 128, 0.22)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (let x = 1; x < width; x++) {
+        ctx.moveTo(x * zoom + 0.5, 0);
+        ctx.lineTo(x * zoom + 0.5, canvas.height);
+      }
+      for (let y = 1; y < height; y++) {
+        ctx.moveTo(0, y * zoom + 0.5);
+        ctx.lineTo(canvas.width, y * zoom + 0.5);
+      }
+      ctx.stroke();
+    }
+    ctx.strokeStyle = 'rgba(128, 128, 128, 0.6)';
+    ctx.beginPath();
+    for (let x = TILE_SIZE; x < width; x += TILE_SIZE) {
+      ctx.moveTo(x * zoom + 0.5, 0);
+      ctx.lineTo(x * zoom + 0.5, canvas.height);
+    }
+    for (let y = TILE_SIZE; y < height; y += TILE_SIZE) {
+      ctx.moveTo(0, y * zoom + 0.5);
+      ctx.lineTo(canvas.width, y * zoom + 0.5);
+    }
+    ctx.stroke();
+  });
+
+  const pointAt = (e: ReactPointerEvent<HTMLCanvasElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    return {
+      x: Math.floor(((e.clientX - rect.left) / rect.width) * doc.width),
+      y: Math.floor(((e.clientY - rect.top) / rect.height) * doc.height),
+    };
+  };
+
+  const onPointerDown = (e: ReactPointerEvent<HTMLCanvasElement>) => {
+    if (e.button !== 0 && e.button !== 2) return;
+    e.preventDefault();
+    const p = pointAt(e);
+    const erase = e.button === 2 || tool === 'eraser';
+    if (tool === 'picker' && e.button === 0) {
+      const value = editor.pick(ref, p.x, p.y);
+      if (value > 0) setColor(value);
+      setTool(value > 0 ? 'pen' : 'eraser');
+      return;
+    }
+    if (tool === 'fill') {
+      editor.fill(ref, p.x, p.y, erase ? 0 : color);
+      return;
+    }
+    e.currentTarget.setPointerCapture(e.pointerId);
+    const value = erase ? 0 : color;
+    editor.begin();
+    editor.paint(ref, p.x, p.y, value, mirror);
+    stroke.current = { last: p, value };
+  };
+
+  const onPointerMove = (e: ReactPointerEvent<HTMLCanvasElement>) => {
+    if (!stroke.current) return;
+    const p = pointAt(e);
+    editor.line(ref, stroke.current.last, p, stroke.current.value, mirror);
+    stroke.current.last = p;
+  };
+
+  const endStroke = () => {
+    stroke.current = null;
+  };
+
+  // ── 저장 ──
+  const save = async () => {
+    const result = assetManifestSchema.safeParse(manifest);
+    if (!result.success) {
+      setStatus({ kind: 'error', text: result.error.issues.map((i) => i.message).join(' ') });
+      return;
+    }
+    setBusy(true);
+    setStatus(null);
+    try {
+      const asset = await saveAsset(queryClient, { id: savedId, communityId }, result.data);
+      setSavedId(asset.id);
+      editor.markSaved();
+      setStatus({ kind: 'ok', text: '저장했습니다.' });
+    } catch (err) {
+      setStatus({
+        kind: 'error',
+        text:
+          err instanceof ApiError || err instanceof Error ? err.message : '저장하지 못했습니다.',
+      });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // ── PNG ──
+  const onImport = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    try {
+      const image = await readImageFile(file);
+      const result = indexImage(
+        image.rgba,
+        image.width,
+        image.height,
+        doc.width,
+        doc.height,
+        doc.palette,
+      );
+      if ('error' in result) {
+        setStatus({ kind: 'error', text: result.error });
+        return;
+      }
+      editor.importFrames(ref, result.frames, result.palette);
+      setStatus({ kind: 'ok', text: `${result.frames.length}프레임을 가져왔습니다.` });
+    } catch {
+      setStatus({ kind: 'error', text: '그림을 읽지 못했습니다.' });
+    }
+  };
+
+  const onExport = () => {
+    const sheet = globalThis.document.createElement('canvas');
+    sheet.width = doc.width * animation.frames.length;
+    sheet.height = doc.height;
+    const ctx = sheet.getContext('2d')!;
+    animation.frames.forEach((frame, i) => {
+      ctx.drawImage(frameCanvas(frame, doc.width, doc.height, doc.palette), i * doc.width, 0);
+    });
+    downloadCanvas(sheet, `${doc.name.trim() || 'asset'}-${animation.name}.png`);
+  };
+
+  const selectFrame = (frame: number) => setSelected({ animation: ref.animation, frame });
+
+  return (
+    <div className="pixel-editor" role="dialog" aria-modal="true" aria-label="도트 에디터">
+      <header className="pixel-editor__header">
+        <span className="pixel-editor__kind">{KIND_LABEL[doc.kind]}</span>
+        <input
+          className="pixel-editor__name"
+          value={doc.name}
+          maxLength={ASSET_NAME_MAX_LENGTH}
+          onChange={(e) => editor.setName(e.target.value)}
+          aria-label="이름"
+          placeholder="이름"
+        />
+        {status && (
+          <p className={status.kind === 'ok' ? 'form__ok' : 'form__error'} role="status">
+            {status.text}
+          </p>
+        )}
+        <div className="pixel-editor__actions">
+          <button type="button" className="button" onClick={() => fileRef.current?.click()}>
+            PNG 가져오기
+          </button>
+          <button type="button" className="button" onClick={onExport}>
+            PNG 내보내기
+          </button>
+          <button type="button" className="button" onClick={requestClose}>
+            닫기
+          </button>
+          <button
+            type="button"
+            className="button button--primary"
+            disabled={busy || missing.length > 0 || !doc.name.trim()}
+            title={
+              missing.length > 0 ? '필수 애니메이션을 모두 그려야 저장할 수 있습니다' : undefined
+            }
+            onClick={() => void save()}
+          >
+            저장
+          </button>
+          <input
+            ref={fileRef}
+            type="file"
+            accept="image/png"
+            hidden
+            onChange={(e) => void onImport(e)}
+          />
+        </div>
+      </header>
+
+      <div className="pixel-editor__body">
+        <aside className="pixel-editor__tools" aria-label="도구">
+          {TOOLS.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              className="pixel-editor__tool"
+              aria-pressed={tool === t.id}
+              title={`${t.label} (${t.key.toUpperCase()})`}
+              onClick={() => setTool(t.id)}
+            >
+              {t.icon}
+            </button>
+          ))}
+          <hr />
+          <button
+            type="button"
+            className="pixel-editor__tool"
+            aria-pressed={mirror}
+            title="좌우 대칭 (M)"
+            onClick={() => setMirror((v) => !v)}
+          >
+            ↔
+          </button>
+          <button
+            type="button"
+            className="pixel-editor__tool"
+            aria-pressed={onion}
+            title="앞 프레임 겹쳐 보기 (O)"
+            onClick={() => setOnion((v) => !v)}
+          >
+            👻
+          </button>
+          <hr />
+          <button
+            type="button"
+            className="pixel-editor__tool"
+            disabled={!editor.canUndo}
+            title="되돌리기 (Ctrl+Z)"
+            onClick={() => editor.undo()}
+          >
+            ↶
+          </button>
+          <button
+            type="button"
+            className="pixel-editor__tool"
+            disabled={!editor.canRedo}
+            title="다시 하기 (Ctrl+Shift+Z)"
+            onClick={() => editor.redo()}
+          >
+            ↷
+          </button>
+          <hr />
+          <button
+            type="button"
+            className="pixel-editor__tool"
+            title="크게"
+            onClick={() => setZoom((z) => Math.min(40, z + 2))}
+          >
+            ＋
+          </button>
+          <button
+            type="button"
+            className="pixel-editor__tool"
+            title="작게"
+            onClick={() => setZoom((z) => Math.max(2, z - 2))}
+          >
+            －
+          </button>
+        </aside>
+
+        <div className="pixel-editor__stage">
+          <canvas
+            ref={canvasRef}
+            className="pixel-editor__canvas"
+            width={doc.width * zoom}
+            height={doc.height * zoom}
+            onPointerDown={onPointerDown}
+            onPointerMove={onPointerMove}
+            onPointerUp={endStroke}
+            onPointerCancel={endStroke}
+            onContextMenu={(e) => e.preventDefault()}
+          />
+        </div>
+
+        <aside className="pixel-editor__side">
+          <section>
+            <h3>팔레트</h3>
+            <div className="pixel-editor__palette">
+              {doc.palette.map((hex, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  className="pixel-editor__swatch"
+                  style={{ background: hex }}
+                  aria-pressed={color === i + 1 && tool !== 'eraser'}
+                  title={hex}
+                  onClick={() => {
+                    setColor(i + 1);
+                    if (tool === 'eraser' || tool === 'picker') setTool('pen');
+                  }}
+                />
+              ))}
+            </div>
+            <div className="pixel-editor__row">
+              <input
+                type="color"
+                value={doc.palette[color - 1] ?? '#000000'}
+                onChange={(e) => editor.setColor(color, e.target.value)}
+                aria-label="고른 색 바꾸기"
+              />
+              <button
+                type="button"
+                className="button"
+                disabled={doc.palette.length >= PALETTE_MAX_COLORS}
+                onClick={() => {
+                  const added = editor.addColor(doc.palette[color - 1] ?? '#000000');
+                  if (added) setColor(added);
+                }}
+              >
+                색 추가
+              </button>
+              <button
+                type="button"
+                className="button"
+                disabled={doc.palette.length <= 1}
+                onClick={() => {
+                  if (!window.confirm('이 색을 지울까요? 이 색으로 칠한 곳은 투명해집니다.'))
+                    return;
+                  editor.removeColor(color);
+                  setColor((c) => Math.max(1, Math.min(c, doc.palette.length)));
+                }}
+              >
+                색 지우기
+              </button>
+            </div>
+            <p className="form__hint">
+              {doc.palette.length}/{PALETTE_MAX_COLORS}색 · 오른쪽 버튼으로 지웁니다
+            </p>
+          </section>
+
+          {doc.kind === 'tile' && (
+            <section>
+              <h3>타일</h3>
+              <label className="pixel-editor__check">
+                <input
+                  type="checkbox"
+                  checked={doc.solid}
+                  onChange={(e) => editor.setSolid(e.target.checked)}
+                />
+                지나갈 수 없음 (벽, 물, 나무 등)
+              </label>
+            </section>
+          )}
+
+          {doc.kind === 'object' && <ObjectSettings editor={editor} />}
+
+          <section>
+            <h3>애니메이션</h3>
+            {doc.kind === 'character' && (
+              <p className="form__hint">
+                모두 그려야 저장할 수 있습니다 (걷기·첨부 모션은 2프레임 이상).
+              </p>
+            )}
+            <ul className="pixel-editor__animations">
+              {doc.animations.map((a, i) => (
+                <li key={a.name}>
+                  <button
+                    type="button"
+                    aria-current={i === ref.animation}
+                    onClick={() => setSelected({ animation: i, frame: 0 })}
+                  >
+                    {doc.kind === 'character' && (
+                      <span
+                        className={missingNames.has(a.name) ? 'mark mark--todo' : 'mark mark--done'}
+                      >
+                        {missingNames.has(a.name) ? '✗' : '✓'}
+                      </span>
+                    )}
+                    {ANIMATION_LABEL.get(a.name) ?? (a.name === 'default' ? '기본' : a.name)}
+                    <small>{a.frames.length}프레임</small>
+                  </button>
+                </li>
+              ))}
+            </ul>
+            <label className="pixel-editor__row">
+              프레임 간격
+              <input
+                type="number"
+                min={FRAME_MS_MIN}
+                max={FRAME_MS_MAX}
+                step={10}
+                value={animation.frameMs}
+                onChange={(e) => {
+                  const ms = Math.round(Number(e.target.value));
+                  if (ms >= FRAME_MS_MIN && ms <= FRAME_MS_MAX)
+                    editor.setFrameMs(ref.animation, ms);
+                }}
+              />
+              ms
+            </label>
+          </section>
+
+          <section>
+            <h3>미리보기</h3>
+            <Playback editor={editor} animation={ref.animation} />
+          </section>
+        </aside>
+      </div>
+
+      <footer className="pixel-editor__frames" aria-label="프레임">
+        <ol>
+          {animation.frames.map((frame, i) => (
+            <li key={i}>
+              <button
+                type="button"
+                aria-current={i === ref.frame}
+                onClick={() => selectFrame(i)}
+                title={`${i + 1}번 프레임`}
+              >
+                <FrameThumb pixels={frame} doc={doc} />
+                <span>{i + 1}</span>
+              </button>
+            </li>
+          ))}
+        </ol>
+        <div className="pixel-editor__frame-actions">
+          <button
+            type="button"
+            className="button"
+            disabled={editor.frameCount() >= FRAME_LIMIT[doc.kind]}
+            onClick={() => {
+              const at = editor.addFrame(ref, false);
+              if (at !== null) selectFrame(at);
+            }}
+          >
+            빈 프레임
+          </button>
+          <button
+            type="button"
+            className="button"
+            disabled={editor.frameCount() >= FRAME_LIMIT[doc.kind]}
+            onClick={() => {
+              const at = editor.addFrame(ref, true);
+              if (at !== null) selectFrame(at);
+            }}
+          >
+            복제
+          </button>
+          <button
+            type="button"
+            className="button"
+            disabled={ref.frame === 0}
+            onClick={() => {
+              editor.moveFrame(ref, ref.frame - 1);
+              selectFrame(ref.frame - 1);
+            }}
+          >
+            ◀
+          </button>
+          <button
+            type="button"
+            className="button"
+            disabled={ref.frame >= animation.frames.length - 1}
+            onClick={() => {
+              editor.moveFrame(ref, ref.frame + 1);
+              selectFrame(ref.frame + 1);
+            }}
+          >
+            ▶
+          </button>
+          <button
+            type="button"
+            className="button button--danger"
+            disabled={animation.frames.length <= 1}
+            onClick={() => editor.removeFrame(ref)}
+          >
+            프레임 지우기
+          </button>
+          <span className="form__hint">
+            {editor.frameCount()}/{FRAME_LIMIT[doc.kind]}장 (같은 그림은 한 장)
+          </span>
+        </div>
+      </footer>
+    </div>
+  );
+}
+
+function ObjectSettings({ editor }: { editor: PixelDocument }) {
+  const { doc } = editor;
+  const cols = doc.width / TILE_SIZE;
+  const rows = doc.height / TILE_SIZE;
+  const sizes = Array.from({ length: OBJECT_MAX_TILES }, (_, i) => i + 1);
+  return (
+    <section>
+      <h3>오브젝트</h3>
+      <div className="pixel-editor__row">
+        크기
+        <select
+          value={cols}
+          onChange={(e) => editor.resize(Number(e.target.value), rows)}
+          aria-label="가로 칸"
+        >
+          {sizes.map((n) => (
+            <option key={n} value={n}>
+              가로 {n}칸
+            </option>
+          ))}
+        </select>
+        <select
+          value={rows}
+          onChange={(e) => editor.resize(cols, Number(e.target.value))}
+          aria-label="세로 칸"
+        >
+          {sizes.map((n) => (
+            <option key={n} value={n}>
+              세로 {n}칸
+            </option>
+          ))}
+        </select>
+      </div>
+      <p className="form__hint">
+        지나갈 수 없는 칸을 누르세요. 보통 아래 줄(밑동)만 막아야 캐릭터가 뒤로 지나가며 가려집니다.
+        오브젝트는 맵에서 그림의 왼쪽 아래 칸에 놓입니다.
+      </p>
+      <div
+        className="pixel-editor__footprint"
+        style={{ gridTemplateColumns: `repeat(${cols}, 24px)` }}
+      >
+        {doc.footprint.map((blocked, i) => (
+          <button
+            key={i}
+            type="button"
+            aria-pressed={!!blocked}
+            aria-label={`${Math.floor(i / cols) + 1}줄 ${(i % cols) + 1}칸`}
+            onClick={() => editor.toggleFootprint(i)}
+          />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function FrameThumb({ pixels, doc }: { pixels: Uint8Array; doc: EditorDoc }) {
+  const ref = useRef<HTMLCanvasElement>(null);
+  const scale = Math.max(1, Math.floor(40 / Math.max(doc.width, doc.height)));
+  useEffect(() => {
+    const canvas = ref.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d')!;
+    ctx.imageSmoothingEnabled = false;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(
+      frameCanvas(pixels, doc.width, doc.height, doc.palette),
+      0,
+      0,
+      canvas.width,
+      canvas.height,
+    );
+  });
+  return <canvas ref={ref} width={doc.width * scale} height={doc.height * scale} />;
+}
+
+/** 고른 애니메이션을 3배로 재생한다 (그리는 중에도 바로 반영) */
+function Playback({ editor, animation }: { editor: PixelDocument; animation: number }) {
+  const ref = useRef<HTMLCanvasElement>(null);
+  const { width, height } = editor.doc;
+  const scale = useMemo(() => (Math.max(width, height) > 32 ? 2 : 3), [width, height]);
+  useEffect(() => {
+    let raf = 0;
+    let shown = '';
+    const start = performance.now();
+    const tick = (now: number) => {
+      const canvas = ref.current;
+      const current = editor.doc.animations[animation];
+      const index = current
+        ? Math.floor((now - start) / current.frameMs) % Math.max(1, current.frames.length)
+        : 0;
+      // 프레임이나 그림이 바뀔 때만 다시 그린다.
+      const key = `${index}:${editor.version}`;
+      if (canvas && current && current.frames.length > 0 && key !== shown) {
+        shown = key;
+        const ctx = canvas.getContext('2d')!;
+        ctx.imageSmoothingEnabled = false;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(
+          frameCanvas(
+            current.frames[index]!,
+            editor.doc.width,
+            editor.doc.height,
+            editor.doc.palette,
+          ),
+          0,
+          0,
+          canvas.width,
+          canvas.height,
+        );
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [editor, animation]);
+  return (
+    <canvas
+      ref={ref}
+      className="pixel-editor__playback"
+      width={width * scale}
+      height={height * scale}
+    />
+  );
+}

@@ -1,7 +1,9 @@
 import {
+  type AssetManifest,
+  type AssetRef,
   type Direction,
-  MAP_LAYOUTS,
   MOVE_SEND_INTERVAL_MS,
+  type MapDefinition,
   type MapLayout,
   type PlazaCorrection,
   type PlazaMoved,
@@ -10,26 +12,27 @@ import {
   type Position,
   TILE_SIZE,
   type UserProfile,
+  buildCollision,
 } from '@metacode/shared';
+import { builtinAsset } from '@metacode/shared/builtin-assets';
 import Phaser from 'phaser';
-import {
-  drawCharacter,
-  drawFlames,
-  drawGround,
-  drawProps,
-  drawShadow,
-  drawSpeakingRing,
-  drawTargetMarker,
-  paletteOf,
-} from './art';
+import { drawShadow, drawSpeakingRing, drawTargetMarker } from './art';
 import { type Bubble, activeBubbles, pushBubble } from './bubbles';
 import { zoomFor } from './camera';
+import {
+  type CharacterLook,
+  animationName,
+  characterFrame,
+  characterLook,
+  emoteDurationMs,
+} from './characterSprite';
 import { RemoteTrack, directionOf, stepByInput, stepToward } from './motion';
+import { MapView } from './mapView';
 import { findPath, tileCenter } from './pathfinding';
-import { appearanceFor } from './themes';
 
-const DIRECTIONS: Direction[] = ['down', 'up', 'left', 'right'];
 const CHARACTER_HEIGHT = 32;
+/** 이만큼 움직이지 않아야 걷기를 멈춘다 (받은 위치 사이에서 걷기 모션이 끊겼다 이어지지 않게) */
+const WALK_HOLD_MS = 120;
 export interface MoveState extends Position {
   dir: Direction;
   moving: boolean;
@@ -57,16 +60,21 @@ interface Actor {
   shadow: Phaser.GameObjects.Image;
   /** 말하는 중이면 보이는 발밑 고리 */
   ring: Phaser.GameObjects.Image;
-  textureKey: string;
+  look: CharacterLook;
+  /** 지금 틀고 있는 애니메이션과 시작 시각 */
+  animation: { name: string; start: number };
   position: Position;
   dir: Direction;
   /** 다른 사람: 받은 위치 기록. 나는 없음 */
   track: RemoteTrack | null;
+  /** 이번 프레임에 움직였는지 (내 캐릭터는 서버에 보내는 moving) */
   walking: boolean;
+  lastMovedAt: number;
   bubbles: Bubble[];
   renderedBubbles: string;
   bubblesWidth: number;
-  hopUntil: number;
+  /** 첨부 모션이 끝나는 시각 */
+  emoteUntil: number;
   dom: {
     root: HTMLDivElement;
     bubbles: HTMLOListElement;
@@ -85,8 +93,10 @@ export class PlazaScene extends Phaser.Scene {
   private resolveReady!: () => void;
 
   private layout: MapLayout | null = null;
-  private mapLayer: Phaser.GameObjects.GameObject[] = [];
-  private flames: { image: Phaser.GameObjects.Image; keys: string[] }[] = [];
+  private map: { key: string; view: MapView } | null = null;
+  /** 서버에서 받은 에셋(직접 그린 캐릭터 등). 내장 에셋은 builtinAsset으로 찾는다 */
+  private readonly customAssets = new Map<AssetRef, AssetManifest>();
+  private readonly assetOf = (ref: AssetRef) => this.customAssets.get(ref) ?? builtinAsset(ref);
   private actors = new Map<string, Actor>();
   private path: Position[] = [];
   private marker: Phaser.GameObjects.Image | null = null;
@@ -121,7 +131,11 @@ export class PlazaScene extends Phaser.Scene {
       if (pointer.button !== 0) return;
       this.walkTo(this.screenToWorld(pointer.x, pointer.y));
     });
-    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.clearActors());
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.clearActors();
+      this.map?.view.destroy();
+      this.map = null;
+    });
     this.resolveReady();
   }
 
@@ -129,7 +143,7 @@ export class PlazaScene extends Phaser.Scene {
 
   /** 광장을 (다시) 열었을 때: 맵을 그리고 인원을 전부 새로 둔다 */
   applySnapshot(snapshot: PlazaSnapshot): void {
-    this.drawMap(MAP_LAYOUTS[snapshot.map], snapshot.map, snapshot.theme);
+    this.drawMap(snapshot.definition, snapshot.assets);
     this.clearActors();
     this.path = [];
     this.lastSent = null;
@@ -139,19 +153,10 @@ export class PlazaScene extends Phaser.Scene {
   upsert(occupant: PlazaOccupant): void {
     const existing = this.actors.get(occupant.user.id);
     if (existing) {
-      existing.user = occupant.user;
-      existing.dom.root.querySelector('.plaza-actor__name')!.textContent = this.options.nameOf(
-        occupant.user,
-      );
+      this.updateUser(occupant.user);
       return;
     }
-    const palette = paletteOf(occupant.user.id);
-    for (const dir of DIRECTIONS) {
-      const key = `${palette.key}-${dir}`;
-      if (!this.textures.exists(key)) {
-        this.textures.addCanvas(key, drawCharacter(palette.shirt, palette.hair, dir));
-      }
-    }
+    const look = characterLook(this, occupant.user.id, occupant.user.character, this.assetOf);
     const isMe = occupant.user.id === this.options.meId;
     const position = { x: occupant.x, y: occupant.y };
     const actor: Actor = {
@@ -162,29 +167,47 @@ export class PlazaScene extends Phaser.Scene {
         .setOrigin(0.5, 0.6)
         .setVisible(false),
       sprite: this.add
-        .image(position.x, position.y, `${palette.key}-${occupant.dir}`)
+        .image(
+          position.x,
+          position.y,
+          look.key,
+          characterFrame(look.manifest, `idle-${occupant.dir}`, occupant.dir, 0),
+        )
         .setOrigin(0.5, 1),
-      textureKey: palette.key,
+      look,
+      animation: { name: `idle-${occupant.dir}`, start: 0 },
       position,
       dir: occupant.dir,
       track: isMe ? null : new RemoteTrack(position, performance.now()),
       walking: false,
+      lastMovedAt: 0,
       bubbles: [],
       renderedBubbles: '',
       bubblesWidth: 0,
-      hopUntil: 0,
+      emoteUntil: 0,
       dom: this.createActorDom(occupant.user, isMe),
     };
     this.actors.set(occupant.user.id, actor);
     this.applyVoice(actor);
   }
 
-  /** 닉네임이 바뀌었다 (user:updated): 이름표를 고친다 */
+  /** 받아 온 에셋을 등록한다. 그 뒤 updateUser()로 캐릭터를 다시 그린다 */
+  addAsset(ref: AssetRef, manifest: AssetManifest): void {
+    this.customAssets.set(ref, manifest);
+  }
+
+  /** 닉네임이나 캐릭터가 바뀌었다 (user:updated): 이름표와 캐릭터 모습을 고친다 */
   updateUser(user: UserProfile): void {
     const actor = this.actors.get(user.id);
     if (!actor) return;
     actor.user = user;
     actor.dom.name.textContent = this.options.nameOf(user);
+    const look = characterLook(this, user.id, user.character, this.assetOf);
+    if (look.key !== actor.look.key) {
+      actor.look = look;
+      actor.sprite.setTexture(look.key, 0);
+      actor.animation = { name: '', start: 0 };
+    }
   }
 
   remove(userId: string): void {
@@ -231,8 +254,13 @@ export class PlazaScene extends Phaser.Scene {
   say(userId: string, bubble: Bubble): void {
     const actor = this.actors.get(userId);
     if (!actor) return;
-    actor.bubbles = pushBubble(actor.bubbles, bubble, performance.now());
-    if (bubble.kind === 'attachment-emote') actor.hopUntil = performance.now() + 600;
+    const now = performance.now();
+    actor.bubbles = pushBubble(actor.bubbles, bubble, now);
+    // 첨부 메시지: 캐릭터의 첨부 모션(emote)을 처음부터 한 번 튼다.
+    if (bubble.kind === 'attachment-emote') {
+      actor.emoteUntil = now + emoteDurationMs(actor.look.manifest);
+      actor.animation = { name: 'emote', start: now };
+    }
   }
 
   // ── 키보드 ──
@@ -267,9 +295,7 @@ export class PlazaScene extends Phaser.Scene {
       this.renderActor(actor, now);
     }
 
-    for (const flame of this.flames) {
-      flame.image.setTexture(flame.keys[Math.floor(now / 140) % flame.keys.length]!);
-    }
+    this.map?.view.tick(now);
     this.updateCamera(me?.position);
     this.updateOverlay(now);
   }
@@ -340,10 +366,23 @@ export class PlazaScene extends Phaser.Scene {
 
   private renderActor(actor: Actor, now: number): void {
     const { x, y } = actor.position;
-    let lift = actor.walking ? Math.floor(now / 140) % 2 : 0;
-    if (actor.hopUntil > now)
-      lift += Math.round(Math.abs(Math.sin((actor.hopUntil - now) / 60)) * 4);
-    actor.sprite.setTexture(`${actor.textureKey}-${actor.dir}`);
+    if (actor.walking) actor.lastMovedAt = now;
+    const name = animationName(
+      {
+        dir: actor.dir,
+        walking: now - actor.lastMovedAt < WALK_HOLD_MS,
+        emoteUntil: actor.emoteUntil,
+      },
+      now,
+    );
+    if (actor.animation.name !== name) actor.animation = { name, start: now };
+    const { manifest } = actor.look;
+    actor.sprite.setFrame(characterFrame(manifest, name, actor.dir, now - actor.animation.start));
+    // 첨부 모션 동안에는 제자리에서 뛴다.
+    const lift =
+      actor.emoteUntil > now
+        ? Math.round(Math.abs(Math.sin((actor.emoteUntil - now) / 60)) * 4)
+        : 0;
     actor.sprite.setPosition(x, y - lift).setDepth(y);
     actor.shadow.setPosition(x, y).setDepth(1);
     if (actor.ring.visible) {
@@ -354,44 +393,17 @@ export class PlazaScene extends Phaser.Scene {
 
   // ── 화면 ──
 
-  private drawMap(layout: MapLayout, map: string, theme: string): void {
-    if (this.layout === layout) return;
-    for (const object of this.mapLayer) object.destroy();
-    this.mapLayer = [];
-    this.flames = [];
-    this.layout = layout;
-
-    const look = appearanceFor(layout.key, theme);
-    const prefix = `${map}-${theme}`;
-    if (!this.textures.exists(`${prefix}-ground`)) {
-      this.textures.addCanvas(`${prefix}-ground`, drawGround(layout, look));
-    }
-    this.mapLayer.push(this.add.image(0, 0, `${prefix}-ground`).setOrigin(0, 0).setDepth(0));
-
-    for (const prop of drawProps(layout, look)) {
-      const key = `${prefix}-${prop.key}`;
-      if (!this.textures.exists(key)) this.textures.addCanvas(key, prop.canvas);
-      this.mapLayer.push(this.add.image(prop.x, prop.y, key).setOrigin(0.5, 1).setDepth(prop.y));
-    }
-
-    const campfires = layout.obstacles.filter((o) => o.kind === 'campfire');
-    if (campfires.length > 0) {
-      const keys = drawFlames(look).map((frame, i) => {
-        const key = `${prefix}-flame-${i}`;
-        if (!this.textures.exists(key)) this.textures.addCanvas(key, frame);
-        return key;
-      });
-      for (const o of campfires) {
-        const x = (o.x + o.w / 2) * TILE_SIZE;
-        const y = (o.y + o.h / 2) * TILE_SIZE + 4;
-        const image = this.add
-          .image(x, y, keys[0]!)
-          .setOrigin(0.5, 1)
-          .setDepth((o.y + o.h) * TILE_SIZE);
-        this.mapLayer.push(image);
-        this.flames.push({ image, keys });
-      }
-    }
+  /**
+   * 맵을 (다시) 그린다. 같은 맵이면 그대로 둔다. 충돌 격자는 서버와 같은 맵 정의에서 계산한다.
+   * 맵에 쓴 커뮤니티 에셋은 미리 addAsset()으로 등록해 둔다 (PlazaView가 받아 온다).
+   */
+  private drawMap(definition: MapDefinition, assets: PlazaSnapshot['assets']): void {
+    // 맵에 쓴 에셋이 고쳐지면(버전이 바뀌면) 같은 맵 정의라도 다시 그린다.
+    const key = JSON.stringify(definition) + JSON.stringify(assets);
+    if (this.map?.key === key) return;
+    this.map?.view.destroy();
+    this.layout = buildCollision(definition, this.assetOf);
+    this.map = { key, view: new MapView(this, definition, this.assetOf) };
     this.updateZoom();
   }
 
