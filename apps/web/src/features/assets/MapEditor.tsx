@@ -29,6 +29,9 @@ import { framePixels } from './render';
 
 type Tool = 'ground' | 'overlay' | 'fill' | 'object' | 'erase' | 'spawn';
 
+/** 팔레트 미리보기 크기 (가장 긴 변, px) */
+const PALETTE_BOX = 32;
+
 const TOOLS: { id: Tool; label: string; icon: string }[] = [
   { id: 'ground', label: '바닥 칠하기', icon: '🟩' },
   { id: 'overlay', label: '장식 칠하기 (바닥 위에 겹침)', icon: '🌼' },
@@ -545,14 +548,7 @@ function MapEditorBody({
                     }
                   }}
                 >
-                  <AssetPreview
-                    manifest={entry.manifest}
-                    scale={Math.max(
-                      1,
-                      Math.floor(32 / Math.max(entry.manifest.width, entry.manifest.height)),
-                    )}
-                    animate={false}
-                  />
+                  <AssetPreview manifest={entry.manifest} box={PALETTE_BOX} animate={false} />
                   {entry.community && <span className="map-editor__badge">★</span>}
                 </button>
               </li>

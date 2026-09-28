@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { frameAt, frameOnce, isAnimated } from './render';
+import { SHEET_MAX_SIZE, frameAt, frameOnce, isAnimated, sheetColumns } from './render';
 
 const walk = { frames: [4, 5, 6], frameMs: 100 };
 
@@ -22,5 +22,22 @@ describe('애니메이션 프레임', () => {
     expect(isAnimated(walk)).toBe(true);
     expect(isAnimated({ frames: [2, 2], frameMs: 100 })).toBe(false);
     expect(isAnimated(undefined)).toBe(false);
+  });
+});
+
+describe('프레임 시트', () => {
+  const sheet = (width: number, count: number) => ({
+    width,
+    frames: Array<string>(count).fill(''),
+  });
+
+  it('작은 에셋은 한 줄에 다 넣는다', () => {
+    expect(sheetColumns(sheet(16, 30))).toBe(30);
+  });
+
+  it('한 줄이 텍스처 한계를 넘으면 줄을 나눈다', () => {
+    // 128px짜리 프레임은 한 줄에 32장까지다 (4096 / 128).
+    expect(sheetColumns(sheet(128, 40))).toBe(SHEET_MAX_SIZE / 128);
+    expect(sheetColumns(sheet(128, 40)) * 128).toBeLessThanOrEqual(SHEET_MAX_SIZE);
   });
 });

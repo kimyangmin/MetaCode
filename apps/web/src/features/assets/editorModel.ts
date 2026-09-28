@@ -1,13 +1,13 @@
 import {
   type AssetKind,
   type AssetManifest,
-  CHARACTER_HEIGHT,
-  CHARACTER_WIDTH,
+  CHARACTER_DEFAULT_WIDTH,
   DEFAULT_ANIMATION,
   FRAME_LIMIT,
   PALETTE_MAX_COLORS,
   REQUIRED_CHARACTER_ANIMATIONS,
   TILE_SIZE,
+  characterHeightOf,
   decodePixels,
   encodePixels,
 } from '@metacode/shared';
@@ -60,9 +60,17 @@ const blank = (width: number, height: number) => new Uint8Array(width * height);
 /** 종류에 맞는 새 문서. 캐릭터는 필수 애니메이션을 빈 프레임으로 채워 둔다 */
 export function newDoc(kind: AssetKind, name: string, tiles = { w: 1, h: 1 }): EditorDoc {
   const width =
-    kind === 'character' ? CHARACTER_WIDTH : kind === 'tile' ? TILE_SIZE : tiles.w * TILE_SIZE;
+    kind === 'character'
+      ? CHARACTER_DEFAULT_WIDTH
+      : kind === 'tile'
+        ? TILE_SIZE
+        : tiles.w * TILE_SIZE;
   const height =
-    kind === 'character' ? CHARACTER_HEIGHT : kind === 'tile' ? TILE_SIZE : tiles.h * TILE_SIZE;
+    kind === 'character'
+      ? characterHeightOf(CHARACTER_DEFAULT_WIDTH)
+      : kind === 'tile'
+        ? TILE_SIZE
+        : tiles.h * TILE_SIZE;
   const animations =
     kind === 'character'
       ? REQUIRED_CHARACTER_ANIMATIONS.map((required) => ({
@@ -71,7 +79,7 @@ export function newDoc(kind: AssetKind, name: string, tiles = { w: 1, h: 1 }): E
           frameMs: required.name.startsWith('idle') ? 1000 : 120,
         }))
       : [{ name: DEFAULT_ANIMATION, frames: [blank(width, height)], frameMs: 200 }];
-  const cells = (width / TILE_SIZE) * (height / TILE_SIZE);
+  const cells = Math.round(width / TILE_SIZE) * Math.round(height / TILE_SIZE);
   return {
     kind,
     name,
@@ -110,7 +118,7 @@ export function fromManifest(manifest: AssetManifest): EditorDoc {
       frameMs: animation?.frameMs ?? 120,
     };
   });
-  const cells = (manifest.width / TILE_SIZE) * (manifest.height / TILE_SIZE);
+  const cells = Math.round(manifest.width / TILE_SIZE) * Math.round(manifest.height / TILE_SIZE);
   return {
     kind: manifest.kind,
     name: manifest.name,
@@ -465,6 +473,37 @@ export class PixelDocument {
       doc.width = width;
       doc.height = height;
       doc.footprint = footprint;
+    });
+  }
+
+  /**
+   * 캐릭터 해상도 바꾸기 (가로 px, 세로는 2배). 그림은 발밑 가운데를 기준으로 남긴다.
+   * 확대·축소해서 다시 칠하지 않으므로, 넓히면 그림이 아래 가운데에 그대로 남고 좁히면 가장자리가 잘린다.
+   */
+  resizeCharacter(width: number): void {
+    const height = characterHeightOf(width);
+    const old = this.doc;
+    if (old.kind !== 'character' || (width === old.width && height === old.height)) return;
+    const dx = Math.floor((width - old.width) / 2);
+    const dy = height - old.height;
+    this.edit((doc) => {
+      for (const animation of doc.animations) {
+        animation.frames = animation.frames.map((pixels) => {
+          const next = blank(width, height);
+          for (let y = 0; y < old.height; y++) {
+            const ny = y + dy;
+            if (ny < 0 || ny >= height) continue;
+            for (let x = 0; x < old.width; x++) {
+              const nx = x + dx;
+              if (nx < 0 || nx >= width) continue;
+              next[ny * width + nx] = pixels[y * old.width + x]!;
+            }
+          }
+          return next;
+        });
+      }
+      doc.width = width;
+      doc.height = height;
     });
   }
 

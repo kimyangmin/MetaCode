@@ -29,18 +29,35 @@ export function framePixels(
   return out;
 }
 
-/** 모든 프레임을 가로로 늘어놓은 그림 (프레임 i는 x = i * width) */
+/**
+ * 텍스처 한 변의 최대 크기. 캐릭터 해상도가 128×256까지 올라가면 프레임을 한 줄로 늘어놓은 시트가
+ * 오래된 GPU의 WebGL 한계(4096px)를 넘을 수 있어서, 넘칠 만큼 길어지면 여러 줄로 나눈다.
+ */
+export const SHEET_MAX_SIZE = 4096;
+
+/** 시트 한 줄에 들어가는 프레임 수 */
+export function sheetColumns(manifest: Pick<AssetManifest, 'width' | 'frames'>): number {
+  const perRow = Math.max(1, Math.floor(SHEET_MAX_SIZE / manifest.width));
+  return Math.max(1, Math.min(manifest.frames.length, perRow));
+}
+
+/** 모든 프레임을 늘어놓은 그림 (프레임 i는 x = (i % cols) * width, y = floor(i / cols) * height) */
 export function sheetCanvas(
   manifest: AssetManifest,
   palette: readonly string[] = manifest.palette,
 ): HTMLCanvasElement {
   const { width, height, frames } = manifest;
+  const cols = sheetColumns(manifest);
   const canvas = document.createElement('canvas');
-  canvas.width = width * frames.length;
-  canvas.height = height;
+  canvas.width = width * Math.min(cols, Math.max(1, frames.length));
+  canvas.height = height * Math.ceil(Math.max(1, frames.length) / cols);
   const ctx = canvas.getContext('2d')!;
   frames.forEach((_, i) => {
-    ctx.putImageData(new ImageData(framePixels(manifest, i, palette), width, height), i * width, 0);
+    ctx.putImageData(
+      new ImageData(framePixels(manifest, i, palette), width, height),
+      (i % cols) * width,
+      Math.floor(i / cols) * height,
+    );
   });
   return canvas;
 }

@@ -98,6 +98,56 @@ describe('매니페스트 검증', () => {
   });
 });
 
+describe('캐릭터 해상도', () => {
+  const base = builtinAsset('builtin:char-short')!;
+
+  /** 내장 캐릭터(16×32)를 nearest로 n배 키운 매니페스트 */
+  const upscaled = (n: number): AssetManifest => {
+    const width = base.width * n;
+    const height = base.height * n;
+    return {
+      ...base,
+      width,
+      height,
+      frames: base.frames.map((frame) => {
+        const pixels = decodePixels(frame)!;
+        const next = new Uint8Array(width * height);
+        for (let y = 0; y < height; y++) {
+          for (let x = 0; x < width; x++) {
+            next[y * width + x] = pixels[Math.floor(y / n) * base.width + Math.floor(x / n)] ?? 0;
+          }
+        }
+        return encodePixels(next);
+      }),
+    };
+  };
+
+  it('가로 16~128px, 세로가 가로의 2배면 받는다', () => {
+    expect(problemsOf(upscaled(2))).toEqual([]);
+    expect(problemsOf(upscaled(3))).toEqual([]);
+  });
+
+  it('범위를 벗어나거나 세로 비율이 다르면 거절한다', () => {
+    const message = '캐릭터 해상도는 가로 16~128px, 세로는 가로의 2배여야 합니다.';
+    expect(problemsOf({ ...base, width: 8, height: 16 })).toContain(message);
+    expect(problemsOf({ ...base, width: 256, height: 512 })).toContain(message);
+    expect(problemsOf({ ...base, width: 32, height: 32 })).toContain(message);
+  });
+
+  it('해상도 × 프레임 수가 너무 많으면 거절한다', () => {
+    // 가장 큰 해상도(128×256)는 32프레임까지다 (ASSET_PIXEL_BUDGET).
+    const big = upscaled(8);
+    expect(problemsOf(big)).toEqual([]);
+    const spare = encodePixels(new Uint8Array(big.width * big.height));
+    const tooMany = {
+      ...big,
+      frames: [...big.frames, ...Array<string>(33 - big.frames.length).fill(spare)],
+    };
+    expect(tooMany.frames.length).toBe(33);
+    expect(problemsOf(tooMany)[0]).toMatch(/에셋이 너무 큽니다/);
+  });
+});
+
 describe('캐릭터 필수 애니메이션', () => {
   const base = builtinAsset('builtin:char-short')!;
 

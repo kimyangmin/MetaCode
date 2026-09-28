@@ -158,7 +158,7 @@ function AssetGrid({ assets }: { assets: AssetDto[] }) {
         {assets.map((asset) => (
           <li key={asset.id} className="asset-card">
             <div className="asset-card__preview">
-              <AssetPreview manifest={asset.manifest} scale={previewScale(asset.manifest)} />
+              <AssetPreview manifest={asset.manifest} box={PREVIEW_BOX} />
             </div>
             <strong title={asset.name}>{asset.name}</strong>
             <div className="asset-card__actions">
@@ -189,9 +189,8 @@ function AssetGrid({ assets }: { assets: AssetDto[] }) {
   );
 }
 
-function previewScale(manifest: AssetManifest): number {
-  return Math.max(1, Math.floor(64 / Math.max(manifest.width, manifest.height)));
-}
+/** 목록 카드의 미리보기 크기 (가장 긴 변, px) */
+const PREVIEW_BOX = 64;
 
 const BUILTIN_LIST = Object.values(BUILTIN_ASSETS);
 
@@ -251,7 +250,7 @@ function BuiltinPicker({
           {list.map((manifest, i) => (
             <li key={i}>
               <button type="button" title={manifest.name} onClick={() => onPick(manifest)}>
-                <AssetPreview manifest={manifest} scale={previewScale(manifest)} animate={false} />
+                <AssetPreview manifest={manifest} box={PREVIEW_BOX} animate={false} />
                 <span>{manifest.name}</span>
               </button>
             </li>

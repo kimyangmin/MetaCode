@@ -15,14 +15,46 @@ export const AssetKind = {
 } as const;
 export type AssetKind = (typeof AssetKind)[keyof typeof AssetKind];
 
-/** 캐릭터 한 프레임 (가로 1타일, 세로 2타일). 기준점은 발밑 가운데 */
-export const CHARACTER_WIDTH = 16;
-export const CHARACTER_HEIGHT = 32;
+/**
+ * 캐릭터가 광장에서 차지하는 크기 (가로 1타일, 세로 2타일). 기준점은 발밑 가운데.
+ * 매니페스트 해상도와 상관없이 늘 이 크기로 그리므로, 해상도를 올려도 충돌·이동·카메라는 그대로다.
+ */
+export const CHARACTER_WORLD_WIDTH = TILE_SIZE;
+export const CHARACTER_WORLD_HEIGHT = TILE_SIZE * 2;
+
+/**
+ * 캐릭터 한 프레임의 해상도. 가로 16~128px, 세로는 가로의 2배다.
+ * 하나로 고정하지 않는 이유는 받아 온 에셋(32×64, 48×96 등)을 줄이지 않고 그대로 쓰기 위해서다.
+ */
+export const CHARACTER_MIN_WIDTH = 16;
+export const CHARACTER_MAX_WIDTH = 128;
+/** 새로 그릴 때의 해상도 */
+export const CHARACTER_DEFAULT_WIDTH = CHARACTER_WORLD_WIDTH;
+
+/** 캐릭터 해상도의 세로 크기 (가로의 2배) */
+export function characterHeightOf(width: number): number {
+  return width * 2;
+}
+
+/** 캐릭터로 쓸 수 있는 해상도인지 */
+export function isCharacterSize(width: number, height: number): boolean {
+  return (
+    Number.isInteger(width) &&
+    width >= CHARACTER_MIN_WIDTH &&
+    width <= CHARACTER_MAX_WIDTH &&
+    height === characterHeightOf(width)
+  );
+}
 /** 오브젝트는 가로·세로 1~4타일 */
 export const OBJECT_MAX_TILES = 4;
 export const PALETTE_MAX_COLORS = 64;
 export const ASSET_NAME_MAX_LENGTH = 32;
 export const FRAME_LIMIT: Record<AssetKind, number> = { tile: 16, object: 8, character: 64 };
+/**
+ * 에셋 하나의 픽셀 총량 (해상도 × 프레임 수). 매니페스트를 그대로 DB에 넣고 광장에서 내려받으므로,
+ * 해상도를 풀어 준 대신 총량을 막는다 (128×256이면 32프레임까지, base64로 약 1.4MB).
+ */
+export const ASSET_PIXEL_BUDGET = 128 * 256 * 32;
 export const FRAME_MS_MIN = 40;
 export const FRAME_MS_MAX = 2000;
 const ANIMATION_LIMIT = 32;
@@ -71,14 +103,17 @@ const animationSchema = z.object({
 });
 export type AssetAnimation = z.infer<typeof animationSchema>;
 
+/** 가장 큰 프레임(캐릭터 128×256) 하나의 base64 길이. 이보다 길면 풀어 볼 필요도 없다 */
+const MAX_FRAME_BASE64 =
+  4 * Math.ceil((CHARACTER_MAX_WIDTH * characterHeightOf(CHARACTER_MAX_WIDTH)) / 3);
+
 const manifestShape = z.object({
   kind: z.enum([AssetKind.Tile, AssetKind.Object, AssetKind.Character]),
   name: z.string().trim().min(1).max(ASSET_NAME_MAX_LENGTH),
   width: z.number().int().positive(),
   height: z.number().int().positive(),
   palette: z.array(hexColor).min(1).max(PALETTE_MAX_COLORS),
-  // 가장 큰 프레임(64×64) 하나의 base64 길이보다 길면 볼 필요도 없다.
-  frames: z.array(z.string().max(5464)).min(1).max(FRAME_LIMIT.character),
+  frames: z.array(z.string().max(MAX_FRAME_BASE64)).min(1).max(FRAME_LIMIT.character),
   animations: z.record(z.string().regex(/^[a-z][a-z0-9-]{0,31}$/), animationSchema),
   /** 타일: 지나갈 수 없는 칸인지 */
   solid: z.boolean().optional(),
@@ -117,8 +152,10 @@ export function manifestProblems(manifest: AssetManifest): string[] {
   if (kind === AssetKind.Tile && (width !== TILE_SIZE || height !== TILE_SIZE)) {
     problems.push(`타일은 ${TILE_SIZE}×${TILE_SIZE}px이어야 합니다.`);
   }
-  if (kind === AssetKind.Character && (width !== CHARACTER_WIDTH || height !== CHARACTER_HEIGHT)) {
-    problems.push(`캐릭터는 ${CHARACTER_WIDTH}×${CHARACTER_HEIGHT}px이어야 합니다.`);
+  if (kind === AssetKind.Character && !isCharacterSize(width, height)) {
+    problems.push(
+      `캐릭터 해상도는 가로 ${CHARACTER_MIN_WIDTH}~${CHARACTER_MAX_WIDTH}px, 세로는 가로의 2배여야 합니다.`,
+    );
   }
   const maxObject = OBJECT_MAX_TILES * TILE_SIZE;
   if (
@@ -131,6 +168,11 @@ export function manifestProblems(manifest: AssetManifest): string[] {
 
   if (manifest.frames.length > FRAME_LIMIT[kind]) {
     problems.push(`프레임은 ${FRAME_LIMIT[kind]}장까지입니다.`);
+  }
+  if (width * height * manifest.frames.length > ASSET_PIXEL_BUDGET) {
+    problems.push(
+      `에셋이 너무 큽니다 (${width}×${height} × ${manifest.frames.length}장). 해상도나 프레임 수를 줄이세요.`,
+    );
   }
   decodeFrames(manifest).forEach((pixels, i) => {
     if (!pixels || pixels.length !== width * height) {
