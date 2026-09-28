@@ -19,6 +19,10 @@ publish:
   provider: github
   owner: kimyangmin
   repo: MetaCode
+# 초대 링크 "앱에서 열기"(metacode://invite/<코드>). 실행할 때도 app.setAsDefaultProtocolClient로 등록한다.
+protocols:
+  - name: MetaCode
+    schemes: [metacode]
 win:
   target:
     - target: nsis
