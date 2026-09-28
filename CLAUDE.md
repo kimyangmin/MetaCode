@@ -62,6 +62,12 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
 - **Presence 한계:** 서버가 시작할 때 Redis의 Presence 키를 모두 지웁니다 (비정상 종료로 남은 연결 정리). 서버가 한 대라는 전제이므로, 여러 대로 늘리면 인스턴스별 키 + 만료 시간으로 바꿔야 합니다.
 - **sandbox preload:** preload는 `electron` 외에는 require할 수 없어서 로컬 파일도 import하지 못합니다. IPC 채널 이름은 `apps/desktop/src/main/index.ts`와 `preload/index.ts`에 똑같이 적어 둡니다.
 - **데스크톱 로그인은 루프백, 커스텀 스킴 아님:** 처음에는 `metacode://` 딥링크로 앱에 돌아오게 했지만, 브라우저마다 다른 앱 열기를 막거나(사용자 기본 브라우저 Comet에서 실제로 동작 안 함) 확인 창을 띄워서 루프백(RFC 8252)으로 바꿨습니다. 커스텀 스킴이 다시 필요해지면(예: 초대 링크로 앱 열기) 로그인과 별개로 도입합니다.
+- **초대 링크로 앱 열기 (데스크톱 0.4.0):** `apps/desktop/src/main/deeplink.ts`, 웹 `features/desktop/OpenInApp.tsx`, `inviteLink.ts`
+  - 로그인과 별개로 `metacode://`를 씁니다. 받는 주소는 `metacode://invite/<코드>` 하나뿐이고, URL로 풀지 않고 글자 그대로 정규식으로 맞춥니다 (`new URL`은 `../`를 풀어서 다른 경로가 통과했음, 테스트 있음).
+  - 설치한 앱만 `setAsDefaultProtocolClient`로 등록합니다 (개발용 앱이 가져가지 않게, 확인하려면 `METACODE_REGISTER_PROTOCOL=1`). electron-builder의 `protocols`에도 적었습니다.
+  - 받는 곳: 처음 켤 때는 실행 인자, 이미 켜져 있으면 Windows·Linux는 `second-instance`의 인자, macOS는 `open-url`. 창이 없으면 `#/invite/<코드>`로 열고, 떠 있으면 IPC `metacode:navigate` → 브리지 `navigation.onNavigate`로 웹 라우터가 옮깁니다 (새로 고치지 않아 통화가 끊기지 않음). 로그인 전이면 초대를 기억했다가 로그인 뒤 이어 갑니다.
+  - 웹: Windows 브라우저에서 `/invite/<코드>`를 열면 먼저 "데스크톱 앱에서 여는 중" 화면이 뜨고 한 번 `metacode://`로 열어 봅니다 (브라우저의 "MetaCode 열기" 확인). "브라우저에서 계속"을 누르면 그 탭에서는 그 초대를 다시 묻지 않습니다 (sessionStorage). 데스크톱은 Windows용만 배포하므로 다른 OS에서는 묻지 않습니다 (앱 없는 OS에서 "주소를 열 수 없음" 오류를 피함).
+  - 0.3.x 이하 앱은 프로토콜을 등록하지 않았으므로, 앱을 0.4.0으로 업데이트해야 동작합니다. 0.4.0에는 화면 공유 보기 창 떼어 내기(`isScreenPopup`)도 들어 있습니다.
 - **채팅 구조 (Phase 2):**
   - 서버: `apps/server/src/chat/`. 권한 판단은 `AccessService` 한 곳에서 합니다 (권한 없으면 존재 여부도 숨기려고 404).
   - 실시간: `ChatGateway`가 접속 때 인증하고, 볼 수 있는 커뮤니티/채널 방에 넣습니다. 메시지는 방 단위로만 보내므로 권한 없는 채널의 메시지는 받지 않습니다. 멤버십이 바뀌면(참여, 탈퇴, 채널 생성, DM 생성) HTTP 쪽 서비스가 `RealtimeService`로 방 구성을 바로 고칩니다.

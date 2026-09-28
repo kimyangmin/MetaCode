@@ -14,6 +14,7 @@ const IPC = {
   updateGetReady: 'metacode:update:get-ready',
   updateReady: 'metacode:update:ready',
   updateInstall: 'metacode:update:install',
+  navigate: 'metacode:navigate',
 } as const;
 
 const bridge: MetaCodeDesktopBridge = {
@@ -38,6 +39,17 @@ const bridge: MetaCodeDesktopBridge = {
       };
     },
     install: () => ipcRenderer.invoke(IPC.updateInstall) as Promise<void>,
+  },
+  navigation: {
+    onNavigate(listener) {
+      const handler = (_event: unknown, route: unknown) => {
+        if (typeof route === 'string') listener(route);
+      };
+      ipcRenderer.on(IPC.navigate, handler);
+      return () => {
+        ipcRenderer.removeListener(IPC.navigate, handler);
+      };
+    },
   },
   auth: {
     login: () => ipcRenderer.invoke(IPC.login) as Promise<void>,

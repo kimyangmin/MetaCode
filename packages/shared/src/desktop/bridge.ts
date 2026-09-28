@@ -16,6 +16,14 @@ export interface MetaCodeDesktopBridge {
   screen?: DesktopScreenBridge;
   /** 자동 업데이트. 0.3.0부터 있다 (없으면 자동 업데이트가 안 되는 옛 앱) */
   updates?: DesktopUpdatesBridge;
+  /** 앱 밖(metacode:// 초대 링크)에서 온 이동. 0.4.0부터 있다 */
+  navigation?: DesktopNavigationBridge;
+}
+
+/** 브라우저의 "앱에서 열기"로 이미 켜진 앱에 초대 링크가 오면, 새로 고치지 않고 그 화면으로 옮긴다 */
+export interface DesktopNavigationBridge {
+  /** 옮길 앱 화면 경로(예: /invite/AbCd2345)를 받는다. 반환값을 호출하면 구독이 해제된다. */
+  onNavigate(listener: (route: string) => void): () => void;
 }
 
 /** 다 받아서 설치만 하면 되는 새 버전 */
