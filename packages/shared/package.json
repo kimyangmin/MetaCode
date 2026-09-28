@@ -7,6 +7,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./builtin-assets": {
+      "types": "./dist/assets/builtin.d.ts",
+      "default": "./dist/assets/builtin.js"
     }
   },
   "files": [

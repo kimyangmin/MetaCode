@@ -14,6 +14,7 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
+    "assets:build": "node tools/build-assets.mjs",
     "infra:up": "docker compose -f infra/docker-compose.yml up -d",
     "infra:down": "docker compose -f infra/docker-compose.yml down"
   },
@@ -23,6 +24,7 @@
     "eslint-plugin-react-hooks": "^7.1.1",
     "globals": "^17.12.0",
     "prettier": "^3.9.9",
+    "sharp": "^0.35.4",
     "turbo": "^2.11.4",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.70.1"
