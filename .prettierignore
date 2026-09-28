@@ -6,3 +6,5 @@ coverage
 pnpm-lock.yaml
 *.md
 apps/server/src/generated
+# tools/build-assets.mjs가 만드는 파일
+packages/shared/src/assets/builtin/*.json
