@@ -11,15 +11,27 @@ export interface MenuTarget {
 
 interface MessageMenuProps {
   target: MenuTarget;
+  /** 내가 보낸 메시지면 수정·삭제를 보인다 */
+  mine: boolean;
   onReply(message: MessageDto): void;
   onForward(message: MessageDto): void;
+  onEdit(message: MessageDto): void;
+  onDelete(message: MessageDto): void;
   onClose(): void;
 }
 
 const MARGIN = 8;
 
-/** 메시지 우클릭 메뉴: 답장, 전달, 텍스트 복사, (링크 위면) 링크 복사 */
-export function MessageMenu({ target, onReply, onForward, onClose }: MessageMenuProps) {
+/** 메시지 우클릭 메뉴: 답장, 전달, 텍스트 복사, (링크 위면) 링크 복사, (내 메시지면) 수정·삭제 */
+export function MessageMenu({
+  target,
+  mine,
+  onReply,
+  onForward,
+  onEdit,
+  onDelete,
+  onClose,
+}: MessageMenuProps) {
   const ref = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState({ left: target.x, top: target.y });
 
@@ -75,6 +87,20 @@ export function MessageMenu({ target, onReply, onForward, onClose }: MessageMenu
       {target.link && (
         <button role="menuitem" onClick={run(() => copy(target.link!))}>
           🔗 링크 복사
+        </button>
+      )}
+      {mine && (
+        <button role="menuitem" onClick={run(() => onEdit(target.message))}>
+          ✏️ 수정
+        </button>
+      )}
+      {mine && (
+        <button
+          role="menuitem"
+          className="menu__danger"
+          onClick={run(() => onDelete(target.message))}
+        >
+          🗑️ 삭제
         </button>
       )}
     </div>

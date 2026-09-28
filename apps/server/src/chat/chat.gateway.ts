@@ -15,6 +15,8 @@ import {
   SocketEvent,
   type VoiceCall,
   type VoiceJoinResult,
+  deleteMessageSchema,
+  editMessageSchema,
   forwardMessageSchema,
   plazaMoveSchema,
   plazaWatchSchema,
@@ -143,6 +145,36 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
       return { ok: true, data: message };
     } catch (error) {
       return this.fail(error, '메시지를 전달하지 못했습니다.');
+    }
+  }
+
+  /** 내가 보낸 메시지 고치기 */
+  @SubscribeMessage(SocketEvent.MessageEdit)
+  async onMessageEdit(socket: AppSocket, payload: unknown): Promise<SocketAck<MessageDto>> {
+    const parsed = editMessageSchema.safeParse(payload);
+    if (!parsed.success) return { ok: false, error: '요청 형식이 올바르지 않습니다.' };
+    try {
+      const message = await this.messages.edit(
+        socket.data.userId!,
+        parsed.data.messageId,
+        parsed.data.content,
+      );
+      return { ok: true, data: message };
+    } catch (error) {
+      return this.fail(error, '메시지를 고치지 못했습니다.');
+    }
+  }
+
+  /** 내가 보낸 메시지 지우기 */
+  @SubscribeMessage(SocketEvent.MessageDelete)
+  async onMessageDelete(socket: AppSocket, payload: unknown): Promise<SocketAck<null>> {
+    const parsed = deleteMessageSchema.safeParse(payload);
+    if (!parsed.success) return { ok: false, error: '요청 형식이 올바르지 않습니다.' };
+    try {
+      await this.messages.remove(socket.data.userId!, parsed.data.messageId);
+      return { ok: true, data: null };
+    } catch (error) {
+      return this.fail(error, '메시지를 지우지 못했습니다.');
     }
   }
 
