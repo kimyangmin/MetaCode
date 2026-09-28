@@ -1,11 +1,19 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { inviteToOpenInApp, stayInBrowser } from './inviteLink';
 
 const windows = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/140.0';
 const mac = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 15_0) AppleWebKit/605.1.15 Safari/605.1.15';
 
 describe('inviteToOpenInApp', () => {
-  beforeEach(() => sessionStorage.clear());
+  // 테스트는 Node에서 돌아서 전역 sessionStorage가 없다.
+  beforeEach(() => {
+    const items = new Map<string, string>();
+    vi.stubGlobal('sessionStorage', {
+      getItem: (key: string) => items.get(key) ?? null,
+      setItem: (key: string, value: string) => void items.set(key, value),
+    });
+  });
+  afterEach(() => vi.unstubAllGlobals());
 
   it('Windows 브라우저의 초대 링크면 앱으로 열어 본다', () => {
     expect(inviteToOpenInApp('/invite/AbCd2345', windows, false)).toBe('AbCd2345');
