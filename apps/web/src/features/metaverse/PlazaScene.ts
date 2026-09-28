@@ -1,6 +1,7 @@
 import {
   type AssetManifest,
   type AssetRef,
+  CHARACTER_WORLD_HEIGHT,
   type Direction,
   MOVE_SEND_INTERVAL_MS,
   type MapDefinition,
@@ -25,12 +26,12 @@ import {
   characterFrame,
   characterLook,
   emoteDurationMs,
+  fitCharacter,
 } from './characterSprite';
 import { RemoteTrack, directionOf, stepByInput, stepToward } from './motion';
 import { MapView } from './mapView';
 import { findPath, tileCenter } from './pathfinding';
 
-const CHARACTER_HEIGHT = 32;
 /** 이만큼 움직이지 않아야 걷기를 멈춘다 (받은 위치 사이에서 걷기 모션이 끊겼다 이어지지 않게) */
 const WALK_HOLD_MS = 120;
 export interface MoveState extends Position {
@@ -166,14 +167,16 @@ export class PlazaScene extends Phaser.Scene {
         .image(position.x, position.y, 'speaking-ring')
         .setOrigin(0.5, 0.6)
         .setVisible(false),
-      sprite: this.add
-        .image(
-          position.x,
-          position.y,
-          look.key,
-          characterFrame(look.manifest, `idle-${occupant.dir}`, occupant.dir, 0),
-        )
-        .setOrigin(0.5, 1),
+      sprite: fitCharacter(
+        this.add
+          .image(
+            position.x,
+            position.y,
+            look.key,
+            characterFrame(look.manifest, `idle-${occupant.dir}`, occupant.dir, 0),
+          )
+          .setOrigin(0.5, 1),
+      ),
       look,
       animation: { name: `idle-${occupant.dir}`, start: 0 },
       position,
@@ -206,6 +209,8 @@ export class PlazaScene extends Phaser.Scene {
     if (look.key !== actor.look.key) {
       actor.look = look;
       actor.sprite.setTexture(look.key, 0);
+      // 해상도가 다른 캐릭터로 바뀌었을 수 있으므로 월드 크기를 다시 맞춘다.
+      fitCharacter(actor.sprite);
       actor.animation = { name: '', start: 0 };
     }
   }
@@ -427,7 +432,7 @@ export class PlazaScene extends Phaser.Scene {
     const target = focus ?? fallback;
     return {
       x: axis(layout.width * TILE_SIZE, width, target.x),
-      y: axis(layout.height * TILE_SIZE, height, target.y - CHARACTER_HEIGHT / 2),
+      y: axis(layout.height * TILE_SIZE, height, target.y - CHARACTER_WORLD_HEIGHT / 2),
     };
   }
 
@@ -478,7 +483,7 @@ export class PlazaScene extends Phaser.Scene {
     for (const actor of this.actors.values()) {
       const head = this.worldToScreen({
         x: actor.position.x,
-        y: actor.position.y - CHARACTER_HEIGHT - 1,
+        y: actor.position.y - CHARACTER_WORLD_HEIGHT - 1,
       });
       const { root } = actor.dom;
       root.style.transform = `translate(${Math.round(head.x)}px, ${Math.round(head.y)}px)`;

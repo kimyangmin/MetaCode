@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto';
 import type { AddressInfo } from 'node:net';
-import type { INestApplication } from '@nestjs/common';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import { Test } from '@nestjs/testing';
 import type {
   AuthTokens,
@@ -23,7 +23,7 @@ export async function startTestApp() {
   const { setupApp } = await import('../src/app.setup.js');
 
   const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
-  const app: INestApplication = moduleRef.createNestApplication();
+  const app = moduleRef.createNestApplication<NestExpressApplication>();
   setupApp(app);
   await app.listen(0, '127.0.0.1');
   const { port } = app.getHttpServer().address() as AddressInfo;

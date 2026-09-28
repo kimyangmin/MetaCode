@@ -29,6 +29,10 @@ const SLOT_LABEL: Record<ColorSlot, string> = {
 
 const DIRECTIONS = ['down', 'left', 'right', 'up'] as const;
 
+/** 미리보기 크기 (가장 긴 변, px). 캐릭터 해상도가 저마다 달라도 늘 같은 크기로 보인다 */
+const STAGE_BOX = 192;
+const SMALL_BOX = 64;
+
 /**
  * 설정 → 캐릭터: 광장에서 쓸 캐릭터를 고른다. 기본 캐릭터는 부위마다 색을 바꿀 수 있고,
  * 직접 그린 캐릭터(설정 → 에셋)도 고를 수 있다.
@@ -81,13 +85,13 @@ export function CharacterSettings({ me }: { me: UserDetail }) {
   return (
     <div className="settings-form character-settings">
       <div className="character-settings__stage">
-        <AssetPreview manifest={selected.manifest} scale={6} palette={palette} />
+        <AssetPreview manifest={selected.manifest} box={STAGE_BOX} palette={palette} />
         <div className="character-settings__turn">
           {DIRECTIONS.map((dir) => (
             <AssetPreview
               key={dir}
               manifest={selected.manifest}
-              scale={2}
+              box={SMALL_BOX}
               palette={palette}
               animation={`walk-${dir}`}
             />
@@ -108,7 +112,7 @@ export function CharacterSettings({ me }: { me: UserDetail }) {
               <span className="asset-card__preview">
                 <AssetPreview
                   manifest={option.manifest}
-                  scale={2}
+                  box={SMALL_BOX}
                   animate={false}
                   animation="idle-down"
                   palette={
