@@ -1701,7 +1701,6 @@ h3 {
 /* 보기 창: 앱 위에 크게 띄운다 */
 .screen-viewer {
   position: fixed;
-  inset: 24px;
   z-index: 50;
   display: flex;
   flex-direction: column;
@@ -1712,6 +1711,10 @@ h3 {
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
 }
 
+.screen-viewer[data-maximized='true'] {
+  inset: 24px;
+}
+
 .screen-viewer__header {
   display: flex;
   align-items: center;
@@ -1719,6 +1722,112 @@ h3 {
   padding: 8px 12px;
   background: var(--bg-sidebar);
   color: var(--fg);
+  cursor: move;
+  touch-action: none;
+}
+
+.screen-viewer[data-maximized='true'] .screen-viewer__header {
+  cursor: default;
+}
+
+.screen-viewer__notice {
+  margin: 0;
+  padding: 6px 12px;
+  background: var(--bg-hover);
+  color: var(--warn);
+  font-size: 0.8rem;
+}
+
+/* 가장자리와 모서리: 끌어서 크기 바꾸기 (보이지 않는 얇은 띠) */
+.screen-viewer__edge {
+  position: absolute;
+  z-index: 1;
+  touch-action: none;
+}
+
+.screen-viewer__edge--n,
+.screen-viewer__edge--s {
+  left: 10px;
+  right: 10px;
+  height: 6px;
+  cursor: ns-resize;
+}
+
+.screen-viewer__edge--n {
+  top: 0;
+}
+
+.screen-viewer__edge--s {
+  bottom: 0;
+}
+
+.screen-viewer__edge--e,
+.screen-viewer__edge--w {
+  top: 10px;
+  bottom: 10px;
+  width: 6px;
+  cursor: ew-resize;
+}
+
+.screen-viewer__edge--e {
+  right: 0;
+}
+
+.screen-viewer__edge--w {
+  left: 0;
+}
+
+.screen-viewer__edge--ne,
+.screen-viewer__edge--nw,
+.screen-viewer__edge--se,
+.screen-viewer__edge--sw {
+  width: 12px;
+  height: 12px;
+}
+
+.screen-viewer__edge--ne {
+  top: 0;
+  right: 0;
+  cursor: nesw-resize;
+}
+
+.screen-viewer__edge--sw {
+  bottom: 0;
+  left: 0;
+  cursor: nesw-resize;
+}
+
+.screen-viewer__edge--nw {
+  top: 0;
+  left: 0;
+  cursor: nwse-resize;
+}
+
+.screen-viewer__edge--se {
+  right: 0;
+  bottom: 0;
+  cursor: nwse-resize;
+}
+
+/* 새 창으로 분리한 화면: 창 전체를 채운다 */
+body.popup-window {
+  margin: 0;
+  background: #000;
+}
+
+.popup-window__root,
+.screen-viewer--popout {
+  position: fixed;
+  inset: 0;
+}
+
+.screen-viewer--popout {
+  border: 0;
+  border-radius: 0;
+}
+
+.screen-viewer--popout .screen-viewer__header {
+  cursor: default;
 }
 
 .screen-viewer__header strong {
@@ -1755,7 +1864,43 @@ h3 {
   color: #ccc;
 }
 
-/* 데스크톱: 공유할 화면 고르기 */
+/* 화면 공유 시작: 화질 고르기, 데스크톱은 공유할 화면 고르기 */
+.screen-quality {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.screen-quality legend {
+  margin-bottom: 6px;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.screen-quality label {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  column-gap: 8px;
+  row-gap: 2px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.screen-quality label:has(input:checked) {
+  border-color: var(--accent);
+}
+
+.screen-quality small {
+  grid-column: 2;
+  color: var(--muted);
+}
+
 .screen-picker {
   display: grid;
   gap: 12px;

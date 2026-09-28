@@ -12,3 +12,14 @@ export function isPopoutUrl(url: string, appOrigin: string): boolean {
     return false;
   }
 }
+
+/** 화면 공유 보기를 떼어 낸 창의 이름 (웹의 openPopupWindow와 같은 이름) */
+export const SCREEN_POPUP_NAME = 'metacode-screen';
+
+/**
+ * 화면 공유 보기를 떼어 낸 빈 창인지. 웹이 같은 출처의 빈 창(about:blank)을 열고 그 안에
+ * 영상을 그린다 (통화 연결은 메인 창에 그대로 두고 영상만 넘겨주려고). 이름이 맞을 때만 연다.
+ */
+export function isScreenPopup(url: string, frameName: string): boolean {
+  return url === 'about:blank' && frameName === SCREEN_POPUP_NAME;
+}

@@ -13,7 +13,7 @@ import { AuthManager } from './auth';
 import { allowPermission } from './permissions';
 import { createTokenStorage } from './token-storage';
 import { AutoUpdate } from './updater';
-import { isPopoutUrl } from './windows';
+import { isPopoutUrl, isScreenPopup } from './windows';
 
 /**
  * 앱 창은 웹 화면을 연다. 개발 중에는 web 개발 서버, 설치 파일로 배포한 앱은 운영 사이트다
@@ -74,11 +74,24 @@ const webPreferences = () => ({
 
 /**
  * 창이 열거나 이동할 수 있는 곳을 막는다.
- * - 분리한 창(/popout/)은 같은 보안 설정의 앱 창으로 열고, 그 창에도 같은 규칙을 건다.
+ * - 분리한 창(/popout/)과 화면 공유 보기 창(빈 창)은 같은 보안 설정의 앱 창으로 열고, 그 창에도 같은 규칙을 건다.
  * - 그 밖의 링크는 시스템 브라우저로 연다. 앱 화면 밖으로는 이동하지 못한다.
  */
 function guardWindow(win: BrowserWindow) {
-  win.webContents.setWindowOpenHandler(({ url }) => {
+  win.webContents.setWindowOpenHandler(({ url, frameName }) => {
+    // 화면 공유 보기를 떼어 낸 창: 같은 출처의 빈 창에 메인 창이 영상을 그린다.
+    if (isScreenPopup(url, frameName) && isAppUrl(win.webContents.getURL())) {
+      return {
+        action: 'allow',
+        overrideBrowserWindowOptions: {
+          minWidth: 320,
+          minHeight: 200,
+          autoHideMenuBar: true,
+          title: 'MetaCode 화면 공유',
+          webPreferences: webPreferences(),
+        },
+      };
+    }
     if (isPopoutUrl(url, WEB_ORIGIN)) {
       return {
         action: 'allow',
