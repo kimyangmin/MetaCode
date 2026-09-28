@@ -9,7 +9,7 @@ import {
   objectBounds,
 } from '@metacode/shared';
 import type Phaser from 'phaser';
-import { frameAt, framePixels, isAnimated, sheetCanvas } from '../assets/render';
+import { frameAt, framePixels, isAnimated, sheetCanvas, sheetColumns } from '../assets/render';
 
 export type AssetLookup = (ref: AssetRef) => AssetManifest | undefined;
 
@@ -25,7 +25,7 @@ function textureKeyOf(ref: AssetRef, manifest: AssetManifest): string {
   return `asset:${ref}:${id}`;
 }
 
-/** 에셋 하나 = 텍스처 하나. 프레임 i가 텍스처의 프레임 i다 */
+/** 에셋 하나 = 텍스처 하나. 프레임 i가 텍스처의 프레임 i다 (시트에서의 자리는 sheetColumns로 정한다) */
 export function ensureAssetTexture(
   scene: Phaser.Scene,
   key: string,
@@ -34,8 +34,16 @@ export function ensureAssetTexture(
 ): string {
   if (scene.textures.exists(key)) return key;
   const texture = scene.textures.addCanvas(key, sheetCanvas(manifest, palette))!;
+  const cols = sheetColumns(manifest);
   manifest.frames.forEach((_, i) => {
-    texture.add(i, 0, i * manifest.width, 0, manifest.width, manifest.height);
+    texture.add(
+      i,
+      0,
+      (i % cols) * manifest.width,
+      Math.floor(i / cols) * manifest.height,
+      manifest.width,
+      manifest.height,
+    );
   });
   return key;
 }

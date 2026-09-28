@@ -1,5 +1,7 @@
 import {
   ASSET_NAME_MAX_LENGTH,
+  CHARACTER_MAX_WIDTH,
+  CHARACTER_MIN_WIDTH,
   FRAME_LIMIT,
   FRAME_MS_MAX,
   FRAME_MS_MIN,
@@ -8,6 +10,7 @@ import {
   REQUIRED_CHARACTER_ANIMATIONS,
   TILE_SIZE,
   assetManifestSchema,
+  characterHeightOf,
   missingAnimations,
 } from '@metacode/shared';
 import { useQueryClient } from '@tanstack/react-query';
@@ -90,7 +93,7 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
   const [mirror, setMirror] = useState(false);
   const [onion, setOnion] = useState(false);
   const [zoom, setZoom] = useState(() =>
-    Math.max(4, Math.min(28, Math.floor(480 / Math.max(doc.width, doc.height)))),
+    Math.max(2, Math.min(28, Math.floor(480 / Math.max(doc.width, doc.height)))),
   );
   const [status, setStatus] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -200,13 +203,17 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
       }
       ctx.stroke();
     }
+    // 굵은 격자 = 월드 타일 경계. 타일·오브젝트는 16px마다지만, 캐릭터는 해상도와 상관없이
+    // 늘 1타일×2타일을 차지하므로 가로 전체가 한 칸이고 세로 한가운데에만 선이 있다.
+    const step =
+      doc.kind === 'character' ? { x: width, y: height / 2 } : { x: TILE_SIZE, y: TILE_SIZE };
     ctx.strokeStyle = 'rgba(128, 128, 128, 0.6)';
     ctx.beginPath();
-    for (let x = TILE_SIZE; x < width; x += TILE_SIZE) {
+    for (let x = step.x; x < width; x += step.x) {
       ctx.moveTo(x * zoom + 0.5, 0);
       ctx.lineTo(x * zoom + 0.5, canvas.height);
     }
-    for (let y = TILE_SIZE; y < height; y += TILE_SIZE) {
+    for (let y = step.y; y < height; y += step.y) {
       ctx.moveTo(0, y * zoom + 0.5);
       ctx.lineTo(canvas.width, y * zoom + 0.5);
     }
@@ -523,6 +530,8 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
 
           {doc.kind === 'object' && <ObjectSettings editor={editor} />}
 
+          {doc.kind === 'character' && <CharacterSizeSettings editor={editor} />}
+
           <section>
             <h3>애니메이션</h3>
             {doc.kind === 'character' && (
@@ -654,6 +663,58 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
   );
 }
 
+/**
+ * 캐릭터 해상도. 광장에서 차지하는 크기는 늘 1타일×2타일이고, 여기서 고르는 것은 그림의 촘촘함뿐이다.
+ * 받아 온 에셋을 줄이지 않고 쓰려고 열어 둔 설정이다.
+ */
+function CharacterSizeSettings({ editor }: { editor: PixelDocument }) {
+  const { doc } = editor;
+  const [input, setInput] = useState(String(doc.width));
+  // 되돌리기 등으로 크기가 바뀌면 입력칸도 따라간다.
+  const [shown, setShown] = useState(doc.width);
+  if (shown !== doc.width) {
+    setShown(doc.width);
+    setInput(String(doc.width));
+  }
+
+  const apply = () => {
+    const width = Number(input);
+    if (!Number.isInteger(width) || width < CHARACTER_MIN_WIDTH || width > CHARACTER_MAX_WIDTH) {
+      setInput(String(doc.width));
+      return;
+    }
+    editor.resizeCharacter(width);
+  };
+
+  return (
+    <section>
+      <h3>해상도</h3>
+      <div className="pixel-editor__row">
+        가로
+        <input
+          type="number"
+          min={CHARACTER_MIN_WIDTH}
+          max={CHARACTER_MAX_WIDTH}
+          step={1}
+          value={input}
+          aria-label="캐릭터 가로 픽셀"
+          onChange={(e) => setInput(e.target.value)}
+          onBlur={apply}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') apply();
+          }}
+        />
+        <span>× 세로 {characterHeightOf(Number(input) || doc.width)}px</span>
+      </div>
+      <p className="form__hint">
+        {CHARACTER_MIN_WIDTH}~{CHARACTER_MAX_WIDTH}px, 세로는 가로의 2배입니다. 광장에서 차지하는
+        크기는 해상도와 상관없이 늘 1타일×2타일이라, 해상도를 올리면 같은 자리에 더 촘촘하게
+        그려집니다. 크기를 바꾸면 그림은 발밑 가운데를 기준으로 남습니다.
+      </p>
+    </section>
+  );
+}
+
 function ObjectSettings({ editor }: { editor: PixelDocument }) {
   const { doc } = editor;
   const cols = doc.width / TILE_SIZE;
@@ -709,9 +770,14 @@ function ObjectSettings({ editor }: { editor: PixelDocument }) {
   );
 }
 
+const THUMB_BOX = 40;
+
 function FrameThumb({ pixels, doc }: { pixels: Uint8Array; doc: EditorDoc }) {
   const ref = useRef<HTMLCanvasElement>(null);
-  const scale = Math.max(1, Math.floor(40 / Math.max(doc.width, doc.height)));
+  const longest = Math.max(doc.width, doc.height);
+  const scale = Math.max(1, Math.floor(THUMB_BOX / longest));
+  // 해상도가 높은 캐릭터도 목록에서는 같은 크기로 보이게 CSS로 맞춘다 (캔버스는 도트 그대로).
+  const shown = THUMB_BOX / longest;
   useEffect(() => {
     const canvas = ref.current;
     if (!canvas) return;
@@ -726,14 +792,26 @@ function FrameThumb({ pixels, doc }: { pixels: Uint8Array; doc: EditorDoc }) {
       canvas.height,
     );
   });
-  return <canvas ref={ref} width={doc.width * scale} height={doc.height * scale} />;
+  return (
+    <canvas
+      ref={ref}
+      width={doc.width * scale}
+      height={doc.height * scale}
+      style={{ width: doc.width * shown, height: doc.height * shown }}
+    />
+  );
 }
 
-/** 고른 애니메이션을 3배로 재생한다 (그리는 중에도 바로 반영) */
+/** 미리보기가 차지할 크기 (가장 긴 변, px) */
+const PLAYBACK_BOX = 96;
+
+/** 고른 애니메이션을 재생한다 (그리는 중에도 바로 반영). 해상도와 상관없이 늘 같은 크기로 보인다 */
 function Playback({ editor, animation }: { editor: PixelDocument; animation: number }) {
   const ref = useRef<HTMLCanvasElement>(null);
   const { width, height } = editor.doc;
-  const scale = useMemo(() => (Math.max(width, height) > 32 ? 2 : 3), [width, height]);
+  const longest = Math.max(width, height);
+  const scale = useMemo(() => Math.max(1, Math.floor(PLAYBACK_BOX / longest)), [longest]);
+  const shown = PLAYBACK_BOX / longest;
   useEffect(() => {
     let raf = 0;
     let shown = '';
@@ -775,6 +853,7 @@ function Playback({ editor, animation }: { editor: PixelDocument; animation: num
       className="pixel-editor__playback"
       width={width * scale}
       height={height * scale}
+      style={{ width: width * shown, height: height * shown }}
     />
   );
 }

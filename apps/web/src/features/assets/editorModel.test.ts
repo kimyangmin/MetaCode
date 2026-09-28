@@ -95,6 +95,31 @@ describe('그리기', () => {
     expect(doc.pick(at, 2, 31)).toBe(1);
     expect(doc.doc.footprint).toEqual([0, 0, 1, 0]);
   });
+
+  it('캐릭터 해상도를 바꾸면 그림이 발밑 가운데를 기준으로 남는다', () => {
+    const doc = new PixelDocument(newDoc('character', '나'));
+    expect([doc.doc.width, doc.doc.height]).toEqual([16, 32]);
+    doc.begin();
+    doc.paint(at, 0, 0, 1); // 왼쪽 위 끝
+    doc.paint(at, 8, 31, 2); // 발밑 가운데
+
+    doc.resizeCharacter(32);
+    expect([doc.doc.width, doc.doc.height]).toEqual([32, 64]);
+    expect(doc.pick(at, 8, 32)).toBe(1); // 가로로 8칸, 세로로 32칸 밀렸다
+    expect(doc.pick(at, 16, 63)).toBe(2);
+    // 저장할 매니페스트도 새 해상도로 검증을 통과한다.
+    expect(toManifest(doc.doc).width).toBe(32);
+
+    doc.resizeCharacter(16);
+    expect([doc.doc.width, doc.doc.height]).toEqual([16, 32]);
+    expect(doc.pick(at, 8, 31)).toBe(2);
+  });
+
+  it('범위 밖이거나 캐릭터가 아니면 해상도를 바꾸지 않는다', () => {
+    const object = new PixelDocument(newDoc('object', '돌'));
+    object.resizeCharacter(32);
+    expect(object.doc.width).toBe(16);
+  });
 });
 
 describe('PNG 가져오기', () => {
