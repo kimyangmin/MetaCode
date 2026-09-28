@@ -11,55 +11,65 @@ import { BUILTIN_ASSETS } from '@metacode/shared/builtin-assets';
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { ApiError } from '../../api/client';
-import { useCommunities } from '../communities/hooks';
 import { AssetPreview } from './AssetPreview';
 import { deleteAsset, useCommunityAssets, useMyAssets } from './api';
 import { fromManifest, newDoc } from './editorModel';
 import { useAssetEditorStore, useMapEditorStore } from './editorStore';
 
-const isManager = (c: CommunitySummary) => c.myRole === 'OWNER' || c.myRole === 'ADMIN';
-
 /**
- * 설정 → 에셋: 내 캐릭터와, 내가 소유자·관리자인 커뮤니티의 타일·오브젝트 목록.
- * 새로 그리거나 내장 에셋을 복제해서 도트 에디터로 연다.
+ * 설정 → 에셋: 내 캐릭터 목록. 새로 그리거나 내장 캐릭터를 복제해서 도트 에디터로 연다.
+ * 커뮤니티의 타일·오브젝트는 커뮤니티 설정 → 광장에 있다 (CommunityPlazaAssets).
  */
 export function AssetSettings() {
-  const communities = (useCommunities().data ?? []).filter(isManager);
-  const [picker, setPicker] = useState<{ kinds: AssetKind[]; communityId: string | null } | null>(
-    null,
-  );
+  const [picking, setPicking] = useState(false);
   return (
     <div className="settings-form asset-settings">
-      <MyCharacters onPick={() => setPicker({ kinds: ['character'], communityId: null })} />
-      {communities.map((community) => (
-        <CommunityAssets
-          key={community.id}
-          community={community}
-          onPick={() => setPicker({ kinds: ['tile', 'object'], communityId: community.id })}
-        />
-      ))}
-      {communities.length === 0 && (
-        <p className="form__hint">
-          커뮤니티의 소유자나 관리자가 되면, 그 커뮤니티 광장에 쓸 타일과 오브젝트를 여기서 그릴 수
-          있습니다.
-        </p>
-      )}
-      {picker && (
+      <MyCharacters onPick={() => setPicking(true)} />
+      <p className="form__hint">
+        커뮤니티 광장에 쓸 타일·오브젝트와 광장 맵은 커뮤니티 메뉴(⋯) → 커뮤니티 설정 → 광장에서
+        만듭니다 (소유자·관리자).
+      </p>
+      {picking && (
         <BuiltinPicker
-          kinds={picker.kinds}
-          onClose={() => setPicker(null)}
+          kinds={['character']}
+          onClose={() => setPicking(false)}
           onPick={(manifest) => {
-            setPicker(null);
-            useAssetEditorStore.getState().open({
-              mode: 'create',
-              communityId: picker.communityId,
-              doc: { ...fromManifest(manifest), name: `${manifest.name} 복사`.slice(0, 32) },
-            });
+            setPicking(false);
+            openCopy(manifest, null);
           }}
         />
       )}
     </div>
   );
+}
+
+/** 커뮤니티 설정 → 광장: 이 커뮤니티의 타일·오브젝트 목록과 광장 맵 편집 */
+export function CommunityPlazaAssets({ community }: { community: CommunitySummary }) {
+  const [picking, setPicking] = useState(false);
+  return (
+    <div className="asset-settings">
+      <CommunityAssets community={community} onPick={() => setPicking(true)} />
+      {picking && (
+        <BuiltinPicker
+          kinds={['tile', 'object']}
+          onClose={() => setPicking(false)}
+          onPick={(manifest) => {
+            setPicking(false);
+            openCopy(manifest, community.id);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+/** 내장 에셋을 복제해서 도트 에디터로 연다 */
+function openCopy(manifest: AssetManifest, communityId: string | null) {
+  useAssetEditorStore.getState().open({
+    mode: 'create',
+    communityId,
+    doc: { ...fromManifest(manifest), name: `${manifest.name} 복사`.slice(0, 32) },
+  });
 }
 
 function MyCharacters({ onPick }: { onPick(): void }) {
@@ -105,7 +115,7 @@ function CommunityAssets({ community, onPick }: { community: CommunitySummary; o
     });
   return (
     <section className="asset-section">
-      <h3 className="settings-form__title">{community.name} · 타일과 오브젝트</h3>
+      <h3 className="settings-form__title">타일과 오브젝트</h3>
       <p className="form__hint">
         이 커뮤니티의 분수 광장에 쓸 수 있습니다. 소유자와 관리자가 만들고, 광장 맵 편집에서
         배치합니다. ({assets.length}/{COMMUNITY_ASSET_LIMIT})

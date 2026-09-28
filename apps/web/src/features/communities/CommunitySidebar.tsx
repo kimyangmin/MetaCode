@@ -58,18 +58,11 @@ export function CommunitySidebar({
   const textSort = useDragSort(textIds, (ids) => saveOrder([...ids, ...voiceIds]), canManage);
   const voiceSort = useDragSort(voiceIds, (ids) => saveOrder([...textIds, ...ids]), canManage);
 
-  const leaveOrDelete = async () => {
+  // 소유자는 나갈 수 없다 (커뮤니티 삭제는 커뮤니티 설정 → 일반에서 이름을 입력해서 한다).
+  const leave = async () => {
     setMenuOpen(false);
-    const question = isOwner
-      ? `"${community.name}" 커뮤니티를 삭제할까요? 모든 채널과 메시지가 지워집니다.`
-      : `"${community.name}" 커뮤니티에서 나갈까요?`;
-    if (!window.confirm(question)) return;
-    await apiFetch(
-      isOwner ? `/communities/${community.id}` : `/communities/${community.id}/leave`,
-      {
-        method: isOwner ? 'DELETE' : 'POST',
-      },
-    );
+    if (!window.confirm(`"${community.name}" 커뮤니티에서 나갈까요?`)) return;
+    await apiFetch(`/communities/${community.id}/leave`, { method: 'POST' });
     queryClient.setQueryData<CommunitySummary[]>(queryKeys.communities, (list) =>
       list?.filter((c) => c.id !== community.id),
     );
@@ -78,6 +71,11 @@ export function CommunitySidebar({
 
   return (
     <aside className="sidebar">
+      {community.bannerUrl && (
+        <div className="sidebar__banner">
+          <img src={community.bannerUrl} alt="" />
+        </div>
+      )}
       <header className="sidebar__header">
         <h2 title={community.name}>{community.name}</h2>
         <button
@@ -101,12 +99,14 @@ export function CommunitySidebar({
             )}
             {canManage && (
               <button role="menuitem" onClick={() => (setMenuOpen(false), setModal('settings'))}>
-                커뮤니티 설정 (역할)
+                커뮤니티 설정
               </button>
             )}
-            <button role="menuitem" className="menu__danger" onClick={leaveOrDelete}>
-              {isOwner ? '커뮤니티 삭제' : '커뮤니티 나가기'}
-            </button>
+            {!isOwner && (
+              <button role="menuitem" className="menu__danger" onClick={() => void leave()}>
+                커뮤니티 나가기
+              </button>
+            )}
           </div>
         )}
       </header>

@@ -5,6 +5,7 @@ import { LoginScreen } from './features/auth/LoginScreen';
 import { UpdateNotice } from './features/desktop/UpdateNotice';
 import { takeLoginError, useMe } from './features/auth/auth';
 import { rememberPendingInvite } from './pages';
+import { AssetEditors } from './features/assets/AssetEditors';
 import { SettingsDialog } from './features/settings/SettingsDialog';
 import { ScreenViewer } from './features/voice/ScreenViewer';
 import { VoiceProvider } from './features/voice/VoiceProvider';
@@ -53,6 +54,7 @@ function Screen() {
         <RouterProvider router={router} />
         <ScreenViewer />
         <SettingsDialog />
+        <AssetEditors />
       </VoiceProvider>
     </RealtimeProvider>
   );

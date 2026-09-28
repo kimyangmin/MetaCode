@@ -197,6 +197,9 @@ export function InvitePage() {
       {failure && <p className="form__error">{failure}</p>}
       {invite.data && (
         <>
+          {invite.data.communityIconUrl && (
+            <img className="invite__icon" src={invite.data.communityIconUrl} alt="" />
+          )}
           <p className="invite__label">커뮤니티 초대</p>
           <h1>{invite.data.communityName}</h1>
           <p className="invite__meta">멤버 {invite.data.memberCount}명</p>

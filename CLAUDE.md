@@ -145,6 +145,11 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
   - 데스크톱: `setWindowOpenHandler`가 앱 출처의 `/popout/` 주소만 같은 보안 설정(preload, sandbox)의 앱 창으로 열고, 그 창에도 같은 규칙을 겁니다 (`main/windows.ts`). 다른 http(s) 주소는 시스템 브라우저로 엽니다.
   - **dragstart에서 화면을 바꾸지 않는다:** Chromium은 dragstart 직후 누른 자리에 끄는 요소가 그대로 있는지 확인하고, 다른 요소가 덮으면 드래그를 취소합니다. 처음에는 dragstart에서 놓을 자리 덮개를 그려서 실제 마우스로는 전혀 끌리지 않았습니다 (JS로 만든 DragEvent 확인으로는 못 잡음). 지금은 끄는 패널을 ref에만 두고, `.split-host`가 dragover/drop을 받으며, 미리보기는 `pointer-events: none`입니다.
   - **그리드 행 높이 고정:** `.app`은 `grid-template-rows: minmax(0, 1fr)`입니다. `.split-host` 래퍼를 넣었을 때 긴 채팅이 행을 늘려서 입력창이 화면 밖으로 밀리고 광장이 확대된 것처럼 보였습니다 (예전엔 react-resizable-panels의 Group이 `overflow: hidden`이라 드러나지 않았음).
+- **커뮤니티 설정:** `apps/server/src/chat/community-profile.service.ts`, 웹 `features/communities/CommunitySettings.tsx`
+  - 탭: 일반(이름, 아이콘, 배너, 커뮤니티 삭제), 광장(커뮤니티 타일·오브젝트, 광장 맵 편집), 역할, 멤버. 소유자·관리자만 열 수 있고, 삭제는 소유자만 커뮤니티 이름을 그대로 입력해야 합니다. 소유자의 커뮤니티 메뉴에는 나가기가 없습니다.
+  - API: `PATCH /communities/:id {name}`, 아이콘·배너는 프로필 사진과 같은 흐름 `POST /communities/:id/images/:kind/upload` → 저장소에 PUT → `PUT /communities/:id/images/:kind`(매직 바이트 확인, 아이콘 256×256·배너 960×540으로 가운데를 채워 자른 WebP, `community-images/<id>/<종류>-<무작위>.webp`), `DELETE`로 지우기. 바뀌면 `community:updated`로 알립니다.
+  - 이미지는 `GET /community-images/<id>/<file>`로 **인증 없이** 줍니다 (초대 화면은 아직 멤버가 아니고, 데스크톱 `<img>`는 토큰을 못 붙임. 주소에 무작위 ID). 1년 캐시(immutable). 커뮤니티를 지우면 이미지도 지웁니다.
+  - 아이콘은 왼쪽 커뮤니티 목록과 초대 화면(`InviteInfo.communityIconUrl`), 배너는 채널 목록 위(16:9)에 보입니다.
 - **프로필 (닉네임, 자기소개, 사진):** `apps/server/src/users/`
   - 사용자 ID는 GitHub 로그인 이름(`username`)이고 바꿀 수 없습니다. 다른 사람에게 보이는 이름은 `nickname`(없으면 username), 자기소개는 `bio`입니다. DTO의 `displayName`은 닉네임입니다 (GitHub 이름은 DB의 `displayName`에 남지만 화면에는 쓰지 않음).
   - GitHub로 다시 로그인하면 username, GitHub 이름, GitHub 사진만 맞추고 닉네임·자기소개·올린 사진은 건드리지 않습니다.
@@ -172,10 +177,10 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
   - `Asset` 테이블: kind, name, creatorId, communityId(캐릭터는 null), manifest(JSON). S3를 쓰지 않고 매니페스트를 그대로 저장합니다 (가장 큰 오브젝트도 요청 본문 100KB 안).
   - 권한(`AssetsService`): 캐릭터는 만든 사람만 고치고 지우며 로그인한 누구나 읽습니다(광장에서 그려야 하므로). 타일·오브젝트는 멤버만 읽고 소유자·관리자(`requireManager`)만 만들고 고칩니다. 멤버가 아니면 404. 종류는 바꿀 수 없고, 캐릭터는 한 사람 20개, 커뮤니티 에셋은 200개까지.
   - API: `GET /assets`(내 캐릭터), `GET /assets?communityId=`(커뮤니티 타일·오브젝트), `GET/PUT/DELETE /assets/:id`, `POST /assets {communityId?, manifest}`.
-  - 설정 → 에셋(`AssetSettings`, 지연 로딩): 내 캐릭터, 내가 소유자·관리자인 커뮤니티마다 타일·오브젝트. 새로 그리기, 내장 에셋 복제해서 시작, 편집, 삭제.
+  - 설정 → 에셋(`AssetSettings`, 지연 로딩): 내 캐릭터. 커뮤니티 타일·오브젝트와 광장 맵 편집은 커뮤니티 설정 → 광장(`CommunityPlazaAssets`)에 있습니다. 새로 그리기, 내장 에셋 복제해서 시작, 편집, 삭제.
   - 도트 에디터(`PixelEditor`, 편집 로직은 `editorModel.ts`의 `PixelDocument`): 연필·지우개·채우기·스포이트, 좌우 대칭, 앞 프레임 겹쳐 보기, 되돌리기(붓질 한 번 = 한 단계, 색 고르기 드래그도 한 단계), 팔레트 편집(지운 색의 픽셀은 투명), 프레임 넣기·복제·옮기기·지우기, 애니메이션 미리보기, PNG 가져오기(프레임 크기 또는 가로로 이어 붙인 시트, 64색이 넘으면 가까운 색)·내보내기. 오른쪽 버튼은 지우개.
   - 에디터에서는 애니메이션마다 프레임을 따로 갖고, 저장할 때 같은 그림을 한 장으로 합칩니다 (`toManifest`). 캐릭터는 `missingAnimations`가 비어야 저장 버튼이 켜집니다.
-  - 에디터는 설정 창 위에 화면 전체로 뜹니다. Esc는 에디터가 먼저 받아 `preventDefault()`하고, 설정 창은 `defaultPrevented`면 닫지 않습니다. 설정 창을 닫으면 에디터 상태(`useAssetEditorStore`)도 비웁니다.
+  - 도트 에디터·맵 에디터는 앱에 하나만 둔 `AssetEditors`가 화면 전체로 띄웁니다 (설정 창과 커뮤니티 설정 어디서 열어도 그 위에 뜸). Esc는 에디터가 먼저 받아 `preventDefault()`하고, 설정 창과 `Dialog`는 `defaultPrevented`면 닫지 않습니다. 에디터를 연 창을 닫으면 에디터도 닫습니다 (`closeAssetEditors`).
 - **캐릭터 고르기 (Phase 6):** `UsersService.setCharacter`, 웹 `features/assets/CharacterSettings.tsx`
   - `User.character`(JSON `{asset, colors, version?}`), null이면 `defaultCharacter(userId)`. 프로필(`UserProfile.character`)에 실려 메시지·멤버·광장 인원 어디서나 같은 값을 씁니다.
   - `PUT /users/me/character {character | null}`: 기본 캐릭터(`BUILTIN_CHARACTERS`)나 **직접 만든** 캐릭터만 고를 수 있습니다 (남의 캐릭터 400). 색은 부위(`colorSlots`)가 있는 캐릭터에만 적용됩니다 (내장 캐릭터를 복제해 그린 것도 부위가 남음).
@@ -328,7 +333,7 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
 
 - `User` (구현됨): githubId, username(사용자 ID), displayName(GitHub 이름), avatarUrl(GitHub 사진), nickname, bio, avatarKey(올린 사진), character(광장 캐릭터 `{asset, colors, version?}`, null이면 기본)
 - `RefreshToken` (구현됨): userId, tokenHash, familyId, client, expiresAt, revokedAt
-- `Community` (구현됨): name, ownerId / `CommunityMember`: userId, communityId, role(`OWNER` | `ADMIN` | `MEMBER`) / `Invite`: code(8자), expiresAt(7일), uses
+- `Community` (구현됨): name, ownerId, iconKey·bannerKey(올린 아이콘·배너, 없으면 null) / `CommunityMember`: userId, communityId, role(`OWNER` | `ADMIN` | `MEMBER`) / `Invite`: code(8자), expiresAt(7일), uses
 - `Role` (구현됨): communityId, name(커뮤니티 안에서 고유), color(#rrggbb), position / `MemberRole`: 멤버 ↔ 역할 / `ChannelRoleAccess`: 비공개 채널 ↔ 볼 수 있는 역할
 - `Channel` (구현됨): type(`TEXT` | `VOICE` | `DM` | `GROUP_DM`), communityId(DM이면 null), name, position, proximityVoice, private(비공개 채널), dmKey(1:1 DM 중복 방지)
   - `ChannelMember`: DM 참여자. 커뮤니티 채널의 접근은 커뮤니티 멤버십(추후 채널 권한)으로 판단

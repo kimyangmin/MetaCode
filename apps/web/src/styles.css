@@ -232,6 +232,13 @@ h3 {
   color: var(--accent-fg);
 }
 
+.rail__item img {
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  object-fit: cover;
+}
+
 .rail__item--add {
   color: var(--ok);
   font-size: 24px;
@@ -265,6 +272,20 @@ h3 {
   min-height: 0;
   background: var(--bg-sidebar);
   border-right: 1px solid var(--border);
+}
+
+.sidebar__banner {
+  aspect-ratio: 16 / 9;
+  max-height: 140px;
+  overflow: hidden;
+  background: var(--bg-rail);
+}
+
+.sidebar__banner img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .sidebar__header {
@@ -991,6 +1012,10 @@ h3 {
   background: var(--bg);
   overflow-y: auto;
   box-shadow: 0 16px 48px rgb(0 0 0 / 0.3);
+}
+
+.dialog.dialog--wide {
+  width: min(720px, 100%);
 }
 
 .dialog__header {
@@ -3588,4 +3613,102 @@ a {
   right: 3px;
   color: var(--warn);
   font-size: 10px;
+}
+
+/* ── 커뮤니티 설정: 일반 ── */
+
+.community-general {
+  display: grid;
+  gap: 16px;
+}
+
+.settings__row {
+  display: flex;
+  gap: 8px;
+}
+
+.settings__row input {
+  flex: 1;
+  min-width: 0;
+}
+
+.community-image {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+}
+
+.community-image__preview {
+  display: grid;
+  flex: none;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  background: var(--bg-sidebar);
+  font-weight: 600;
+}
+
+.community-image__preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.community-image__preview--icon {
+  width: 72px;
+  height: 72px;
+  border-radius: 20px;
+  font-size: 1.3rem;
+}
+
+.community-image__preview--banner {
+  width: 192px;
+  aspect-ratio: 16 / 9;
+  border-radius: 8px;
+}
+
+.community-image__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.community-image__actions .form__hint {
+  flex-basis: 100%;
+  margin: 0;
+}
+
+.danger-zone {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 14px;
+  border: 1px solid var(--danger, #e84537);
+  border-radius: 8px;
+}
+
+.danger-zone h3 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.danger-zone .form__hint {
+  margin: 0;
+}
+
+.danger-zone input {
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-input);
+  color: var(--fg);
+  font: inherit;
+}
+
+.invite__icon {
+  width: 72px;
+  height: 72px;
+  border-radius: 20px;
+  object-fit: cover;
 }
