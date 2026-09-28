@@ -20,7 +20,7 @@ import { jsonBody } from '../../api/queries';
 import { type SettingsSection, useSettingsStore } from '../../stores/settings';
 import { Avatar } from '../../ui/Avatar';
 import { displayName } from '../../ui/format';
-import { useAssetEditorStore } from '../assets/editorStore';
+import { useAssetEditorStore, useMapEditorStore } from '../assets/editorStore';
 import { logout, meQueryKey, useMe } from '../auth/auth';
 import { DeviceSelect, InputGainSlider, OutputVolumeSlider } from '../voice/devices';
 
@@ -52,6 +52,7 @@ const AssetSettings = lazy(() =>
 const PixelEditor = lazy(() =>
   import('../assets/PixelEditor').then((m) => ({ default: m.PixelEditor })),
 );
+const MapEditor = lazy(() => import('../assets/MapEditor').then((m) => ({ default: m.MapEditor })));
 
 /**
  * 설정 창: 화면의 80%를 차지하고, 바깥(어두운 곳)을 누르거나 Esc를 누르면 닫힌다.
@@ -68,6 +69,7 @@ function SettingsWindow({ section }: { section: SettingsSection }) {
   const me = useMe().data;
   const queryClient = useQueryClient();
   const editing = useAssetEditorStore((s) => s.target);
+  const mapEditing = useMapEditorStore((s) => s.target);
 
   useEffect(() => {
     // 설정 창 위에 뜬 창(도트 에디터 등)이 Esc를 먼저 처리하면(preventDefault) 닫지 않는다.
@@ -76,8 +78,14 @@ function SettingsWindow({ section }: { section: SettingsSection }) {
     return () => window.removeEventListener('keydown', onKey);
   }, [close]);
 
-  // 설정 창을 닫으면 열려 있던 도트 에디터도 닫는다.
-  useEffect(() => () => useAssetEditorStore.getState().close(), []);
+  // 설정 창을 닫으면 열려 있던 도트 에디터와 맵 에디터도 닫는다.
+  useEffect(
+    () => () => {
+      useAssetEditorStore.getState().close();
+      useMapEditorStore.getState().close();
+    },
+    [],
+  );
 
   const onLogout = async () => {
     close();
@@ -155,6 +163,16 @@ function SettingsWindow({ section }: { section: SettingsSection }) {
             key={editing.mode === 'edit' ? editing.asset.id : 'new'}
             target={editing}
             onClose={() => useAssetEditorStore.getState().close()}
+          />
+        </Suspense>
+      )}
+      {mapEditing && (
+        <Suspense fallback={null}>
+          <MapEditor
+            key={mapEditing.communityId}
+            communityId={mapEditing.communityId}
+            communityName={mapEditing.name}
+            onClose={() => useMapEditorStore.getState().close()}
           />
         </Suspense>
       )}

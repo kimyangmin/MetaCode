@@ -13,6 +13,18 @@ import { frameAt, framePixels, isAnimated, sheetCanvas } from '../assets/render'
 
 export type AssetLookup = (ref: AssetRef) => AssetManifest | undefined;
 
+/** 매니페스트마다 다른 번호 (같은 에셋을 고쳐 새 매니페스트를 받으면 텍스처를 새로 만든다) */
+const manifestIds = new WeakMap<AssetManifest, number>();
+let nextManifestId = 0;
+function textureKeyOf(ref: AssetRef, manifest: AssetManifest): string {
+  let id = manifestIds.get(manifest);
+  if (id === undefined) {
+    id = ++nextManifestId;
+    manifestIds.set(manifest, id);
+  }
+  return `asset:${ref}:${id}`;
+}
+
 /** 에셋 하나 = 텍스처 하나. 프레임 i가 텍스처의 프레임 i다 */
 export function ensureAssetTexture(
   scene: Phaser.Scene,
@@ -58,7 +70,7 @@ export class MapView {
     for (const object of map.objects) {
       const manifest = assetOf(object.asset);
       if (!manifest) continue;
-      const key = ensureAssetTexture(scene, `asset:${object.asset}`, manifest);
+      const key = ensureAssetTexture(scene, textureKeyOf(object.asset, manifest), manifest);
       const animation = manifest.animations[DEFAULT_ANIMATION];
       const bounds = objectBounds(manifest, object);
       const image = scene.add
@@ -99,7 +111,11 @@ export class MapView {
       const tx = (i % map.width) * T;
       const ty = Math.floor(i / map.width) * T;
       if (tile.animation && isAnimated(tile.animation)) {
-        const key = ensureAssetTexture(this.scene, `asset:${tile.ref}`, tile.manifest);
+        const key = ensureAssetTexture(
+          this.scene,
+          textureKeyOf(tile.ref, tile.manifest),
+          tile.manifest,
+        );
         const piece = this.scene.add
           .image(tx, ty, key, tile.animation.frames[0])
           .setOrigin(0, 0)

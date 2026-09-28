@@ -143,7 +143,7 @@ export class PlazaScene extends Phaser.Scene {
 
   /** 광장을 (다시) 열었을 때: 맵을 그리고 인원을 전부 새로 둔다 */
   applySnapshot(snapshot: PlazaSnapshot): void {
-    this.drawMap(snapshot.definition);
+    this.drawMap(snapshot.definition, snapshot.assets);
     this.clearActors();
     this.path = [];
     this.lastSent = null;
@@ -395,14 +395,15 @@ export class PlazaScene extends Phaser.Scene {
 
   /**
    * 맵을 (다시) 그린다. 같은 맵이면 그대로 둔다. 충돌 격자는 서버와 같은 맵 정의에서 계산한다.
-   * 지금은 내장 에셋만 쓴다.
+   * 맵에 쓴 커뮤니티 에셋은 미리 addAsset()으로 등록해 둔다 (PlazaView가 받아 온다).
    */
-  private drawMap(definition: MapDefinition): void {
-    const key = JSON.stringify(definition);
+  private drawMap(definition: MapDefinition, assets: PlazaSnapshot['assets']): void {
+    // 맵에 쓴 에셋이 고쳐지면(버전이 바뀌면) 같은 맵 정의라도 다시 그린다.
+    const key = JSON.stringify(definition) + JSON.stringify(assets);
     if (this.map?.key === key) return;
     this.map?.view.destroy();
-    this.layout = buildCollision(definition, builtinAsset);
-    this.map = { key, view: new MapView(this, definition, builtinAsset) };
+    this.layout = buildCollision(definition, this.assetOf);
+    this.map = { key, view: new MapView(this, definition, this.assetOf) };
     this.updateZoom();
   }
 

@@ -69,6 +69,7 @@ model Community {
   invites  Invite[]
   roles    Role[]
   assets   Asset[]
+  map      CommunityMap?
 
   @@map("communities")
 }
@@ -305,4 +306,17 @@ model Asset {
   @@index([creatorId, kind])
   @@index([communityId])
   @@map("assets")
+}
+
+/// 맵 에디터로 만든 커뮤니티 광장의 맵. 없으면 내장 분수 광장을 쓴다.
+/// 충돌 격자는 저장하지 않고 맵 정의와 에셋에서 계산한다 (서버 메모리에 캐시).
+model CommunityMap {
+  communityId String   @id @map("community_id") @db.Uuid
+  /// 맵 정의 (packages/shared의 mapDefinitionSchema로 검증한 JSON)
+  definition  Json
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+
+  @@map("community_maps")
 }

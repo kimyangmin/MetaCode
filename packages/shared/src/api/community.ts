@@ -1,3 +1,4 @@
+import { type MapDefinition, mapDefinitionSchema } from '../assets/map.js';
 import { z } from 'zod';
 import type { ChannelSummary } from './channel.js';
 import type { UserProfile } from './user.js';
@@ -99,3 +100,12 @@ export interface InviteInfo {
   /** 이미 멤버인지 */
   joined: boolean;
 }
+
+/** 커뮤니티 광장의 맵. custom이 false면 내장 분수 광장이다 */
+export interface CommunityMapDto {
+  definition: MapDefinition;
+  custom: boolean;
+}
+
+export const saveMapSchema = z.object({ definition: mapDefinitionSchema });
+export type SaveMapRequest = z.input<typeof saveMapSchema>;

@@ -15,7 +15,7 @@ import { useCommunities } from '../communities/hooks';
 import { AssetPreview } from './AssetPreview';
 import { deleteAsset, useCommunityAssets, useMyAssets } from './api';
 import { fromManifest, newDoc } from './editorModel';
-import { useAssetEditorStore } from './editorStore';
+import { useAssetEditorStore, useMapEditorStore } from './editorStore';
 
 const isManager = (c: CommunitySummary) => c.myRole === 'OWNER' || c.myRole === 'ADMIN';
 
@@ -107,8 +107,8 @@ function CommunityAssets({ community, onPick }: { community: CommunitySummary; o
     <section className="asset-section">
       <h3 className="settings-form__title">{community.name} · 타일과 오브젝트</h3>
       <p className="form__hint">
-        이 커뮤니티의 분수 광장에 쓸 수 있습니다. 소유자와 관리자가 만들고 고칩니다. (
-        {assets.length}/{COMMUNITY_ASSET_LIMIT})
+        이 커뮤니티의 분수 광장에 쓸 수 있습니다. 소유자와 관리자가 만들고, 광장 맵 편집에서
+        배치합니다. ({assets.length}/{COMMUNITY_ASSET_LIMIT})
       </p>
       <AssetGrid assets={assets} />
       <div className="asset-section__actions">
@@ -125,6 +125,13 @@ function CommunityAssets({ community, onPick }: { community: CommunitySummary; o
         </button>
         <button type="button" className="button" disabled={full} onClick={onPick}>
           내장 에셋에서 시작
+        </button>
+        <button
+          type="button"
+          className="button"
+          onClick={() => useMapEditorStore.getState().open(community.id, community.name)}
+        >
+          🗺️ 광장 맵 편집
         </button>
       </div>
     </section>

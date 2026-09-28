@@ -18,3 +18,16 @@ export const useAssetEditorStore = create<AssetEditorState>((set) => ({
   open: (target) => set({ target }),
   close: () => set({ target: null }),
 }));
+
+interface MapEditorState {
+  /** 맵 에디터로 연 커뮤니티. 닫혀 있으면 null */
+  target: { communityId: string; name: string } | null;
+  open(communityId: string, name: string): void;
+  close(): void;
+}
+
+export const useMapEditorStore = create<MapEditorState>((set) => ({
+  target: null,
+  open: (communityId, name) => set({ target: { communityId, name } }),
+  close: () => set({ target: null }),
+}));

@@ -117,13 +117,36 @@ export default function PlazaView({ plazaId, me, channelLabels, voiceLabels }: P
           .catch(() => {});
       }
     };
+    /** 맵에 쓴 커뮤니티 에셋(타일·오브젝트)을 받아 씬에 등록한다. 같은 에셋·버전은 한 번만 받는다 */
+    const loadMapAssets = (assets: { id: string; version: string }[]) =>
+      Promise.all(
+        assets.map(({ id, version }) =>
+          queryClient
+            .fetchQuery({
+              queryKey: ['assets', 'one', id, version],
+              queryFn: () => apiFetch<AssetDto>(`/assets/${id}`),
+              staleTime: Infinity,
+            })
+            .then((asset) => scene.addAsset(asset.id, asset.manifest))
+            .catch(() => {}),
+        ),
+      );
+    let latestWatch = 0;
     const watch = () => {
+      const request = ++latestWatch;
       socket.emit(SocketEvent.PlazaWatch, { plazaId }, (ack) => {
         if (!ack.ok) return setStatus('error');
-        scene.applySnapshot(ack.data);
-        loadCharacters(ack.data.occupants.map((o) => o.user));
-        setStatus('ready');
+        void loadMapAssets(ack.data.assets).then(() => {
+          // 받는 사이에 맵이 또 바뀌어 다시 열었으면 앞의 결과는 버린다.
+          if (request !== latestWatch) return;
+          scene.applySnapshot(ack.data);
+          loadCharacters(ack.data.occupants.map((o) => o.user));
+          setStatus('ready');
+        });
       });
+    };
+    const onMapChanged = (event: { plazaId: PlazaId }) => {
+      if (event.plazaId === plazaId) watch();
     };
     const onMoved = (event: PlazaMoved) => {
       if (event.plazaId === plazaId) scene.moved(event);
@@ -166,6 +189,7 @@ export default function PlazaView({ plazaId, me, channelLabels, voiceLabels }: P
     socket.on(SocketEvent.PlazaMoved, onMoved);
     socket.on(SocketEvent.PlazaMember, onMember);
     socket.on(SocketEvent.PlazaCorrected, onCorrected);
+    socket.on(SocketEvent.PlazaMapChanged, onMapChanged);
     socket.on(SocketEvent.MessageCreated, onMessage);
     socket.on(SocketEvent.UserUpdated, onUserUpdated);
     if (socket.connected) watch();
@@ -174,6 +198,7 @@ export default function PlazaView({ plazaId, me, channelLabels, voiceLabels }: P
       socket.off(SocketEvent.PlazaMoved, onMoved);
       socket.off(SocketEvent.PlazaMember, onMember);
       socket.off(SocketEvent.PlazaCorrected, onCorrected);
+      socket.off(SocketEvent.PlazaMapChanged, onMapChanged);
       socket.off(SocketEvent.MessageCreated, onMessage);
       socket.off(SocketEvent.UserUpdated, onUserUpdated);
       if (socket.connected) socket.emit(SocketEvent.PlazaUnwatch, { plazaId });

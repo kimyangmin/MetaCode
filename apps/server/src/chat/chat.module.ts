@@ -3,6 +3,8 @@ import { AssetsController } from '../assets/assets.controller.js';
 import { AssetsService } from '../assets/assets.service.js';
 import { AttachmentsController } from '../attachments/attachments.controller.js';
 import { AttachmentsService } from '../attachments/attachments.service.js';
+import { MapsController } from '../plaza/maps.controller.js';
+import { PlazaMapsService } from '../plaza/plaza-maps.service.js';
 import { PlazaService } from '../plaza/plaza.service.js';
 import { PresenceModule } from '../presence/presence.module.js';
 import { UsersModule } from '../users/users.module.js';
@@ -30,6 +32,7 @@ import { RolesService } from './roles.service.js';
     AttachmentsController,
     RolesController,
     AssetsController,
+    MapsController,
   ],
   providers: [
     AccessService,
@@ -41,6 +44,7 @@ import { RolesService } from './roles.service.js';
     AttachmentsService,
     AssetsService,
     PlazaService,
+    PlazaMapsService,
     LiveKitService,
     VoiceService,
     ChatGateway,

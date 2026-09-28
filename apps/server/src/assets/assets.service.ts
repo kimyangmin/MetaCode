@@ -14,6 +14,7 @@ import {
 } from '@metacode/shared';
 import { AccessService } from '../chat/access.service.js';
 import type { Asset, Prisma } from '../generated/prisma/client.js';
+import { PlazaMapsService } from '../plaza/plaza-maps.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { UsersService } from '../users/users.service.js';
 
@@ -47,6 +48,7 @@ export class AssetsService {
     private readonly prisma: PrismaService,
     private readonly access: AccessService,
     private readonly users: UsersService,
+    private readonly maps: PlazaMapsService,
   ) {}
 
   async listMine(userId: string): Promise<AssetDto[]> {
@@ -120,11 +122,18 @@ export class AssetsService {
     if (updated.kind === 'CHARACTER') {
       await this.users.characterAssetChanged(updated.creatorId, id, updated.updatedAt);
     }
+    // 광장 맵에 쓴 타일·오브젝트면 광장을 보던 사람들이 새 그림(과 충돌)을 받게 한다.
+    if (updated.communityId) await this.maps.assetChanged(updated.communityId, id);
     return toAssetDto(updated);
   }
 
   async remove(userId: string, id: string): Promise<void> {
     const asset = await this.writable(userId, id);
+    if (asset.communityId && (await this.maps.uses(asset.communityId, id))) {
+      throw new ConflictException(
+        '광장 맵에서 쓰고 있어서 지울 수 없습니다. 맵에서 먼저 빼 주세요.',
+      );
+    }
     await this.prisma.asset.delete({ where: { id } });
     // 쓰고 있던 캐릭터를 지웠으면 기본 캐릭터로 돌아간다.
     if (asset.kind === 'CHARACTER') {

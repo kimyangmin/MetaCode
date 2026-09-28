@@ -47,6 +47,8 @@ export interface PlazaSnapshot {
   theme: string;
   /** 맵 정의. 클라이언트는 이것으로 그리고 충돌 격자를 만든다 (서버와 같은 격자) */
   definition: MapDefinition;
+  /** 맵에 쓴 직접 만든 에셋(커뮤니티 타일·오브젝트)과 그 버전. 클라이언트가 받아 와서 그린다 */
+  assets: { id: string; version: string }[];
   occupants: PlazaOccupant[];
 }
 
