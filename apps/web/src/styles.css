@@ -3248,7 +3248,29 @@ a {
   cursor: default;
 }
 
+.pixel-editor__main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.pixel-editor__bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-sidebar);
+}
+
+.pixel-editor__bar .form__hint {
+  margin: 0;
+}
+
 .pixel-editor__stage {
+  flex: 1;
   display: grid;
   place-items: center;
   min-width: 0;

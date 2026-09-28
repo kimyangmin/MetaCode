@@ -163,3 +163,67 @@ describe('색 바꾸기', () => {
     expect(doc.canUndo).toBe(false);
   });
 });
+
+describe('발 아래 빈 줄 정리', () => {
+  it('모든 프레임에 공통으로 빈 줄만큼 내리고, 프레임끼리의 높이 차이는 남긴다', () => {
+    const doc = new PixelDocument(newDoc('character', '캐릭터'));
+    const { width, height } = doc.doc;
+    doc.begin();
+    // idle-down: 발이 아래에서 3줄 위, walk-down 첫 프레임: 4줄 위 (들썩임)
+    doc.paint({ animation: 0, frame: 0 }, 5, height - 4, 1);
+    doc.paint({ animation: 4, frame: 0 }, 5, height - 5, 1);
+    expect(doc.trimBelowFeet()).toBe(3);
+    expect(doc.pick({ animation: 0, frame: 0 }, 5, height - 1)).toBe(1);
+    expect(doc.pick({ animation: 4, frame: 0 }, 5, height - 2)).toBe(1);
+    expect(doc.doc.width).toBe(width);
+    // 이미 정리했으면 아무것도 하지 않고, 되돌리기 한 번에 돌아간다.
+    expect(doc.trimBelowFeet()).toBe(0);
+    doc.undo();
+    expect(doc.pick({ animation: 0, frame: 0 }, 5, height - 4)).toBe(1);
+  });
+
+  it('캐릭터가 아니거나 그림이 없으면 하지 않는다', () => {
+    expect(new PixelDocument(newDoc('character', '빈')).trimBelowFeet()).toBe(0);
+    const tile = new PixelDocument(newDoc('tile', '타일'));
+    tile.begin();
+    tile.paint(at, 0, 0, 1);
+    expect(tile.trimBelowFeet()).toBe(0);
+  });
+});
+
+describe('자르기', () => {
+  it('사각형 밖을 지운다 (한 프레임 또는 모든 프레임)', () => {
+    const doc = new PixelDocument(newDoc('tile', '타일'));
+    doc.begin();
+    doc.paint(at, 0, 0, 1);
+    doc.paint(at, 5, 5, 2);
+    doc.crop({ x: 4, y: 4, w: 4, h: 4 }, at);
+    expect(doc.pick(at, 0, 0)).toBe(0);
+    expect(doc.pick(at, 5, 5)).toBe(2);
+  });
+
+  it('캐릭터는 크기를 맞추면 잘라 낸 그림을 발밑 가운데에 둔다', () => {
+    const doc = new PixelDocument(newDoc('character', '캐릭터'));
+    doc.begin();
+    doc.resizeCharacter(64);
+    doc.paint(at, 10, 20, 1);
+    doc.paint(at, 29, 69, 2);
+    doc.crop({ x: 10, y: 20, w: 20, h: 50 }, undefined, true);
+    // 가로 = max(20, 50/2) = 25, 세로 50
+    expect(doc.doc.width).toBe(25);
+    expect(doc.doc.height).toBe(50);
+    expect(doc.pick(at, 2, 0)).toBe(1);
+    expect(doc.pick(at, 21, 49)).toBe(2);
+  });
+
+  it('오브젝트는 크기를 맞추면 16px 단위로 올리고 왼쪽 아래에 둔다', () => {
+    const doc = new PixelDocument(newDoc('object', '나무', { w: 3, h: 3 }));
+    doc.begin();
+    doc.paint(at, 20, 40, 1);
+    doc.crop({ x: 20, y: 30, w: 18, h: 11 }, undefined, true);
+    expect(doc.doc.width).toBe(32);
+    expect(doc.doc.height).toBe(16);
+    expect(doc.pick(at, 0, 15)).toBe(1);
+    expect(doc.doc.footprint).toEqual([1, 1]);
+  });
+});

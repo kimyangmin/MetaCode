@@ -17,6 +17,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import {
   type ChangeEvent,
   type PointerEvent as ReactPointerEvent,
+  type ReactNode,
   useCallback,
   useEffect,
   useMemo,
@@ -34,15 +35,84 @@ import {
 } from './editorModel';
 import type { EditorTarget } from './editorStore';
 import { downloadCanvas, indexImage, readImageFile } from './png';
+import {
+  type Clip,
+  type Point,
+  type Rect,
+  clearMasked,
+  copyClip,
+  isEmptyMask,
+  lassoMask,
+  maskOutline,
+  maskedValues,
+  placeClip,
+  rectFrom,
+  shiftPixels,
+  stamp,
+} from './selection';
 
-type Tool = 'pen' | 'eraser' | 'fill' | 'picker';
+type Tool = 'pen' | 'eraser' | 'fill' | 'picker' | 'lasso' | 'crop';
 
-const TOOLS: { id: Tool; label: string; icon: string; key: string }[] = [
+/** 올가미 아이콘 (이모지 ➰는 어두운 배경에서 거의 안 보여서 직접 그린다) */
+const LASSO_ICON = (
+  <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" aria-hidden>
+    <ellipse cx="10" cy="8" rx="7" ry="5" strokeWidth="1.6" strokeDasharray="3 2" />
+    <path d="M6 12.5c-1 2 0 4 2 4.5" strokeWidth="1.6" strokeLinecap="round" />
+  </svg>
+);
+
+const TOOLS: { id: Tool; label: string; icon: ReactNode; key: string }[] = [
   { id: 'pen', label: '연필', icon: '✏️', key: 'b' },
   { id: 'eraser', label: '지우개', icon: '🧽', key: 'e' },
   { id: 'fill', label: '채우기', icon: '🪣', key: 'g' },
   { id: 'picker', label: '스포이트', icon: '💧', key: 'i' },
+  { id: 'lasso', label: '올가미 (고른 곳을 끌어 옮기기)', icon: LASSO_ICON, key: 'l' },
+  { id: 'crop', label: '자르기', icon: '✂️', key: 'c' },
 ];
+
+/**
+ * 올가미로 고른 영역. 고른 프레임(key)에서 마지막으로 바꾼 뒤(version) 다른 편집이 없을 때만 살아 있다.
+ * lifted가 있으면 떠 있는 상태다: 프레임 = base 위에 values를 얹은 것이라, 옮길 때마다 base에서 다시 만든다
+ * (옮기며 지나간 자리의 그림이 지워지지 않게).
+ */
+interface Selection {
+  key: string;
+  version: number;
+  mask: Uint8Array;
+  lifted: { base: Uint8Array; values: Uint8Array } | null;
+}
+
+type Drag =
+  | { kind: 'stroke'; last: Point; value: number }
+  | { kind: 'lasso' }
+  | {
+      kind: 'move';
+      start: Point;
+      moved: Point;
+      begun: boolean;
+      mask: Uint8Array;
+      base: Uint8Array;
+      values: Uint8Array;
+    }
+  | { kind: 'crop'; start: Point };
+
+const TRIM_FEET_KEY = 'metacode:editor-trim-feet';
+
+function readTrimFeet(): boolean {
+  try {
+    return localStorage.getItem(TRIM_FEET_KEY) !== 'off';
+  } catch {
+    return true;
+  }
+}
+
+function saveTrimFeet(on: boolean) {
+  try {
+    localStorage.setItem(TRIM_FEET_KEY, on ? 'on' : 'off');
+  } catch {
+    // 기억하지 못해도 이번 편집에는 적용된다.
+  }
+}
 
 const KIND_LABEL = { tile: '타일', object: '오브젝트', character: '캐릭터' } as const;
 
@@ -97,6 +167,12 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
   );
   const [status, setStatus] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
+  const [selection, setSelection] = useState<Selection | null>(null);
+  const [lassoPath, setLassoPath] = useState<Point[] | null>(null);
+  const [crop, setCrop] = useState<{ rect: Rect; width: number; height: number } | null>(null);
+  const [cropFit, setCropFit] = useState(false);
+  const [clipboard, setClipboard] = useState<Clip | null>(null);
+  const [trimFeet, setTrimFeet] = useState(readTrimFeet);
   const fileRef = useRef<HTMLInputElement>(null);
 
   // 되돌리기 등으로 애니메이션·프레임 수가 바뀌어도 고른 프레임이 범위 안에 있게 한다.
@@ -109,48 +185,173 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
   const manifest = toManifest(doc);
   const missing = doc.kind === 'character' ? missingAnimations(manifest) : [];
   const missingNames = new Set(missing.map((m) => m.name));
+  const frameKey = `${ref.animation}:${ref.frame}`;
+  // 다른 편집(붓질, 되돌리기, 크기 바꾸기)을 하거나 프레임을 옮기면 선택이 풀린다.
+  const active =
+    selection &&
+    selection.key === frameKey &&
+    selection.version === editor.version &&
+    selection.mask.length === pixels.length
+      ? selection
+      : null;
+  // 다른 도구로 바꾸면 자르기 사각형은 숨긴다 (다시 고르면 보임).
+  const cropRect =
+    tool === 'crop' && crop && crop.width === doc.width && crop.height === doc.height
+      ? crop.rect
+      : null;
+  const canFit = doc.kind === 'character' || doc.kind === 'object';
 
   const requestClose = useCallback(() => {
     if (editor.dirty && !window.confirm('저장하지 않은 변경이 있습니다. 닫을까요?')) return;
     onClose();
   }, [editor, onClose]);
 
-  // ── 키보드 ──
+  // ── 선택 영역 ──
+
+  /** 떠 있는 선택을 (dx, dy)만큼 옮긴 결과로 프레임을 다시 만든다 */
+  const floatTo = (
+    from: { mask: Uint8Array; base: Uint8Array; values: Uint8Array },
+    dx: number,
+    dy: number,
+  ) => {
+    const { width, height } = doc;
+    const mask = shiftPixels(from.mask, width, height, dx, dy);
+    const values = shiftPixels(from.values, width, height, dx, dy);
+    editor.setFrame(ref, stamp(from.base, values, mask));
+    setSelection({
+      key: frameKey,
+      version: editor.version,
+      mask,
+      lifted: { base: from.base, values },
+    });
+  };
+
+  const lift = (sel: Selection) =>
+    sel.lifted ?? {
+      base: clearMasked(pixels, sel.mask),
+      values: maskedValues(pixels, sel.mask),
+    };
+
+  const select = (mask: Uint8Array) =>
+    setSelection(
+      isEmptyMask(mask) ? null : { key: frameKey, version: editor.version, mask, lifted: null },
+    );
+
+  const nudge = (dx: number, dy: number) => {
+    if (!active) return;
+    editor.begin();
+    floatTo({ mask: active.mask, ...lift(active) }, dx, dy);
+  };
+
+  const deleteSelection = () => {
+    if (!active) return;
+    editor.begin();
+    // 떠 있으면 얹은 것만 치운다 (아래 그림은 남음).
+    editor.setFrame(ref, active.lifted ? active.lifted.base : clearMasked(pixels, active.mask));
+    setSelection(null);
+  };
+
+  const copySelection = () => {
+    if (!active) return false;
+    const clip = copyClip(active.lifted?.values ?? pixels, active.mask, doc.width);
+    if (clip) setClipboard(clip);
+    return !!clip;
+  };
+
+  /** 복사한 자리에 떠 있는 채로 붙인다 (다른 프레임에 붙여도 같은 자리라 애니메이션을 맞추기 쉽다) */
+  const paste = () => {
+    if (!clipboard) return;
+    const placed = placeClip(clipboard, doc.width, doc.height);
+    if (isEmptyMask(placed.mask)) return;
+    editor.begin();
+    const base = Uint8Array.from(pixels);
+    editor.setFrame(ref, stamp(base, placed.values, placed.mask));
+    setSelection({
+      key: frameKey,
+      version: editor.version,
+      mask: placed.mask,
+      lifted: { base, values: placed.values },
+    });
+    setTool('lasso');
+  };
+
+  const applyCrop = (allFrames: boolean) => {
+    if (!cropRect) return;
+    editor.crop(cropRect, allFrames ? undefined : ref, allFrames && cropFit && canFit);
+    setCrop(null);
+  };
+
+  // ── 키보드 ── (매번 새로 걸어 지금 선택 상태를 쓴다)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
       if (e.key === 'Escape') {
         // 설정 창이 함께 닫히지 않게 한다 (설정 창은 defaultPrevented를 보고 무시한다).
         e.preventDefault();
-        requestClose();
+        if (cropRect) setCrop(null);
+        else if (active || lassoPath) {
+          setSelection(null);
+          setLassoPath(null);
+        } else requestClose();
         return;
       }
       if (target.closest('input, textarea, select')) return;
       const mod = e.ctrlKey || e.metaKey;
-      if (mod && e.key.toLowerCase() === 'z') {
+      const key = e.key.toLowerCase();
+      const arrows: Record<string, [number, number]> = {
+        ArrowLeft: [-1, 0],
+        ArrowRight: [1, 0],
+        ArrowUp: [0, -1],
+        ArrowDown: [0, 1],
+      };
+      if (mod && key === 'z') {
         e.preventDefault();
         if (e.shiftKey) editor.redo();
         else editor.undo();
-      } else if (mod && e.key.toLowerCase() === 'y') {
+      } else if (mod && key === 'y') {
         e.preventDefault();
         editor.redo();
+      } else if (mod && key === 'a') {
+        e.preventDefault();
+        select(new Uint8Array(pixels.length).fill(1));
+        setTool('lasso');
+      } else if (mod && key === 'c') {
+        if (copySelection()) e.preventDefault();
+      } else if (mod && key === 'x') {
+        if (copySelection()) {
+          e.preventDefault();
+          deleteSelection();
+        }
+      } else if (mod && key === 'v') {
+        e.preventDefault();
+        paste();
       } else if (!mod) {
-        const found = TOOLS.find((t) => t.key === e.key.toLowerCase());
+        const found = TOOLS.find((t) => t.key === key);
         if (found) setTool(found.id);
-        else if (e.key.toLowerCase() === 'm') setMirror((v) => !v);
-        else if (e.key.toLowerCase() === 'o') setOnion((v) => !v);
-        else if (e.key === 'ArrowLeft')
+        else if (key === 'm') setMirror((v) => !v);
+        else if (key === 'o') setOnion((v) => !v);
+        else if ((e.key === 'Delete' || e.key === 'Backspace') && active) {
+          e.preventDefault();
+          deleteSelection();
+        } else if (e.key === 'Enter' && cropRect) {
+          e.preventDefault();
+          applyCrop(true);
+        } else if (arrows[e.key] && active) {
+          // 고른 영역이 있으면 방향키는 한 칸씩 옮긴다 (없으면 프레임 넘기기).
+          e.preventDefault();
+          nudge(...arrows[e.key]!);
+        } else if (e.key === 'ArrowLeft')
           setSelected((s) => ({ ...s, frame: Math.max(0, s.frame - 1) }));
         else if (e.key === 'ArrowRight') setSelected((s) => ({ ...s, frame: s.frame + 1 }));
       }
     };
     window.addEventListener('keydown', onKey, true);
     return () => window.removeEventListener('keydown', onKey, true);
-  }, [editor, requestClose]);
+  });
 
   // ── 그림판 ──
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const stroke = useRef<{ last: { x: number; y: number }; value: number } | null>(null);
+  const drag = useRef<Drag | null>(null);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -218,20 +419,101 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
       ctx.lineTo(canvas.width, y * zoom + 0.5);
     }
     ctx.stroke();
+    // 자르기: 남길 사각형 밖을 어둡게
+    if (cropRect) {
+      const x = cropRect.x * zoom;
+      const y = cropRect.y * zoom;
+      const w = cropRect.w * zoom;
+      const h = cropRect.h * zoom;
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
+      ctx.fillRect(0, 0, canvas.width, y);
+      ctx.fillRect(0, y + h, canvas.width, canvas.height - y - h);
+      ctx.fillRect(0, y, x, h);
+      ctx.fillRect(x + w, y, canvas.width - x - w, h);
+      ctx.setLineDash([]);
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+    }
+    // 선택 테두리 (흰 선 위에 검은 점선이라 어느 색 위에서도 보인다)
+    const outline = (draw: () => void) => {
+      ctx.lineWidth = 1;
+      ctx.setLineDash([]);
+      ctx.strokeStyle = '#ffffff';
+      ctx.beginPath();
+      draw();
+      ctx.stroke();
+      ctx.setLineDash([4, 4]);
+      ctx.strokeStyle = '#000000';
+      ctx.beginPath();
+      draw();
+      ctx.stroke();
+      ctx.setLineDash([]);
+    };
+    if (active) {
+      const edges = maskOutline(active.mask, width, height);
+      outline(() => {
+        for (const [x1, y1, x2, y2] of edges) {
+          ctx.moveTo(x1 * zoom + 0.5, y1 * zoom + 0.5);
+          ctx.lineTo(x2 * zoom + 0.5, y2 * zoom + 0.5);
+        }
+      });
+    }
+    if (lassoPath && lassoPath.length > 1) {
+      outline(() => {
+        lassoPath.forEach((p, i) => {
+          if (i === 0) ctx.moveTo(p.x * zoom, p.y * zoom);
+          else ctx.lineTo(p.x * zoom, p.y * zoom);
+        });
+      });
+    }
   });
 
-  const pointAt = (e: ReactPointerEvent<HTMLCanvasElement>) => {
+  /** 픽셀 단위 실수 좌표 (올가미 선) */
+  const exactAt = (e: ReactPointerEvent<HTMLCanvasElement>): Point => {
     const rect = e.currentTarget.getBoundingClientRect();
     return {
-      x: Math.floor(((e.clientX - rect.left) / rect.width) * doc.width),
-      y: Math.floor(((e.clientY - rect.top) / rect.height) * doc.height),
+      x: ((e.clientX - rect.left) / rect.width) * doc.width,
+      y: ((e.clientY - rect.top) / rect.height) * doc.height,
     };
+  };
+
+  const pointAt = (e: ReactPointerEvent<HTMLCanvasElement>): Point => {
+    const p = exactAt(e);
+    return { x: Math.floor(p.x), y: Math.floor(p.y) };
   };
 
   const onPointerDown = (e: ReactPointerEvent<HTMLCanvasElement>) => {
     if (e.button !== 0 && e.button !== 2) return;
     e.preventDefault();
     const p = pointAt(e);
+    if (tool === 'lasso' || tool === 'crop') {
+      if (e.button !== 0) return;
+      e.currentTarget.setPointerCapture(e.pointerId);
+      if (tool === 'crop') {
+        drag.current = { kind: 'crop', start: p };
+        setCrop({
+          rect: rectFrom(p, p, doc.width, doc.height),
+          width: doc.width,
+          height: doc.height,
+        });
+      } else if (active && active.mask[p.y * doc.width + p.x]) {
+        // 고른 곳을 누르면 끌어 옮긴다. 실제로 움직일 때 되돌리기 단계를 만든다.
+        drag.current = {
+          kind: 'move',
+          start: p,
+          moved: { x: 0, y: 0 },
+          begun: false,
+          mask: active.mask,
+          ...lift(active),
+        };
+      } else {
+        drag.current = { kind: 'lasso' };
+        setSelection(null);
+        setLassoPath([exactAt(e)]);
+      }
+      return;
+    }
     const erase = e.button === 2 || tool === 'eraser';
     if (tool === 'picker' && e.button === 0) {
       const value = editor.pick(ref, p.x, p.y);
@@ -247,23 +529,53 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
     const value = erase ? 0 : color;
     editor.begin();
     editor.paint(ref, p.x, p.y, value, mirror);
-    stroke.current = { last: p, value };
+    drag.current = { kind: 'stroke', last: p, value };
   };
 
   const onPointerMove = (e: ReactPointerEvent<HTMLCanvasElement>) => {
-    if (!stroke.current) return;
+    const current = drag.current;
+    if (!current) return;
+    if (current.kind === 'lasso') {
+      const p = exactAt(e);
+      setLassoPath((path) => (path ? [...path, p] : [p]));
+      return;
+    }
     const p = pointAt(e);
-    editor.line(ref, stroke.current.last, p, stroke.current.value, mirror);
-    stroke.current.last = p;
+    if (current.kind === 'stroke') {
+      editor.line(ref, current.last, p, current.value, mirror);
+      current.last = p;
+    } else if (current.kind === 'crop') {
+      setCrop({
+        rect: rectFrom(current.start, p, doc.width, doc.height),
+        width: doc.width,
+        height: doc.height,
+      });
+    } else {
+      const dx = p.x - current.start.x;
+      const dy = p.y - current.start.y;
+      if (dx === current.moved.x && dy === current.moved.y) return;
+      if (!current.begun) {
+        editor.begin();
+        current.begun = true;
+      }
+      current.moved = { x: dx, y: dy };
+      floatTo(current, dx, dy);
+    }
   };
 
-  const endStroke = () => {
-    stroke.current = null;
+  const endDrag = () => {
+    const current = drag.current;
+    drag.current = null;
+    if (current?.kind !== 'lasso') return;
+    // 짧게 누르기만 하면 선택을 푼다.
+    if (lassoPath && lassoPath.length >= 3) select(lassoMask(lassoPath, doc.width, doc.height));
+    setLassoPath(null);
   };
 
   // ── 저장 ──
   const save = async () => {
-    const result = assetManifestSchema.safeParse(manifest);
+    const trimmed = doc.kind === 'character' && trimFeet ? editor.trimBelowFeet() : 0;
+    const result = assetManifestSchema.safeParse(toManifest(editor.doc));
     if (!result.success) {
       setStatus({ kind: 'error', text: result.error.issues.map((i) => i.message).join(' ') });
       return;
@@ -274,7 +586,12 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
       const asset = await saveAsset(queryClient, { id: savedId, communityId }, result.data);
       setSavedId(asset.id);
       editor.markSaved();
-      setStatus({ kind: 'ok', text: '저장했습니다.' });
+      setStatus({
+        kind: 'ok',
+        text: trimmed
+          ? `저장했습니다. 발 아래 빈 줄 ${trimmed}개를 정리했습니다.`
+          : '저장했습니다.',
+      });
     } catch (err) {
       setStatus({
         kind: 'error',
@@ -444,18 +761,121 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
           </button>
         </aside>
 
-        <div className="pixel-editor__stage">
-          <canvas
-            ref={canvasRef}
-            className="pixel-editor__canvas"
-            width={doc.width * zoom}
-            height={doc.height * zoom}
-            onPointerDown={onPointerDown}
-            onPointerMove={onPointerMove}
-            onPointerUp={endStroke}
-            onPointerCancel={endStroke}
-            onContextMenu={(e) => e.preventDefault()}
-          />
+        <div className="pixel-editor__main">
+          {cropRect ? (
+            <div className="pixel-editor__bar" role="toolbar" aria-label="자르기">
+              <span>
+                남길 곳 {cropRect.w}×{cropRect.h}px
+              </span>
+              <button
+                type="button"
+                className="button button--primary"
+                onClick={() => applyCrop(true)}
+                title="Enter"
+              >
+                모든 프레임 자르기
+              </button>
+              <button type="button" className="button" onClick={() => applyCrop(false)}>
+                이 프레임만
+              </button>
+              {canFit && (
+                <label className="pixel-editor__check">
+                  <input
+                    type="checkbox"
+                    checked={cropFit}
+                    onChange={(e) => setCropFit(e.target.checked)}
+                  />
+                  그림 크기도 맞추기
+                </label>
+              )}
+              <button type="button" className="button" onClick={() => setCrop(null)} title="Esc">
+                취소
+              </button>
+            </div>
+          ) : tool === 'crop' ? (
+            <div className="pixel-editor__bar">
+              <span className="form__hint">남길 곳을 끌어서 고르세요. 밖은 지워집니다.</span>
+            </div>
+          ) : tool === 'lasso' || active ? (
+            <div className="pixel-editor__bar" role="toolbar" aria-label="선택 영역">
+              {!active && (
+                <span className="form__hint">
+                  둘러 그려서 고르고, 고른 곳을 끌어 옮깁니다 (방향키로 한 칸씩).
+                </span>
+              )}
+              <button
+                type="button"
+                className="button"
+                disabled={!active}
+                onClick={copySelection}
+                title="Ctrl+C"
+              >
+                복사
+              </button>
+              <button
+                type="button"
+                className="button"
+                disabled={!active}
+                onClick={() => {
+                  if (copySelection()) deleteSelection();
+                }}
+                title="Ctrl+X"
+              >
+                잘라내기
+              </button>
+              <button
+                type="button"
+                className="button"
+                disabled={!clipboard}
+                onClick={paste}
+                title="Ctrl+V: 복사한 자리에 붙입니다"
+              >
+                붙여넣기
+              </button>
+              <button
+                type="button"
+                className="button"
+                disabled={!active}
+                onClick={deleteSelection}
+                title="Delete"
+              >
+                지우기
+              </button>
+              <button
+                type="button"
+                className="button"
+                onClick={() => {
+                  select(new Uint8Array(pixels.length).fill(1));
+                  setTool('lasso');
+                }}
+                title="Ctrl+A"
+              >
+                전체 선택
+              </button>
+              <button
+                type="button"
+                className="button"
+                disabled={!active}
+                onClick={() => setSelection(null)}
+                title="Esc"
+              >
+                선택 해제
+              </button>
+            </div>
+          ) : null}
+          <div className="pixel-editor__stage">
+            <canvas
+              ref={canvasRef}
+              className="pixel-editor__canvas"
+              width={doc.width * zoom}
+              height={doc.height * zoom}
+              onPointerDown={onPointerDown}
+              onPointerMove={onPointerMove}
+              onPointerUp={endDrag}
+              onPointerCancel={endDrag}
+              onContextMenu={(e) => e.preventDefault()}
+            />
+          </div>
         </div>
 
         <aside className="pixel-editor__side">
@@ -531,6 +951,44 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
           {doc.kind === 'object' && <ObjectSettings editor={editor} />}
 
           {doc.kind === 'character' && <CharacterSizeSettings editor={editor} />}
+
+          {doc.kind === 'character' && (
+            <section>
+              <h3>발 아래 정리</h3>
+              <label className="pixel-editor__check">
+                <input
+                  type="checkbox"
+                  checked={trimFeet}
+                  onChange={(e) => {
+                    setTrimFeet(e.target.checked);
+                    saveTrimFeet(e.target.checked);
+                  }}
+                />
+                저장할 때 발 아래 빈 줄 자동 정리
+              </label>
+              <div className="pixel-editor__row">
+                <button
+                  type="button"
+                  className="button"
+                  onClick={() => {
+                    const rows = editor.trimBelowFeet();
+                    setStatus({
+                      kind: 'ok',
+                      text: rows
+                        ? `발 아래 빈 줄 ${rows}개를 정리했습니다.`
+                        : '발 아래에 정리할 빈 줄이 없습니다.',
+                    });
+                  }}
+                >
+                  지금 정리
+                </button>
+              </div>
+              <p className="form__hint">
+                광장은 그림의 맨 아래를 발밑으로 세웁니다. 모든 프레임에서 함께 비어 있는 아래
+                줄만큼 그림을 내려서 캐릭터가 떠 보이지 않게 합니다 (걷기의 들썩임은 그대로).
+              </p>
+            </section>
+          )}
 
           <section>
             <h3>애니메이션</h3>
