@@ -3,15 +3,32 @@ import {
   type AssetManifest,
   type CommunitySummary,
   type InviteInfo,
+  SocketEvent,
+  type UserDetail,
+  type UserProfile,
 } from '@metacode/shared';
 import { builtinAsset } from '@metacode/shared/builtin-assets';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { type TestApp, loginUser, startTestApp } from './harness.js';
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import {
+  type ClientSocket,
+  type TestApp,
+  connectSocket,
+  loginUser,
+  nextEvent,
+  startTestApp,
+} from './harness.js';
 
 let t: TestApp;
 
 beforeAll(async () => {
   t = await startTestApp();
+});
+
+let sockets: ClientSocket[] = [];
+
+afterEach(() => {
+  for (const s of sockets) s.disconnect();
+  sockets = [];
 });
 
 afterAll(async () => {
@@ -165,5 +182,71 @@ describe('커뮤니티 타일·오브젝트', () => {
     );
     expect((await alice.fetch(`/communities/${community.id}`, send('DELETE'))).status).toBe(204);
     expect((await alice.fetch(`/assets/${asset.id}`)).status).toBe(404);
+  });
+});
+
+describe('캐릭터 고르기', () => {
+  it('기본 캐릭터를 색과 함께 고르면 같은 커뮤니티 사람에게 알리고, null이면 기본으로 돌아간다', async () => {
+    const { alice, bob } = await setup();
+    const bobSocket = await connectSocket(t, bob);
+    sockets.push(bobSocket);
+    expect((await alice.json<UserDetail>('/users/me')).character).toBeNull();
+
+    const updated = nextEvent(bobSocket, SocketEvent.UserUpdated);
+    const choice = { asset: 'builtin:char-long', colors: { shirt: '#3f8fdb' } };
+    const me = await alice.json<UserDetail>(
+      '/users/me/character',
+      send('PUT', { character: choice }),
+    );
+    expect(me.character).toEqual(choice);
+    expect(((await updated) as UserProfile).character).toEqual(choice);
+
+    const reset = await alice.json<UserDetail>(
+      '/users/me/character',
+      send('PUT', { character: null }),
+    );
+    expect(reset.character).toBeNull();
+
+    for (const bad of [
+      { asset: 'builtin:tt-0', colors: {} },
+      { asset: 'builtin:char-short', colors: { shirt: 'blue' } },
+    ]) {
+      expect(
+        (await alice.fetch('/users/me/character', send('PUT', { character: bad }))).status,
+      ).toBe(400);
+    }
+  });
+
+  it('직접 그린 캐릭터는 만든 사람만 고르고, 고치면 version이 바뀌고 지우면 기본으로 돌아간다', async () => {
+    const { alice, bob } = await setup();
+    const mine = await alice.json<AssetDto>('/assets', send('POST', { manifest: character('나') }));
+    expect(
+      (
+        await bob.fetch(
+          '/users/me/character',
+          send('PUT', { character: { asset: mine.id, colors: {} } }),
+        )
+      ).status,
+    ).toBe(400);
+
+    const chosen = await alice.json<UserDetail>(
+      '/users/me/character',
+      send('PUT', { character: { asset: mine.id, colors: {} } }),
+    );
+    expect(chosen.character).toEqual({ asset: mine.id, colors: {}, version: mine.updatedAt });
+
+    const bobSocket = await connectSocket(t, bob);
+    sockets.push(bobSocket);
+    const edited = nextEvent(bobSocket, SocketEvent.UserUpdated);
+    const saved = await alice.json<AssetDto>(
+      `/assets/${mine.id}`,
+      send('PUT', { manifest: character('나 2') }),
+    );
+    expect(((await edited) as UserProfile).character?.version).toBe(saved.updatedAt);
+
+    const removed = nextEvent(bobSocket, SocketEvent.UserUpdated);
+    await alice.fetch(`/assets/${mine.id}`, send('DELETE'));
+    expect(((await removed) as UserProfile).character).toBeNull();
+    expect((await alice.json<UserDetail>('/users/me')).character).toBeNull();
   });
 });

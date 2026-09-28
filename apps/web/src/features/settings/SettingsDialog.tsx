@@ -29,6 +29,7 @@ const SECTIONS: { group: string; items: { id: SettingsSection; label: string }[]
     group: '사용자 설정',
     items: [
       { id: 'account', label: '내 계정' },
+      { id: 'character', label: '캐릭터' },
       { id: 'assets', label: '에셋' },
     ],
   },
@@ -36,11 +37,15 @@ const SECTIONS: { group: string; items: { id: SettingsSection; label: string }[]
 ];
 const TITLE: Record<SettingsSection, string> = {
   account: '내 계정',
+  character: '캐릭터',
   assets: '에셋',
   voice: '음성',
 };
 
-// 에셋 목록과 도트 에디터는 내장 에셋(약 150KB)을 쓰므로 열 때 따로 불러온다.
+// 캐릭터, 에셋 목록, 도트 에디터는 내장 에셋(약 150KB)을 쓰므로 열 때 따로 불러온다.
+const CharacterSettings = lazy(() =>
+  import('../assets/CharacterSettings').then((m) => ({ default: m.CharacterSettings })),
+);
 const AssetSettings = lazy(() =>
   import('../assets/AssetSettings').then((m) => ({ default: m.AssetSettings })),
 );
@@ -130,6 +135,11 @@ function SettingsWindow({ section }: { section: SettingsSection }) {
           </header>
           <div className="settings-content__body">
             {section === 'account' && <AccountSettings me={me} />}
+            {section === 'character' && (
+              <Suspense fallback={<p className="form__hint">불러오는 중…</p>}>
+                <CharacterSettings me={me} />
+              </Suspense>
+            )}
             {section === 'assets' && (
               <Suspense fallback={<p className="form__hint">불러오는 중…</p>}>
                 <AssetSettings />

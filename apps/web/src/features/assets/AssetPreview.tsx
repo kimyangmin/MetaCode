@@ -1,5 +1,5 @@
 import { type AssetManifest, DEFAULT_ANIMATION } from '@metacode/shared';
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { frameAt, framePixels } from './render';
 
 /** 목록 카드에 보일 애니메이션: 캐릭터는 아래로 걷기, 나머지는 기본 애니메이션 */
@@ -25,12 +25,16 @@ export function AssetPreview({
   palette?: readonly string[];
 }) {
   const ref = useRef<HTMLCanvasElement>(null);
+  // 같은 색이면 같은 배열로 본다 (부르는 쪽이 매번 새 배열을 만들어도 애니메이션이 처음부터 다시 돌지 않게).
+  const [stablePalette, setStablePalette] = useState(palette);
+  if (palette?.join() !== stablePalette?.join()) setStablePalette(palette);
   const images = useMemo(
     () =>
       manifest.frames.map(
-        (_, i) => new ImageData(framePixels(manifest, i, palette), manifest.width, manifest.height),
+        (_, i) =>
+          new ImageData(framePixels(manifest, i, stablePalette), manifest.width, manifest.height),
       ),
-    [manifest, palette],
+    [manifest, stablePalette],
   );
 
   useEffect(() => {

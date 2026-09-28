@@ -5,6 +5,7 @@ import { AttachmentsController } from '../attachments/attachments.controller.js'
 import { AttachmentsService } from '../attachments/attachments.service.js';
 import { PlazaService } from '../plaza/plaza.service.js';
 import { PresenceModule } from '../presence/presence.module.js';
+import { UsersModule } from '../users/users.module.js';
 import { LiveKitService } from '../voice/livekit.service.js';
 import { VoiceService } from '../voice/voice.service.js';
 import { AccessService } from './access.service.js';
@@ -21,7 +22,7 @@ import { RolesService } from './roles.service.js';
 
 /** 채팅 모드와 메타버스 모드의 서버: 커뮤니티, 채널, DM, 메시지, 첨부, 에셋, 광장, 음성 통화, 실시간 게이트웨이 */
 @Module({
-  imports: [PresenceModule],
+  imports: [PresenceModule, UsersModule],
   controllers: [
     CommunitiesController,
     ChannelsController,

@@ -1,8 +1,20 @@
 import { describe, expect, it } from 'vitest';
 import { withUserProfile } from './userUpdates';
 
-const alice = { id: 'a', username: 'alice', displayName: null, avatarUrl: 'https://gh/a' };
-const bob = { id: 'b', username: 'bob', displayName: null, avatarUrl: 'https://gh/b' };
+const alice = {
+  id: 'a',
+  username: 'alice',
+  displayName: null,
+  avatarUrl: 'https://gh/a',
+  character: null,
+};
+const bob = {
+  id: 'b',
+  username: 'bob',
+  displayName: null,
+  avatarUrl: 'https://gh/b',
+  character: null,
+};
 const renamed = { ...alice, displayName: '앨리스', avatarUrl: 'https://api/avatars/a/1.webp' };
 
 describe('withUserProfile', () => {
@@ -28,6 +40,15 @@ describe('withUserProfile', () => {
   it('프로필에 붙은 다른 값(자기소개 등)은 남긴다', () => {
     const me = { ...alice, bio: '소개', customAvatar: false };
     expect(withUserProfile(me, renamed)).toEqual({ ...renamed, bio: '소개', customAvatar: false });
+  });
+
+  it('캐릭터가 바뀌어도 바꾼다', () => {
+    const dressed = {
+      ...alice,
+      character: { asset: 'builtin:char-long', colors: { hair: '#1c1c1c' } },
+    };
+    const data = { members: [{ user: alice }] };
+    expect(withUserProfile(data, dressed).members[0]!.user.character).toEqual(dressed.character);
   });
 
   it('바뀐 것이 없으면 같은 객체를 돌려준다', () => {

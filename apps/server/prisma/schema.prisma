@@ -24,6 +24,8 @@ model User {
   bio         String?
   /// 직접 올린 프로필 사진의 저장소 키 (avatars/<userId>/<id>.webp). null이면 GitHub 사진
   avatarKey   String?  @map("avatar_key")
+  /// 광장 캐릭터 {asset, colors, version?}. null이면 사용자 ID로 고른 기본 캐릭터
+  character   Json?
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 

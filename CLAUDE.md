@@ -170,6 +170,11 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
   - 도트 에디터(`PixelEditor`, 편집 로직은 `editorModel.ts`의 `PixelDocument`): 연필·지우개·채우기·스포이트, 좌우 대칭, 앞 프레임 겹쳐 보기, 되돌리기(붓질 한 번 = 한 단계, 색 고르기 드래그도 한 단계), 팔레트 편집(지운 색의 픽셀은 투명), 프레임 넣기·복제·옮기기·지우기, 애니메이션 미리보기, PNG 가져오기(프레임 크기 또는 가로로 이어 붙인 시트, 64색이 넘으면 가까운 색)·내보내기. 오른쪽 버튼은 지우개.
   - 에디터에서는 애니메이션마다 프레임을 따로 갖고, 저장할 때 같은 그림을 한 장으로 합칩니다 (`toManifest`). 캐릭터는 `missingAnimations`가 비어야 저장 버튼이 켜집니다.
   - 에디터는 설정 창 위에 화면 전체로 뜹니다. Esc는 에디터가 먼저 받아 `preventDefault()`하고, 설정 창은 `defaultPrevented`면 닫지 않습니다. 설정 창을 닫으면 에디터 상태(`useAssetEditorStore`)도 비웁니다.
+- **캐릭터 고르기 (Phase 6):** `UsersService.setCharacter`, 웹 `features/assets/CharacterSettings.tsx`
+  - `User.character`(JSON `{asset, colors, version?}`), null이면 `defaultCharacter(userId)`. 프로필(`UserProfile.character`)에 실려 메시지·멤버·광장 인원 어디서나 같은 값을 씁니다.
+  - `PUT /users/me/character {character | null}`: 기본 캐릭터(`BUILTIN_CHARACTERS`)나 **직접 만든** 캐릭터만 고를 수 있습니다 (남의 캐릭터 400). 색은 부위(`colorSlots`)가 있는 캐릭터에만 적용됩니다 (내장 캐릭터를 복제해 그린 것도 부위가 남음).
+  - 직접 그린 캐릭터는 `version`(에셋 updatedAt)을 함께 저장합니다. 그 에셋을 고치면 version을 올리고, 지우면 기본 캐릭터로 돌려서 `user:updated`로 알립니다 (`characterAssetChanged`). 광장은 `['assets','one',id,version]`으로 에셋을 받아(`PlazaView.loadCharacters`) 씬에 등록한 뒤 다시 그리고, 받기 전에는 기본 캐릭터로 보입니다. 텍스처 키에 version이 들어가서 고친 그림이 바로 반영됩니다.
+  - `withUserProfile`은 닉네임·사진과 함께 캐릭터도 바꿉니다.
 - **Windows에서 파일 수정:** Windows PowerShell 5.1의 `Get-Content`/`Set-Content`는 UTF-8 한글을 깨뜨립니다. 파일 수정은 편집 도구나 bash를 씁니다.
 
 ## 확정된 결정
@@ -265,7 +270,7 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
 - 클라이언트 → 서버는 명령형, 서버 → 클라이언트는 과거형으로 짓습니다.
   - `message:send` → `message:created`
   - `typing:start` → `typing:started` (보낸 연결 제외)
-  - 닉네임·프로필 사진 변경 → `user:updated`
+  - 닉네임·프로필 사진·캐릭터 변경 → `user:updated`
   - `channel:created`, `dm:created`, `community:member-joined` / `member-left` / `deleted`, `presence:changed`
   - `plaza:watch` / `plaza:unwatch`: 광장 화면을 열고 닫을 때 (위치 업데이트 구독)
   - `plaza:move` → `plaza:moved`
@@ -304,7 +309,7 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
 
 `apps/server/prisma/schema.prisma`가 기준입니다. 바꾸면 여기도 고칩니다.
 
-- `User` (구현됨): githubId, username(사용자 ID), displayName(GitHub 이름), avatarUrl(GitHub 사진), nickname, bio, avatarKey(올린 사진). characterId는 Phase 6에서 추가
+- `User` (구현됨): githubId, username(사용자 ID), displayName(GitHub 이름), avatarUrl(GitHub 사진), nickname, bio, avatarKey(올린 사진), character(광장 캐릭터 `{asset, colors, version?}`, null이면 기본)
 - `RefreshToken` (구현됨): userId, tokenHash, familyId, client, expiresAt, revokedAt
 - `Community` (구현됨): name, ownerId / `CommunityMember`: userId, communityId, role(`OWNER` | `ADMIN` | `MEMBER`) / `Invite`: code(8자), expiresAt(7일), uses
 - `Role` (구현됨): communityId, name(커뮤니티 안에서 고유), color(#rrggbb), position / `MemberRole`: 멤버 ↔ 역할 / `ChannelRoleAccess`: 비공개 채널 ↔ 볼 수 있는 역할
@@ -315,7 +320,6 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
 - `ChannelReadState` (구현됨): channelId, userId, lastReadMessageId. 앞으로만 옮긴다
 - `Attachment` (구현됨): channelId(권한 판단), uploaderId, messageId(보내기 전 null), status(`PENDING` | `READY`), kind(`IMAGE` | `FILE`), objectKey, thumbnailKey, fileName, contentType, size, width, height
 - `Asset` (구현됨): kind(`TILE` | `OBJECT` | `CHARACTER`), name, creatorId, communityId(캐릭터는 null), manifest(에셋 매니페스트 JSON)
-- `Character`: 에셋 키, 커스터마이징 값
 
 ## 도트 에셋 규격
 

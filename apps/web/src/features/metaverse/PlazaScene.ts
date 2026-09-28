@@ -1,4 +1,6 @@
 import {
+  type AssetManifest,
+  type AssetRef,
   type Direction,
   MOVE_SEND_INTERVAL_MS,
   type MapDefinition,
@@ -92,6 +94,9 @@ export class PlazaScene extends Phaser.Scene {
 
   private layout: MapLayout | null = null;
   private map: { key: string; view: MapView } | null = null;
+  /** 서버에서 받은 에셋(직접 그린 캐릭터 등). 내장 에셋은 builtinAsset으로 찾는다 */
+  private readonly customAssets = new Map<AssetRef, AssetManifest>();
+  private readonly assetOf = (ref: AssetRef) => this.customAssets.get(ref) ?? builtinAsset(ref);
   private actors = new Map<string, Actor>();
   private path: Position[] = [];
   private marker: Phaser.GameObjects.Image | null = null;
@@ -148,13 +153,10 @@ export class PlazaScene extends Phaser.Scene {
   upsert(occupant: PlazaOccupant): void {
     const existing = this.actors.get(occupant.user.id);
     if (existing) {
-      existing.user = occupant.user;
-      existing.dom.root.querySelector('.plaza-actor__name')!.textContent = this.options.nameOf(
-        occupant.user,
-      );
+      this.updateUser(occupant.user);
       return;
     }
-    const look = characterLook(this, occupant.user.id, null, builtinAsset);
+    const look = characterLook(this, occupant.user.id, occupant.user.character, this.assetOf);
     const isMe = occupant.user.id === this.options.meId;
     const position = { x: occupant.x, y: occupant.y };
     const actor: Actor = {
@@ -189,12 +191,23 @@ export class PlazaScene extends Phaser.Scene {
     this.applyVoice(actor);
   }
 
-  /** 닉네임이 바뀌었다 (user:updated): 이름표를 고친다 */
+  /** 받아 온 에셋을 등록한다. 그 뒤 updateUser()로 캐릭터를 다시 그린다 */
+  addAsset(ref: AssetRef, manifest: AssetManifest): void {
+    this.customAssets.set(ref, manifest);
+  }
+
+  /** 닉네임이나 캐릭터가 바뀌었다 (user:updated): 이름표와 캐릭터 모습을 고친다 */
   updateUser(user: UserProfile): void {
     const actor = this.actors.get(user.id);
     if (!actor) return;
     actor.user = user;
     actor.dom.name.textContent = this.options.nameOf(user);
+    const look = characterLook(this, user.id, user.character, this.assetOf);
+    if (look.key !== actor.look.key) {
+      actor.look = look;
+      actor.sprite.setTexture(look.key, 0);
+      actor.animation = { name: '', start: 0 };
+    }
   }
 
   remove(userId: string): void {

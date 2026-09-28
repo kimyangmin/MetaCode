@@ -15,6 +15,7 @@ import {
 import { AccessService } from '../chat/access.service.js';
 import type { Asset, Prisma } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { UsersService } from '../users/users.service.js';
 
 const KIND_TO_DB = {
   [AssetKind.Tile]: 'TILE',
@@ -45,6 +46,7 @@ export class AssetsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly access: AccessService,
+    private readonly users: UsersService,
   ) {}
 
   async listMine(userId: string): Promise<AssetDto[]> {
@@ -114,12 +116,20 @@ export class AssetsService {
       where: { id },
       data: { name: manifest.name, manifest: manifest as unknown as Prisma.InputJsonValue },
     });
+    // 이 캐릭터를 쓰고 있으면 다른 사람들이 새 그림을 받도록 알린다.
+    if (updated.kind === 'CHARACTER') {
+      await this.users.characterAssetChanged(updated.creatorId, id, updated.updatedAt);
+    }
     return toAssetDto(updated);
   }
 
   async remove(userId: string, id: string): Promise<void> {
-    await this.writable(userId, id);
+    const asset = await this.writable(userId, id);
     await this.prisma.asset.delete({ where: { id } });
+    // 쓰고 있던 캐릭터를 지웠으면 기본 캐릭터로 돌아간다.
+    if (asset.kind === 'CHARACTER') {
+      await this.users.characterAssetChanged(asset.creatorId, id, null);
+    }
   }
 
   private async find(id: string): Promise<Asset> {

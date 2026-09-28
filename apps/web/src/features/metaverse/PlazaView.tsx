@@ -1,4 +1,5 @@
 import {
+  type AssetDto,
   type MessageDto,
   type PlazaCorrection,
   type PlazaId,
@@ -6,10 +7,13 @@ import {
   type PlazaMoved,
   SocketEvent,
   type UserProfile,
+  isBuiltinRef,
   messagePresentation,
 } from '@metacode/shared';
+import { useQueryClient } from '@tanstack/react-query';
 import Phaser from 'phaser';
 import { type KeyboardEvent, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { apiFetch } from '../../api/client';
 import { useRealtime } from '../../realtime/RealtimeProvider';
 import { displayName } from '../../ui/format';
 import { useVoiceStore } from '../voice/store';
@@ -37,6 +41,7 @@ export interface PlazaViewProps {
  */
 export default function PlazaView({ plazaId, me, channelLabels, voiceLabels }: PlazaViewProps) {
   const { socket } = useRealtime();
+  const queryClient = useQueryClient();
   const hostRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
@@ -91,10 +96,32 @@ export default function PlazaView({ plazaId, me, channelLabels, voiceLabels }: P
   // 광장 열기와 인원, 이동 동기화. 다시 연결되면 광장을 다시 연다 (서버의 방 참여가 끊기므로).
   useEffect(() => {
     if (!scene || !socket) return;
+    /**
+     * 직접 그린 캐릭터는 에셋을 받아 와서 씬에 등록한 뒤 다시 그린다. 받기 전에는 기본 캐릭터로 보인다.
+     * 같은 에셋·같은 버전은 한 번만 받는다.
+     */
+    const loadCharacters = (users: UserProfile[]) => {
+      for (const user of users) {
+        const character = user.character;
+        if (!character || isBuiltinRef(character.asset)) continue;
+        void queryClient
+          .fetchQuery({
+            queryKey: ['assets', 'one', character.asset, character.version ?? ''],
+            queryFn: () => apiFetch<AssetDto>(`/assets/${character.asset}`),
+            staleTime: Infinity,
+          })
+          .then((asset) => {
+            scene.addAsset(asset.id, asset.manifest);
+            scene.updateUser(user);
+          })
+          .catch(() => {});
+      }
+    };
     const watch = () => {
       socket.emit(SocketEvent.PlazaWatch, { plazaId }, (ack) => {
         if (!ack.ok) return setStatus('error');
         scene.applySnapshot(ack.data);
+        loadCharacters(ack.data.occupants.map((o) => o.user));
         setStatus('ready');
       });
     };
@@ -103,8 +130,12 @@ export default function PlazaView({ plazaId, me, channelLabels, voiceLabels }: P
     };
     const onMember = (change: PlazaMemberChange) => {
       if (change.plazaId !== plazaId) return;
-      if (change.occupant) scene.upsert(change.occupant);
-      else scene.remove(change.userId);
+      if (change.occupant) {
+        scene.upsert(change.occupant);
+        loadCharacters([change.occupant.user]);
+      } else {
+        scene.remove(change.userId);
+      }
     };
     const onCorrected = (correction: PlazaCorrection) => {
       if (correction.plazaId === plazaId) scene.corrected(correction);
@@ -126,7 +157,10 @@ export default function PlazaView({ plazaId, me, channelLabels, voiceLabels }: P
       });
     };
 
-    const onUserUpdated = (user: UserProfile) => scene.updateUser(user);
+    const onUserUpdated = (user: UserProfile) => {
+      scene.updateUser(user);
+      loadCharacters([user]);
+    };
 
     socket.on('connect', watch);
     socket.on(SocketEvent.PlazaMoved, onMoved);
@@ -144,7 +178,7 @@ export default function PlazaView({ plazaId, me, channelLabels, voiceLabels }: P
       socket.off(SocketEvent.UserUpdated, onUserUpdated);
       if (socket.connected) socket.emit(SocketEvent.PlazaUnwatch, { plazaId });
     };
-  }, [scene, socket, plazaId]);
+  }, [scene, socket, plazaId, queryClient]);
 
   // 통화 상태 → 캐릭터 위 음성 채널 표시와 말하는 중 고리
   const calls = useVoiceStore((s) => s.calls);

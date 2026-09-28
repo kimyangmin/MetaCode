@@ -3255,3 +3255,70 @@ a {
   padding: 4px 10px;
   font-size: 0.8rem;
 }
+
+/* ── 캐릭터 (설정 → 캐릭터) ─────────── */
+
+.character-settings {
+  max-width: 720px;
+}
+
+.character-settings__stage {
+  display: flex;
+  align-items: flex-end;
+  gap: 24px;
+  padding: 16px;
+  border-radius: 10px;
+  background: #84c669;
+}
+
+.character-settings__stage canvas {
+  image-rendering: pixelated;
+}
+
+.character-settings__turn {
+  display: flex;
+  gap: 8px;
+}
+
+.character-settings__options {
+  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+}
+
+.character-settings__option {
+  width: 100%;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.character-settings__option[aria-pressed='true'] {
+  border-color: var(--accent);
+  outline: 2px solid var(--accent);
+}
+
+.character-settings__slot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.character-settings__slot > span {
+  width: 40px;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.character-settings__slot .pixel-editor__swatch {
+  width: 26px;
+  height: 26px;
+}
+
+.character-settings__slot input[type='color'] {
+  width: 36px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: none;
+}

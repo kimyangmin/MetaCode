@@ -1,8 +1,8 @@
 import {
   type AssetAnimation,
   type AssetManifest,
-  type CharacterChoice,
   type Direction,
+  type ProfileCharacter,
   characterKey,
   characterPalette,
   defaultCharacter,
@@ -19,21 +19,22 @@ export interface CharacterLook {
 
 /**
  * 고른 캐릭터를 텍스처로 만든다. 같은 캐릭터·같은 색이면 텍스처를 함께 쓴다.
- * 에셋을 찾지 못하면(지워진 캐릭터 등) 사용자 ID로 고른 기본 캐릭터를 쓴다.
+ * 에셋을 찾지 못하면(아직 받지 못했거나 지워진 캐릭터) 사용자 ID로 고른 기본 캐릭터를 쓴다.
  */
 export function characterLook(
   scene: Phaser.Scene,
   userId: string,
-  choice: CharacterChoice | null,
+  choice: ProfileCharacter | null,
   assetOf: AssetLookup,
 ): CharacterLook {
-  let picked = choice ?? defaultCharacter(userId);
+  let picked: ProfileCharacter = choice ?? defaultCharacter(userId);
   let manifest = assetOf(picked.asset);
   if (!manifest || manifest.kind !== 'character') {
     picked = defaultCharacter(userId);
     manifest = assetOf(picked.asset)!;
   }
-  const key = `char:${characterKey(picked)}`;
+  // 직접 그린 캐릭터는 고칠 때마다 version이 바뀌므로 텍스처도 새로 만든다.
+  const key = `char:${picked.version ?? ''}:${characterKey(picked)}`;
   ensureAssetTexture(scene, key, manifest, characterPalette(manifest, picked.colors));
   return { key, manifest };
 }
