@@ -60,6 +60,9 @@ model Community {
   id        String   @id @default(uuid(7)) @db.Uuid
   name      String
   ownerId   String   @map("owner_id") @db.Uuid
+  /// 올린 아이콘·배너의 저장소 키 (communities/<id>/<종류>-<무작위>.webp). 없으면 null
+  iconKey   String?  @map("icon_key")
+  bannerKey String?  @map("banner_key")
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
@@ -198,6 +201,8 @@ model Message {
   replyToId String?  @map("reply_to_id") @db.Uuid
   /// 다른 곳에서 전달한 메시지
   forwarded Boolean  @default(false)
+  /// 작성자가 글을 고친 시각 (고치지 않았으면 null)
+  editedAt  DateTime? @map("edited_at")
   createdAt DateTime @default(now()) @map("created_at")
 
   channel     Channel      @relation(fields: [channelId], references: [id], onDelete: Cascade)

@@ -9,7 +9,12 @@ import { useQueryClient } from '@tanstack/react-query';
 import { type ReactNode, createContext, useContext, useEffect, useState } from 'react';
 import { type Socket, io } from 'socket.io-client';
 import { refreshWebSession } from '../api/client';
-import { addMessageToCache, queryKeys } from '../api/queries';
+import {
+  addMessageToCache,
+  queryKeys,
+  removeMessageFromCache,
+  updateMessageInCache,
+} from '../api/queries';
 import { API_URL } from '../config';
 import { getDesktopBridge } from '../platform';
 import { usePresenceStore } from '../stores/presence';
@@ -74,6 +79,10 @@ export function RealtimeProvider({ meId, children }: { meId: string; children: R
         communities?.some((c) => c.channels.some((ch) => ch.id === message.channelId));
       if (!known) void queryClient.invalidateQueries({ queryKey: queryKeys.dms });
     });
+    socket.on(SocketEvent.MessageUpdated, (message) => updateMessageInCache(queryClient, message));
+    socket.on(SocketEvent.MessageDeleted, (deleted) =>
+      removeMessageFromCache(queryClient, deleted),
+    );
     socket.on(SocketEvent.TypingStarted, ({ channelId, userId }) => {
       if (userId !== meId) useTypingStore.getState().start(channelId, userId);
     });

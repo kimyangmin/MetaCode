@@ -1,8 +1,29 @@
 import react from '@vitejs/plugin-react';
-import { defineConfig } from 'vite';
+import { type Plugin, defineConfig } from 'vite';
+
+/**
+ * 빌드마다 다른 번호. 앱에 넣어 두고 같은 값을 version.json으로도 내보내서, 떠 있는 앱이
+ * 새로 배포된 것을 알아채고 알아서 새로 불러오게 한다 (features/app/liveUpdate.ts).
+ */
+const BUILD_ID = new Date().toISOString();
+
+function versionFile(): Plugin {
+  return {
+    name: 'metacode-version-file',
+    apply: 'build',
+    generateBundle() {
+      this.emitFile({
+        type: 'asset',
+        fileName: 'version.json',
+        source: `${JSON.stringify({ build: BUILD_ID })}\n`,
+      });
+    },
+  };
+}
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), versionFile()],
+  define: { __BUILD_ID__: JSON.stringify(BUILD_ID) },
   // 기본은 Electron이 빌드 결과를 file://로 열 수 있도록 상대 경로.
   // 운영 웹(infra/caddy/Dockerfile)은 주소가 깊어져도 파일을 찾도록 WEB_BASE=/로 빌드한다.
   base: process.env.WEB_BASE ?? './',

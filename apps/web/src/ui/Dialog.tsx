@@ -4,10 +4,12 @@ interface DialogProps {
   title: string;
   onClose(): void;
   children: ReactNode;
+  /** 넓은 창 등 모양을 바꿀 때 */
+  className?: string;
 }
 
 /** 모달 창. 바깥을 누르거나 Esc를 누르면 닫힌다. */
-export function Dialog({ title, onClose, children }: DialogProps) {
+export function Dialog({ title, onClose, children, className }: DialogProps) {
   const ref = useRef<HTMLDivElement>(null);
   // 부모가 다시 그려질 때마다 onClose가 새 함수여도 아래 effect가 다시 돌지 않도록 ref로 둔다.
   const onCloseRef = useRef(onClose);
@@ -17,7 +19,8 @@ export function Dialog({ title, onClose, children }: DialogProps) {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onCloseRef.current();
+      // 위에 뜬 창(도트 에디터 등)이 먼저 Esc를 처리했으면(preventDefault) 닫지 않는다.
+      if (e.key === 'Escape' && !e.defaultPrevented) onCloseRef.current();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -36,7 +39,13 @@ export function Dialog({ title, onClose, children }: DialogProps) {
 
   return (
     <div className="dialog__overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="dialog" role="dialog" aria-modal="true" aria-label={title} ref={ref}>
+      <div
+        className={className ? `dialog ${className}` : 'dialog'}
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        ref={ref}
+      >
         <header className="dialog__header">
           <h2>{title}</h2>
           <button className="icon-button" onClick={onClose} aria-label="닫기">

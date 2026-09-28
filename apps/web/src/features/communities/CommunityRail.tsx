@@ -21,7 +21,7 @@ export function CommunityRail() {
       <hr className="rail__divider" />
       {communities.data?.map((c) => (
         <NavLink key={c.id} to={`/c/${c.id}`} className="rail__item" title={c.name}>
-          {initials(c.name)}
+          {c.iconUrl ? <img src={c.iconUrl} alt="" /> : initials(c.name)}
           {c.channels.some(hasUnread) && (
             <span className="rail__unread" aria-label="안 읽은 메시지" />
           )}

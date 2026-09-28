@@ -20,7 +20,7 @@ import { jsonBody } from '../../api/queries';
 import { type SettingsSection, useSettingsStore } from '../../stores/settings';
 import { Avatar } from '../../ui/Avatar';
 import { displayName } from '../../ui/format';
-import { useAssetEditorStore, useMapEditorStore } from '../assets/editorStore';
+import { closeAssetEditors } from '../assets/AssetEditors';
 import { logout, meQueryKey, useMe } from '../auth/auth';
 import { DeviceSelect, InputGainSlider, OutputVolumeSlider } from '../voice/devices';
 
@@ -42,17 +42,13 @@ const TITLE: Record<SettingsSection, string> = {
   voice: '음성',
 };
 
-// 캐릭터, 에셋 목록, 도트 에디터는 내장 에셋(약 150KB)을 쓰므로 열 때 따로 불러온다.
+// 캐릭터, 에셋 목록은 내장 에셋(약 150KB)을 쓰므로 열 때 따로 불러온다.
 const CharacterSettings = lazy(() =>
   import('../assets/CharacterSettings').then((m) => ({ default: m.CharacterSettings })),
 );
 const AssetSettings = lazy(() =>
   import('../assets/AssetSettings').then((m) => ({ default: m.AssetSettings })),
 );
-const PixelEditor = lazy(() =>
-  import('../assets/PixelEditor').then((m) => ({ default: m.PixelEditor })),
-);
-const MapEditor = lazy(() => import('../assets/MapEditor').then((m) => ({ default: m.MapEditor })));
 
 /**
  * 설정 창: 화면의 80%를 차지하고, 바깥(어두운 곳)을 누르거나 Esc를 누르면 닫힌다.
@@ -68,8 +64,6 @@ function SettingsWindow({ section }: { section: SettingsSection }) {
   const { open, close } = useSettingsStore.getState();
   const me = useMe().data;
   const queryClient = useQueryClient();
-  const editing = useAssetEditorStore((s) => s.target);
-  const mapEditing = useMapEditorStore((s) => s.target);
 
   useEffect(() => {
     // 설정 창 위에 뜬 창(도트 에디터 등)이 Esc를 먼저 처리하면(preventDefault) 닫지 않는다.
@@ -79,13 +73,7 @@ function SettingsWindow({ section }: { section: SettingsSection }) {
   }, [close]);
 
   // 설정 창을 닫으면 열려 있던 도트 에디터와 맵 에디터도 닫는다.
-  useEffect(
-    () => () => {
-      useAssetEditorStore.getState().close();
-      useMapEditorStore.getState().close();
-    },
-    [],
-  );
+  useEffect(() => closeAssetEditors, []);
 
   const onLogout = async () => {
     close();
@@ -157,25 +145,6 @@ function SettingsWindow({ section }: { section: SettingsSection }) {
           </div>
         </section>
       </div>
-      {editing && (
-        <Suspense fallback={null}>
-          <PixelEditor
-            key={editing.mode === 'edit' ? editing.asset.id : 'new'}
-            target={editing}
-            onClose={() => useAssetEditorStore.getState().close()}
-          />
-        </Suspense>
-      )}
-      {mapEditing && (
-        <Suspense fallback={null}>
-          <MapEditor
-            key={mapEditing.communityId}
-            communityId={mapEditing.communityId}
-            communityName={mapEditing.name}
-            onClose={() => useMapEditorStore.getState().close()}
-          />
-        </Suspense>
-      )}
     </div>
   );
 }

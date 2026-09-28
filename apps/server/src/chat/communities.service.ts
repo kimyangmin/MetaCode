@@ -19,7 +19,7 @@ import { PlazaService } from '../plaza/plaza.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { PresenceService } from '../presence/presence.service.js';
 import { RealtimeService, room } from '../realtime/realtime.service.js';
-import { toProfile } from '../users/users.service.js';
+import { publicFileUrl, toProfile } from '../users/users.service.js';
 import { VoiceService } from '../voice/voice.service.js';
 import { AccessService } from './access.service.js';
 import { ChannelSummaryService } from './channel-summary.service.js';
@@ -28,6 +28,14 @@ import { RolesService, assertSameSet, toRoleDto } from './roles.service.js';
 export const DEFAULT_CHANNEL_NAME = '일반';
 const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const INVITE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
+
+/** 올린 아이콘·배너의 주소 (없으면 null) */
+export function communityImages(community: { iconKey: string | null; bannerKey: string | null }) {
+  return {
+    iconUrl: community.iconKey ? publicFileUrl(community.iconKey) : null,
+    bannerUrl: community.bannerKey ? publicFileUrl(community.bannerKey) : null,
+  };
+}
 
 @Injectable()
 export class CommunitiesService {
@@ -64,6 +72,8 @@ export class CommunitiesService {
       myRole: CommunityRole.Owner,
       channels: await this.summaries.summarize(userId, community.channels),
       roles: [],
+      iconUrl: null,
+      bannerUrl: null,
     };
   }
 
@@ -94,6 +104,7 @@ export class CommunitiesService {
       myRole: m.role,
       channels: m.community.channels.map((c) => summaries.get(c.id)!),
       roles: m.community.roles.map(toRoleDto),
+      ...communityImages(m.community),
     }));
   }
 
@@ -261,6 +272,11 @@ export class CommunitiesService {
     });
     // DB의 첨부 행은 연쇄 삭제되지만 저장소의 파일은 따로 지운다.
     const fileKeys = await this.attachments.keysInCommunity(communityId);
+    const images = await this.prisma.community.findUnique({
+      where: { id: communityId },
+      select: { iconKey: true, bannerKey: true },
+    });
+    for (const key of [images?.iconKey, images?.bannerKey]) if (key) fileKeys.push(key);
     await this.prisma.community.delete({ where: { id: communityId } });
     await this.voice.communityDeleted(communityId);
     void this.attachments.removeObjects(fileKeys);
@@ -304,6 +320,7 @@ export class CommunitiesService {
       code: invite.code,
       communityId: invite.communityId,
       communityName: invite.community.name,
+      communityIconUrl: communityImages(invite.community).iconUrl,
       memberCount,
       expiresAt: invite.expiresAt?.toISOString() ?? null,
       joined: membership !== null,
@@ -361,7 +378,7 @@ export class CommunitiesService {
   private async findValidInvite(code: string) {
     const invite = await this.prisma.invite.findUnique({
       where: { code },
-      include: { community: { select: { name: true } } },
+      include: { community: { select: { name: true, iconKey: true, bannerKey: true } } },
     });
     if (!invite) throw new NotFoundException('초대 링크가 올바르지 않습니다.');
     if (invite.expiresAt && invite.expiresAt.getTime() <= Date.now()) {

@@ -268,6 +268,20 @@ export class PlazaScene extends Phaser.Scene {
     }
   }
 
+  /** 메시지를 고쳤다: 아직 떠 있는 말풍선의 글만 바꾼다 (보이는 시간은 그대로) */
+  editBubble(messageId: string, text: string): void {
+    for (const actor of this.actors.values()) {
+      actor.bubbles = actor.bubbles.map((b) => (b.id === messageId ? { ...b, text } : b));
+    }
+  }
+
+  /** 메시지를 지웠다: 떠 있는 말풍선을 내린다 */
+  removeBubble(messageId: string): void {
+    for (const actor of this.actors.values()) {
+      actor.bubbles = actor.bubbles.filter((b) => b.id !== messageId);
+    }
+  }
+
   // ── 키보드 ──
 
   press(key: string): void {
@@ -490,7 +504,8 @@ export class PlazaScene extends Phaser.Scene {
       root.style.zIndex = String(Math.round(actor.position.y));
 
       const active = activeBubbles(actor.bubbles, now);
-      const key = active.map((b) => b.id).join(',');
+      // 고친 메시지는 글이 바뀌므로 글까지 비교한다.
+      const key = active.map((b) => `${b.id}:${b.text}`).join('\n');
       if (key !== actor.renderedBubbles) {
         actor.bubbles = active;
         actor.renderedBubbles = key;

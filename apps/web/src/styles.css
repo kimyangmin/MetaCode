@@ -135,6 +135,18 @@ h3 {
   object-fit: cover;
 }
 
+/* 사진을 못 불러왔을 때: 이름 첫 글자 */
+.avatar__fallback {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  color: #fff;
+  font-weight: 700;
+  line-height: 1;
+}
+
 .avatar__status {
   position: absolute;
   right: -2px;
@@ -162,6 +174,11 @@ h3 {
   min-height: 100vh;
   padding: 16px;
   text-align: center;
+}
+
+/* 링크로 만든 버튼 (앱에서 열기 등) */
+a.button {
+  text-decoration: none;
 }
 
 .login__tagline {
@@ -220,6 +237,13 @@ h3 {
   color: var(--accent-fg);
 }
 
+.rail__item img {
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  object-fit: cover;
+}
+
 .rail__item--add {
   color: var(--ok);
   font-size: 24px;
@@ -253,6 +277,20 @@ h3 {
   min-height: 0;
   background: var(--bg-sidebar);
   border-right: 1px solid var(--border);
+}
+
+.sidebar__banner {
+  aspect-ratio: 16 / 9;
+  max-height: 140px;
+  overflow: hidden;
+  background: var(--bg-rail);
+}
+
+.sidebar__banner img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .sidebar__header {
@@ -558,6 +596,48 @@ h3 {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   line-height: 1.45;
+}
+
+.message__edited {
+  margin-left: 4px;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+/* 내 메시지 고치기 */
+.message__editor {
+  display: grid;
+  gap: 4px;
+}
+
+.message__editor textarea {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  background: var(--bg-input);
+  color: var(--fg);
+  font: inherit;
+  resize: vertical;
+}
+
+.message__editor-action {
+  margin-left: 8px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  cursor: pointer;
+}
+
+.message-list__error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 16px;
+  color: var(--danger);
+  font-size: 0.85rem;
 }
 
 .message--pending[data-status='sending'] .message__content {
@@ -937,6 +1017,10 @@ h3 {
   background: var(--bg);
   overflow-y: auto;
   box-shadow: 0 16px 48px rgb(0 0 0 / 0.3);
+}
+
+.dialog.dialog--wide {
+  width: min(720px, 100%);
 }
 
 .dialog__header {
@@ -1701,7 +1785,6 @@ h3 {
 /* 보기 창: 앱 위에 크게 띄운다 */
 .screen-viewer {
   position: fixed;
-  inset: 24px;
   z-index: 50;
   display: flex;
   flex-direction: column;
@@ -1712,6 +1795,10 @@ h3 {
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
 }
 
+.screen-viewer[data-maximized='true'] {
+  inset: 24px;
+}
+
 .screen-viewer__header {
   display: flex;
   align-items: center;
@@ -1719,6 +1806,112 @@ h3 {
   padding: 8px 12px;
   background: var(--bg-sidebar);
   color: var(--fg);
+  cursor: move;
+  touch-action: none;
+}
+
+.screen-viewer[data-maximized='true'] .screen-viewer__header {
+  cursor: default;
+}
+
+.screen-viewer__notice {
+  margin: 0;
+  padding: 6px 12px;
+  background: var(--bg-hover);
+  color: var(--warn);
+  font-size: 0.8rem;
+}
+
+/* 가장자리와 모서리: 끌어서 크기 바꾸기 (보이지 않는 얇은 띠) */
+.screen-viewer__edge {
+  position: absolute;
+  z-index: 1;
+  touch-action: none;
+}
+
+.screen-viewer__edge--n,
+.screen-viewer__edge--s {
+  left: 10px;
+  right: 10px;
+  height: 6px;
+  cursor: ns-resize;
+}
+
+.screen-viewer__edge--n {
+  top: 0;
+}
+
+.screen-viewer__edge--s {
+  bottom: 0;
+}
+
+.screen-viewer__edge--e,
+.screen-viewer__edge--w {
+  top: 10px;
+  bottom: 10px;
+  width: 6px;
+  cursor: ew-resize;
+}
+
+.screen-viewer__edge--e {
+  right: 0;
+}
+
+.screen-viewer__edge--w {
+  left: 0;
+}
+
+.screen-viewer__edge--ne,
+.screen-viewer__edge--nw,
+.screen-viewer__edge--se,
+.screen-viewer__edge--sw {
+  width: 12px;
+  height: 12px;
+}
+
+.screen-viewer__edge--ne {
+  top: 0;
+  right: 0;
+  cursor: nesw-resize;
+}
+
+.screen-viewer__edge--sw {
+  bottom: 0;
+  left: 0;
+  cursor: nesw-resize;
+}
+
+.screen-viewer__edge--nw {
+  top: 0;
+  left: 0;
+  cursor: nwse-resize;
+}
+
+.screen-viewer__edge--se {
+  right: 0;
+  bottom: 0;
+  cursor: nwse-resize;
+}
+
+/* 새 창으로 분리한 화면: 창 전체를 채운다 */
+body.popup-window {
+  margin: 0;
+  background: #000;
+}
+
+.popup-window__root,
+.screen-viewer--popout {
+  position: fixed;
+  inset: 0;
+}
+
+.screen-viewer--popout {
+  border: 0;
+  border-radius: 0;
+}
+
+.screen-viewer--popout .screen-viewer__header {
+  cursor: default;
 }
 
 .screen-viewer__header strong {
@@ -1755,7 +1948,43 @@ h3 {
   color: #ccc;
 }
 
-/* 데스크톱: 공유할 화면 고르기 */
+/* 화면 공유 시작: 화질 고르기, 데스크톱은 공유할 화면 고르기 */
+.screen-quality {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.screen-quality legend {
+  margin-bottom: 6px;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.screen-quality label {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  column-gap: 8px;
+  row-gap: 2px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.screen-quality label:has(input:checked) {
+  border-color: var(--accent);
+}
+
+.screen-quality small {
+  grid-column: 2;
+  color: var(--muted);
+}
+
 .screen-picker {
   display: grid;
   gap: 12px;
@@ -3024,7 +3253,29 @@ a {
   cursor: default;
 }
 
+.pixel-editor__main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.pixel-editor__bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-sidebar);
+}
+
+.pixel-editor__bar .form__hint {
+  margin: 0;
+}
+
 .pixel-editor__stage {
+  flex: 1;
   display: grid;
   place-items: center;
   min-width: 0;
@@ -3389,4 +3640,102 @@ a {
   right: 3px;
   color: var(--warn);
   font-size: 10px;
+}
+
+/* ── 커뮤니티 설정: 일반 ── */
+
+.community-general {
+  display: grid;
+  gap: 16px;
+}
+
+.settings__row {
+  display: flex;
+  gap: 8px;
+}
+
+.settings__row input {
+  flex: 1;
+  min-width: 0;
+}
+
+.community-image {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+}
+
+.community-image__preview {
+  display: grid;
+  flex: none;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  background: var(--bg-sidebar);
+  font-weight: 600;
+}
+
+.community-image__preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.community-image__preview--icon {
+  width: 72px;
+  height: 72px;
+  border-radius: 20px;
+  font-size: 1.3rem;
+}
+
+.community-image__preview--banner {
+  width: 192px;
+  aspect-ratio: 16 / 9;
+  border-radius: 8px;
+}
+
+.community-image__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.community-image__actions .form__hint {
+  flex-basis: 100%;
+  margin: 0;
+}
+
+.danger-zone {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 14px;
+  border: 1px solid var(--danger, #e84537);
+  border-radius: 8px;
+}
+
+.danger-zone h3 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.danger-zone .form__hint {
+  margin: 0;
+}
+
+.danger-zone input {
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-input);
+  color: var(--fg);
+  font: inherit;
+}
+
+.invite__icon {
+  width: 72px;
+  height: 72px;
+  border-radius: 20px;
+  object-fit: cover;
 }

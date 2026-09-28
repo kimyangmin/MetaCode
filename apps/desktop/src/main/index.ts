@@ -10,10 +10,11 @@ import {
 } from 'electron';
 import { autoUpdater } from 'electron-updater';
 import { AuthManager } from './auth';
+import { PROTOCOL, deepLinkRoute, routeFromArgv } from './deeplink';
 import { allowPermission } from './permissions';
 import { createTokenStorage } from './token-storage';
 import { AutoUpdate } from './updater';
-import { isPopoutUrl } from './windows';
+import { isPopoutUrl, isScreenPopup } from './windows';
 
 /**
  * 앱 창은 웹 화면을 연다. 개발 중에는 web 개발 서버, 설치 파일로 배포한 앱은 운영 사이트다
@@ -40,6 +41,7 @@ const IPC = {
   updateGetReady: 'metacode:update:get-ready',
   updateReady: 'metacode:update:ready',
   updateInstall: 'metacode:update:install',
+  navigate: 'metacode:navigate',
 } as const;
 
 /** 인증이 필요한 첨부 파일 주소 */
@@ -48,6 +50,8 @@ const ATTACHMENTS_URL = `${API_URL}/attachments/`;
 let mainWindow: BrowserWindow | null = null;
 let auth: AuthManager | null = null;
 let updates: AutoUpdate | null = null;
+/** 창을 만들기 전에 받은 metacode:// 주소의 경로 (처음 켤 때 실행 인자로 오거나, macOS는 open-url로 옴) */
+let pendingRoute: string | null = routeFromArgv(process.argv);
 
 /** 앱 화면(웹 주소와 같은 출처)인지. 브리지 호출, 권한, 창 이동을 이 기준으로 막는다 */
 function isAppUrl(url: string): boolean {
@@ -74,11 +78,24 @@ const webPreferences = () => ({
 
 /**
  * 창이 열거나 이동할 수 있는 곳을 막는다.
- * - 분리한 창(/popout/)은 같은 보안 설정의 앱 창으로 열고, 그 창에도 같은 규칙을 건다.
+ * - 분리한 창(/popout/)과 화면 공유 보기 창(빈 창)은 같은 보안 설정의 앱 창으로 열고, 그 창에도 같은 규칙을 건다.
  * - 그 밖의 링크는 시스템 브라우저로 연다. 앱 화면 밖으로는 이동하지 못한다.
  */
 function guardWindow(win: BrowserWindow) {
-  win.webContents.setWindowOpenHandler(({ url }) => {
+  win.webContents.setWindowOpenHandler(({ url, frameName }) => {
+    // 화면 공유 보기를 떼어 낸 창: 같은 출처의 빈 창에 메인 창이 영상을 그린다.
+    if (isScreenPopup(url, frameName) && isAppUrl(win.webContents.getURL())) {
+      return {
+        action: 'allow',
+        overrideBrowserWindowOptions: {
+          minWidth: 320,
+          minHeight: 200,
+          autoHideMenuBar: true,
+          title: 'MetaCode 화면 공유',
+          webPreferences: webPreferences(),
+        },
+      };
+    }
     if (isPopoutUrl(url, WEB_ORIGIN)) {
       return {
         action: 'allow',
@@ -110,12 +127,46 @@ function createMainWindow(): BrowserWindow {
   });
   guardWindow(win);
 
-  void win.loadURL(WEB_URL);
+  void win.loadURL(routeUrl(pendingRoute));
+  pendingRoute = null;
 
   win.on('closed', () => {
     mainWindow = null;
   });
   return win;
+}
+
+/** 앱 화면의 주소. 데스크톱 웹은 해시 주소를 쓴다 (#/invite/...) */
+function routeUrl(route: string | null): string {
+  return route ? `${new URL(WEB_URL).origin}/#${route}` : WEB_URL;
+}
+
+/**
+ * metacode:// 주소로 받은 경로로 간다. 창이 없으면 만들 때 그 경로로 열고, 불러오는 중이면 그 경로로
+ * 다시 열고, 이미 떠 있으면 웹 화면에 알려 새로 고치지 않고 옮긴다 (통화가 끊기지 않게).
+ */
+function openRoute(route: string | null) {
+  if (!route) return;
+  if (!mainWindow) {
+    pendingRoute = route;
+    if (app.isReady()) mainWindow = createMainWindow();
+    return;
+  }
+  focusMainWindow();
+  if (mainWindow.webContents.isLoading()) void mainWindow.loadURL(routeUrl(route));
+  else mainWindow.webContents.send(IPC.navigate, route);
+}
+
+/**
+ * metacode:// 를 이 앱으로 연결한다. 설치한 앱만 한다: 개발용 앱이 가져가면 설치한 앱으로 열리지 않는다.
+ * 개발 중에 확인하려면 METACODE_REGISTER_PROTOCOL=1로 켠다 (electron 실행 파일 + 앱 경로로 등록).
+ */
+function registerProtocol() {
+  if (app.isPackaged) {
+    app.setAsDefaultProtocolClient(PROTOCOL);
+  } else if (process.env.METACODE_REGISTER_PROTOCOL === '1' && process.argv[1]) {
+    app.setAsDefaultProtocolClient(PROTOCOL, process.execPath, [path.resolve(process.argv[1])]);
+  }
 }
 
 /** 앱 화면에서 온 호출만 받는다. */
@@ -247,7 +298,17 @@ function main() {
     app.quit();
     return;
   }
-  app.on('second-instance', focusMainWindow);
+  // Windows·Linux는 metacode:// 주소가 두 번째 실행의 인자로 온다.
+  app.on('second-instance', (_event, argv) => {
+    focusMainWindow();
+    openRoute(routeFromArgv(argv));
+  });
+  // macOS는 open-url로 온다 (준비 전에도 올 수 있어서 먼저 건다).
+  app.on('open-url', (event, url) => {
+    event.preventDefault();
+    openRoute(deepLinkRoute(url));
+  });
+  registerProtocol();
 
   void app.whenReady().then(() => {
     auth = new AuthManager({

@@ -14,8 +14,9 @@ import { AccessService } from './access.service.js';
 import { ChannelSummaryService } from './channel-summary.service.js';
 import { ChannelsController } from './channels.controller.js';
 import { ChatGateway } from './chat.gateway.js';
-import { CommunitiesController } from './communities.controller.js';
+import { CommunitiesController, CommunityImagesController } from './communities.controller.js';
 import { CommunitiesService } from './communities.service.js';
+import { CommunityProfileService } from './community-profile.service.js';
 import { DmsController } from './dms.controller.js';
 import { DmsService } from './dms.service.js';
 import { MessagesService } from './messages.service.js';
@@ -27,6 +28,7 @@ import { RolesService } from './roles.service.js';
   imports: [PresenceModule, UsersModule],
   controllers: [
     CommunitiesController,
+    CommunityImagesController,
     ChannelsController,
     DmsController,
     AttachmentsController,
@@ -38,6 +40,7 @@ import { RolesService } from './roles.service.js';
     AccessService,
     ChannelSummaryService,
     CommunitiesService,
+    CommunityProfileService,
     DmsService,
     MessagesService,
     RolesService,

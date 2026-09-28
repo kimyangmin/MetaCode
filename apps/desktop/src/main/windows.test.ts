@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isPopoutUrl } from './windows';
+import { isPopoutUrl, isScreenPopup } from './windows';
 
 const origin = 'https://metacode.kimyangmin.me';
 
@@ -13,5 +13,13 @@ describe('isPopoutUrl', () => {
     expect(isPopoutUrl('https://evil.example/popout/chat/1', origin)).toBe(false);
     expect(isPopoutUrl(`${origin}/c/1`, origin)).toBe(false);
     expect(isPopoutUrl('not a url', origin)).toBe(false);
+  });
+});
+
+describe('isScreenPopup', () => {
+  it('화면 공유 보기 이름의 빈 창만 연다', () => {
+    expect(isScreenPopup('about:blank', 'metacode-screen')).toBe(true);
+    expect(isScreenPopup('about:blank', 'other')).toBe(false);
+    expect(isScreenPopup('https://evil.example/', 'metacode-screen')).toBe(false);
   });
 });

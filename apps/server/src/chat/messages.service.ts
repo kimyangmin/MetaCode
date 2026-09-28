@@ -1,4 +1,9 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import {
   type MessageDto,
   type MessagePage,
@@ -18,6 +23,7 @@ type MessageRow = {
   content: string;
   forwarded: boolean;
   createdAt: Date;
+  editedAt: Date | null;
   author: Parameters<typeof toProfile>[0];
   attachments: Attachment[];
   replyTo: {
@@ -52,6 +58,7 @@ export function toMessageDto(message: MessageRow): MessageDto {
       : null,
     forwarded: message.forwarded,
     createdAt: message.createdAt.toISOString(),
+    editedAt: message.editedAt?.toISOString() ?? null,
   };
 }
 
@@ -132,6 +139,71 @@ export class MessagesService {
       }),
     );
     this.realtime.emit(room.channel(channelId), SocketEvent.MessageCreated, message);
+    return message;
+  }
+
+  /**
+   * 내가 보낸 메시지 고치기. 채팅 모드와 광장(떠 있는 말풍선)이 같은 message:updated를 받는다.
+   * 첨부가 없는 메시지는 글을 비울 수 없다 (지우려면 삭제).
+   */
+  async edit(userId: string, messageId: string, content: string): Promise<MessageDto> {
+    const own = await this.findOwn(userId, messageId, '고칠');
+    if (!content && own._count.attachments === 0) {
+      throw new BadRequestException('글을 비울 수 없습니다. 지우려면 메시지를 삭제하세요.');
+    }
+    const message = toMessageDto(
+      await this.prisma.message.update({
+        where: { id: messageId },
+        data: { content, editedAt: new Date() },
+        include: messageInclude,
+      }),
+    );
+    this.realtime.emit(room.channel(message.channelId), SocketEvent.MessageUpdated, message);
+    return message;
+  }
+
+  /**
+   * 내가 보낸 메시지 지우기. 첨부는 DB에서 함께 지워지고(연쇄 삭제) 저장소 파일은 여기서 지운다.
+   * 이 메시지에 답장한 메시지의 원래 메시지 표시는 비워진다(replyTo = null).
+   */
+  async remove(userId: string, messageId: string): Promise<void> {
+    const own = await this.findOwn(userId, messageId, '지울');
+    const attachments = await this.prisma.attachment.findMany({
+      where: { messageId },
+      select: { objectKey: true, thumbnailKey: true },
+    });
+    await this.prisma.message.delete({ where: { id: messageId } });
+    await this.attachments.removeObjects(
+      attachments.flatMap((a) => [a.objectKey, ...(a.thumbnailKey ? [a.thumbnailKey] : [])]),
+    );
+    const latest = await this.prisma.message.findFirst({
+      where: { channelId: own.channelId },
+      orderBy: { id: 'desc' },
+      select: { id: true },
+    });
+    this.realtime.emit(room.channel(own.channelId), SocketEvent.MessageDeleted, {
+      channelId: own.channelId,
+      messageId,
+      lastMessageId: latest?.id ?? null,
+    });
+  }
+
+  /** 볼 수 있는 채널의 내가 보낸 메시지. 볼 수 없으면 404, 남의 메시지면 403 */
+  private async findOwn(userId: string, messageId: string, action: string) {
+    const message = await this.prisma.message.findUnique({
+      where: { id: messageId },
+      select: {
+        id: true,
+        channelId: true,
+        authorId: true,
+        _count: { select: { attachments: true } },
+      },
+    });
+    if (!message) throw new NotFoundException('메시지를 찾을 수 없습니다.');
+    await this.access.getChannel(userId, message.channelId);
+    if (message.authorId !== userId) {
+      throw new ForbiddenException(`내가 보낸 메시지만 ${action} 수 있습니다.`);
+    }
     return message;
   }
 

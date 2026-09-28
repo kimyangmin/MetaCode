@@ -2,6 +2,8 @@ import {
   type AssetKind,
   type AssetManifest,
   CHARACTER_DEFAULT_WIDTH,
+  CHARACTER_MAX_WIDTH,
+  CHARACTER_MIN_WIDTH,
   DEFAULT_ANIMATION,
   FRAME_LIMIT,
   PALETTE_MAX_COLORS,
@@ -11,6 +13,7 @@ import {
   decodePixels,
   encodePixels,
 } from '@metacode/shared';
+import { type Rect, emptyRowsBelow, shiftPixels } from './selection';
 
 /**
  * 도트 에디터가 고치는 문서. 매니페스트는 애니메이션이 프레임을 번호로 함께 쓰지만(같은 그림 한 번만 저장),
@@ -57,6 +60,13 @@ export const STARTER_PALETTE = [
 
 const blank = (width: number, height: number) => new Uint8Array(width * height);
 
+/** 오브젝트의 기본 막힌 칸: 아래 줄만 (위쪽은 캐릭터가 뒤로 지나갈 수 있게) */
+function defaultFootprint(width: number, height: number): number[] {
+  const cols = Math.round(width / TILE_SIZE);
+  const cells = cols * Math.round(height / TILE_SIZE);
+  return Array.from({ length: cells }, (_, i) => (i >= cells - cols ? 1 : 0));
+}
+
 /** 종류에 맞는 새 문서. 캐릭터는 필수 애니메이션을 빈 프레임으로 채워 둔다 */
 export function newDoc(kind: AssetKind, name: string, tiles = { w: 1, h: 1 }): EditorDoc {
   const width =
@@ -79,7 +89,6 @@ export function newDoc(kind: AssetKind, name: string, tiles = { w: 1, h: 1 }): E
           frameMs: required.name.startsWith('idle') ? 1000 : 120,
         }))
       : [{ name: DEFAULT_ANIMATION, frames: [blank(width, height)], frameMs: 200 }];
-  const cells = Math.round(width / TILE_SIZE) * Math.round(height / TILE_SIZE);
   return {
     kind,
     name,
@@ -88,8 +97,7 @@ export function newDoc(kind: AssetKind, name: string, tiles = { w: 1, h: 1 }): E
     palette: [...STARTER_PALETTE],
     animations,
     solid: false,
-    // 오브젝트는 기본으로 아래 줄만 막는다 (위쪽은 캐릭터가 뒤로 지나갈 수 있게).
-    footprint: Array.from({ length: cells }, (_, i) => (i >= cells - width / TILE_SIZE ? 1 : 0)),
+    footprint: defaultFootprint(width, height),
   };
 }
 
@@ -261,6 +269,14 @@ export class PixelDocument {
 
   frame(ref: FrameRef): Uint8Array | undefined {
     return this.doc.animations[ref.animation]?.frames[ref.frame];
+  }
+
+  /** 프레임 한 장을 통째로 바꾼다 (begin() 다음에 부른다. 선택 영역 옮기기처럼 매번 처음부터 다시 만들 때) */
+  setFrame(ref: FrameRef, pixels: Uint8Array): void {
+    const frames = this.doc.animations[ref.animation]?.frames;
+    if (!frames || ref.frame >= frames.length) return;
+    frames[ref.frame] = pixels;
+    this.changed();
   }
 
   pick(ref: FrameRef, x: number, y: number): number {
@@ -504,6 +520,83 @@ export class PixelDocument {
       }
       doc.width = width;
       doc.height = height;
+    });
+  }
+
+  /**
+   * 캐릭터의 발 아래 빈 줄 정리. 광장은 그림의 맨 아래를 발밑으로 보고 세우므로, 발 아래가 비어 있으면
+   * 캐릭터가 떠 보인다. 모든 프레임에 공통으로 비어 있는 줄 수만큼 그림 전체를 내린다
+   * (걷기의 들썩임처럼 프레임끼리의 높이 차이는 그대로). 내린 줄 수를 돌려준다.
+   */
+  trimBelowFeet(): number {
+    const { kind, width, height } = this.doc;
+    if (kind !== 'character') return 0;
+    let rows = height;
+    for (const animation of this.doc.animations) {
+      for (const pixels of animation.frames) {
+        const empty = emptyRowsBelow(pixels, width, height);
+        // 빈 프레임은 세지 않는다 (아직 그리지 않은 프레임)
+        if (empty < height) rows = Math.min(rows, empty);
+      }
+    }
+    if (rows === 0 || rows === height) return 0;
+    this.edit((doc) => {
+      for (const animation of doc.animations) {
+        animation.frames = animation.frames.map((pixels) =>
+          shiftPixels(pixels, width, height, 0, rows),
+        );
+      }
+    });
+    return rows;
+  }
+
+  /**
+   * 사각형만 남기고 나머지를 지운다. frame을 주면 그 프레임만, 없으면 모든 프레임.
+   * fit이면(모든 프레임일 때만) 그림 크기도 사각형에 맞춘다: 캐릭터는 가로 = max(사각형 가로, 세로/2)로
+   * 발밑 가운데에, 오브젝트는 16px 단위로 올려 왼쪽 아래에 놓는다 (맵에 놓는 기준과 같게).
+   */
+  crop(rect: Rect, frame?: FrameRef, fit = false): void {
+    const old = this.doc;
+    let width = old.width;
+    let height = old.height;
+    let at = { x: rect.x, y: rect.y };
+    if (fit && !frame) {
+      if (old.kind === 'character') {
+        width = Math.min(
+          CHARACTER_MAX_WIDTH,
+          Math.max(CHARACTER_MIN_WIDTH, rect.w, Math.ceil(rect.h / 2)),
+        );
+        height = characterHeightOf(width);
+        at = { x: Math.floor((width - rect.w) / 2), y: height - rect.h };
+      } else if (old.kind === 'object') {
+        width = Math.ceil(rect.w / TILE_SIZE) * TILE_SIZE;
+        height = Math.ceil(rect.h / TILE_SIZE) * TILE_SIZE;
+        at = { x: 0, y: height - rect.h };
+      }
+    }
+    const cut = (pixels: Uint8Array) => {
+      const next = blank(width, height);
+      for (let y = 0; y < rect.h; y++) {
+        for (let x = 0; x < rect.w; x++) {
+          const v = pixels[(rect.y + y) * old.width + rect.x + x] ?? 0;
+          const tx = at.x + x;
+          const ty = at.y + y;
+          if (tx < width && ty < height) next[ty * width + tx] = v;
+        }
+      }
+      return next;
+    };
+    this.edit((doc) => {
+      doc.animations.forEach((animation, a) => {
+        animation.frames = animation.frames.map((pixels, f) =>
+          !frame || (frame.animation === a && frame.frame === f) ? cut(pixels) : pixels,
+        );
+      });
+      if (width !== old.width || height !== old.height) {
+        doc.width = width;
+        doc.height = height;
+        if (doc.kind === 'object') doc.footprint = defaultFootprint(width, height);
+      }
     });
   }
 

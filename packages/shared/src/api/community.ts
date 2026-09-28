@@ -17,6 +17,21 @@ export const createCommunitySchema = z.object({
 
 export type CreateCommunityRequest = z.infer<typeof createCommunitySchema>;
 
+/** 커뮤니티 설정의 일반 항목 (이름) */
+export const updateCommunitySchema = createCommunitySchema;
+export type UpdateCommunityRequest = z.infer<typeof updateCommunitySchema>;
+
+/** 커뮤니티 이미지: 아이콘(왼쪽 막대, 초대 화면)과 배너(채널 목록 위) */
+export const COMMUNITY_IMAGE_KINDS = ['icon', 'banner'] as const;
+export type CommunityImageKind = (typeof COMMUNITY_IMAGE_KINDS)[number];
+export const communityImageKindSchema = z.enum(COMMUNITY_IMAGE_KINDS);
+
+/** 저장하는 크기 (WebP, 가운데를 채워 자름). 배너는 16:9 */
+export const COMMUNITY_IMAGE_SIZE: Record<CommunityImageKind, { width: number; height: number }> = {
+  icon: { width: 256, height: 256 },
+  banner: { width: 960, height: 540 },
+};
+
 /** 소유자와 관리자는 역할, 채널, 권한을 관리하고 모든 채널을 본다 */
 export const isManager = (role: CommunityRole): boolean => role !== CommunityRole.Member;
 
@@ -27,6 +42,10 @@ export interface CommunitySummary {
   myRole: CommunityRole;
   channels: ChannelSummary[];
   roles: RoleDto[];
+  /** 올린 아이콘 (없으면 이름 첫 글자) */
+  iconUrl: string | null;
+  /** 올린 배너 (없으면 이름만) */
+  bannerUrl: string | null;
 }
 
 /** 커뮤니티가 만든 역할 (Discord식). 비공개 채널을 이 역할을 가진 멤버에게만 보여 줄 수 있다 */
@@ -95,6 +114,7 @@ export interface InviteInfo {
   code: string;
   communityId: string;
   communityName: string;
+  communityIconUrl: string | null;
   memberCount: number;
   expiresAt: string | null;
   /** 이미 멤버인지 */

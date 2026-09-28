@@ -180,6 +180,15 @@ export default function PlazaView({ plazaId, me, channelLabels, voiceLabels }: P
       });
     };
 
+    // 고치거나 지운 메시지는 광장의 말풍선에도 바로 반영한다 (채팅 모드와 같은 메시지).
+    const onMessageUpdated = (message: MessageDto) => {
+      if (!labelsRef.current.has(message.channelId)) return;
+      if (messagePresentation(message) !== 'bubble') return;
+      scene.editBubble(message.id, bubbleText(message.content));
+    };
+    const onMessageDeleted = ({ messageId }: { messageId: string }) =>
+      scene.removeBubble(messageId);
+
     const onUserUpdated = (user: UserProfile) => {
       scene.updateUser(user);
       loadCharacters([user]);
@@ -191,6 +200,8 @@ export default function PlazaView({ plazaId, me, channelLabels, voiceLabels }: P
     socket.on(SocketEvent.PlazaCorrected, onCorrected);
     socket.on(SocketEvent.PlazaMapChanged, onMapChanged);
     socket.on(SocketEvent.MessageCreated, onMessage);
+    socket.on(SocketEvent.MessageUpdated, onMessageUpdated);
+    socket.on(SocketEvent.MessageDeleted, onMessageDeleted);
     socket.on(SocketEvent.UserUpdated, onUserUpdated);
     if (socket.connected) watch();
     return () => {
@@ -200,6 +211,8 @@ export default function PlazaView({ plazaId, me, channelLabels, voiceLabels }: P
       socket.off(SocketEvent.PlazaCorrected, onCorrected);
       socket.off(SocketEvent.PlazaMapChanged, onMapChanged);
       socket.off(SocketEvent.MessageCreated, onMessage);
+      socket.off(SocketEvent.MessageUpdated, onMessageUpdated);
+      socket.off(SocketEvent.MessageDeleted, onMessageDeleted);
       socket.off(SocketEvent.UserUpdated, onUserUpdated);
       if (socket.connected) socket.emit(SocketEvent.PlazaUnwatch, { plazaId });
     };
@@ -207,11 +220,12 @@ export default function PlazaView({ plazaId, me, channelLabels, voiceLabels }: P
 
   // 통화 상태 → 캐릭터 위 음성 채널 표시와 말하는 중 고리
   const calls = useVoiceStore((s) => s.calls);
+  const myCallId = useVoiceStore((s) => s.session?.channelId ?? null);
   const voiceKey = [...voiceLabels].join();
   useEffect(() => {
     // voiceLabels는 렌더마다 새로 만들어지므로 내용(voiceKey)이 바뀔 때만 다시 계산한다.
-    scene?.setVoice(plazaVoiceStates(calls, voiceLabelsRef.current));
-  }, [scene, calls, voiceKey]);
+    scene?.setVoice(plazaVoiceStates(calls, voiceLabelsRef.current, myCallId));
+  }, [scene, calls, voiceKey, myCallId]);
 
   // 창이 포커스를 잃으면 keyup을 못 받으므로 눌린 키를 비운다.
   useEffect(() => {

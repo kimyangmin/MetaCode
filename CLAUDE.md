@@ -62,6 +62,12 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
 - **Presence 한계:** 서버가 시작할 때 Redis의 Presence 키를 모두 지웁니다 (비정상 종료로 남은 연결 정리). 서버가 한 대라는 전제이므로, 여러 대로 늘리면 인스턴스별 키 + 만료 시간으로 바꿔야 합니다.
 - **sandbox preload:** preload는 `electron` 외에는 require할 수 없어서 로컬 파일도 import하지 못합니다. IPC 채널 이름은 `apps/desktop/src/main/index.ts`와 `preload/index.ts`에 똑같이 적어 둡니다.
 - **데스크톱 로그인은 루프백, 커스텀 스킴 아님:** 처음에는 `metacode://` 딥링크로 앱에 돌아오게 했지만, 브라우저마다 다른 앱 열기를 막거나(사용자 기본 브라우저 Comet에서 실제로 동작 안 함) 확인 창을 띄워서 루프백(RFC 8252)으로 바꿨습니다. 커스텀 스킴이 다시 필요해지면(예: 초대 링크로 앱 열기) 로그인과 별개로 도입합니다.
+- **초대 링크로 앱 열기 (데스크톱 0.4.0):** `apps/desktop/src/main/deeplink.ts`, 웹 `features/desktop/OpenInApp.tsx`, `inviteLink.ts`
+  - 로그인과 별개로 `metacode://`를 씁니다. 받는 주소는 `metacode://invite/<코드>` 하나뿐이고, URL로 풀지 않고 글자 그대로 정규식으로 맞춥니다 (`new URL`은 `../`를 풀어서 다른 경로가 통과했음, 테스트 있음).
+  - 설치한 앱만 `setAsDefaultProtocolClient`로 등록합니다 (개발용 앱이 가져가지 않게, 확인하려면 `METACODE_REGISTER_PROTOCOL=1`). electron-builder의 `protocols`에도 적었습니다.
+  - 받는 곳: 처음 켤 때는 실행 인자, 이미 켜져 있으면 Windows·Linux는 `second-instance`의 인자, macOS는 `open-url`. 창이 없으면 `#/invite/<코드>`로 열고, 떠 있으면 IPC `metacode:navigate` → 브리지 `navigation.onNavigate`로 웹 라우터가 옮깁니다 (새로 고치지 않아 통화가 끊기지 않음). 로그인 전이면 초대를 기억했다가 로그인 뒤 이어 갑니다.
+  - 웹: Windows 브라우저에서 `/invite/<코드>`를 열면 먼저 "데스크톱 앱에서 여는 중" 화면이 뜨고 한 번 `metacode://`로 열어 봅니다 (브라우저의 "MetaCode 열기" 확인). "브라우저에서 계속"을 누르면 그 탭에서는 그 초대를 다시 묻지 않습니다 (sessionStorage). 데스크톱은 Windows용만 배포하므로 다른 OS에서는 묻지 않습니다 (앱 없는 OS에서 "주소를 열 수 없음" 오류를 피함).
+  - 0.3.x 이하 앱은 프로토콜을 등록하지 않았으므로, 앱을 0.4.0으로 업데이트해야 동작합니다. 0.4.0에는 화면 공유 보기 창 떼어 내기(`isScreenPopup`)도 들어 있습니다.
 - **채팅 구조 (Phase 2):**
   - 서버: `apps/server/src/chat/`. 권한 판단은 `AccessService` 한 곳에서 합니다 (권한 없으면 존재 여부도 숨기려고 404).
   - 실시간: `ChatGateway`가 접속 때 인증하고, 볼 수 있는 커뮤니티/채널 방에 넣습니다. 메시지는 방 단위로만 보내므로 권한 없는 채널의 메시지는 받지 않습니다. 멤버십이 바뀌면(참여, 탈퇴, 채널 생성, DM 생성) HTTP 쪽 서비스가 `RealtimeService`로 방 구성을 바로 고칩니다.
@@ -71,7 +77,8 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
   - 메시지 목록은 `column-reverse`로 그려 맨 아래가 기준점입니다. 이전 기록은 위쪽 끝 요소를 IntersectionObserver로 감지해 불러옵니다 (페이지가 그려지지 않는 숨은 탭에서는 동작하지 않음).
   - 입력창은 한글 조합 중 Enter(`isComposing`, keyCode 229)로 보내지 않습니다.
   - 라우터: 웹은 일반 주소, 데스크톱은 해시 주소(`#/c/...`). 로그인 전에 연 초대 링크는 sessionStorage에 기억했다가 로그인 후 이어 갑니다.
-  - 아직 없는 것: 메시지 수정/삭제, 보내기 속도 제한, 모바일 화면(가로 1000px 미만이면 멤버 목록만 숨김).
+  - 수정·삭제: 내가 보낸 메시지만 (우클릭 메뉴). `message:edit`(ack로 고친 메시지) → `message:updated`, `message:delete` → `message:deleted {channelId, messageId, lastMessageId}`. 고치면 `editedAt`이 남고 "(수정됨)"을 보여 주며, 첨부 없는 메시지는 글을 비울 수 없습니다. 지우면 첨부도 DB에서 연쇄 삭제되고 저장소 파일은 서버가 지웁니다. 답장의 원래 메시지 표시는 고치면 글이 바뀌고 지우면 비워지며(클라이언트 캐시도 같은 규칙, `updateMessageInCache`/`removeMessageFromCache`), `lastMessageId`로 채널의 안 읽음 표시를 맞춥니다. 광장은 떠 있는 말풍선의 글을 바꾸거나 내립니다.
+  - 아직 없는 것: 보내기 속도 제한, 모바일 화면(가로 1000px 미만이면 멤버 목록만 숨김).
 - **여러 사용자로 확인:** `tools/fake-github.mjs`(가짜 GitHub, 앨리스/밥/캐롤) + 서버를 `GITHUB_OAUTH_URL`/`GITHUB_API_URL`=`http://localhost:4010`으로 띄웁니다. 두 번째 사용자는 다른 브라우저나 스크립트(socket.io-client)로 접속합니다.
 - **첨부 파일 (Phase 3):** `apps/server/src/attachments/`, `apps/web/src/features/chat/uploads.ts`
   - 흐름: `POST /uploads`(권한·크기 확인, 크기를 서명에 넣은 presigned PUT) → 브라우저가 저장소에 직접 PUT → `POST /uploads/:id/complete`(크기 재확인, 이미지면 썸네일) → `message:send`의 `attachmentIds`로 메시지에 붙임(트랜잭션, 실패하면 메시지도 안 남음).
@@ -109,6 +116,9 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
   - 로컬: `infra/docker-compose.yml`의 `livekit` (키 `devkey`, NODE_IP 127.0.0.1). 운영: `COMPOSE_PROFILES=voice`일 때만 뜨고, 신호는 Caddy가 `https://<API_DOMAIN>/livekit`으로 넘깁니다 (livekit-client가 주소의 경로를 유지함). 키가 비어 있으면 서버는 음성만 끈 채로 뜹니다.
   - 화면 공유: 통화 중인 사람이 음성 패널의 🖥️로 공유합니다 (영상 + 가능하면 시스템 소리). 상태는 `voice:update`의 `sharing`으로 알려 목록과 광장(`🖥️`)에 보이고, 목록의 LIVE를 누르면 보기 창이 뜹니다 (그 통화에 없으면 먼저 들어감). 영상과 공유 소리는 **보고 있는 동안에만** 구독합니다 (`trackVolume`). 입장권은 마이크, 화면 공유 영상, 화면 공유 소리만 올릴 수 있습니다.
   - 미리보기: 참여자 목록(과 DM 머리글)의 공유 중인 사람에게 마우스를 0.3초 올리면 옆에 작게 띄웁니다. 같은 통화에 있을 때만 그 사람의 화면 영상을 받고(소리는 안 받음), 마우스를 떼면 구독을 끊습니다 (`previewing`, `SharePreview.tsx`).
+  - 화질(`screenQuality.ts`): 공유를 시작할 때 고릅니다 (부드럽게 720p60 / 선명하게 1080p30 / 최고 1080p60, 기본 최고, localStorage에 기억). 게임 공유가 끊기지 않게 H.264(하드웨어 인코딩), 시뮬캐스트 끔, `degradationPreference: maintain-framerate`(대역폭이 모자라면 해상도를 먼저 낮춤), `contentHint: motion`으로 보냅니다. 사용자가 적어(8명 안팎) 서버 부담보다 화질을 우선합니다.
+  - 받고 있는 화면 영상은 `VoiceConnection.screens`에 사람별로 기억합니다. 미리보기로 받던 영상을 LIVE로 크게 볼 때는 구독이 새로 생기지 않아 `TrackSubscribed`가 오지 않으므로, `watch`/`preview`가 기억한 영상을 바로 넘깁니다 (예전엔 "불러오는 중"에서 멈췄음).
+  - 보기 창(`ScreenViewer.tsx`)은 떠 있는 창입니다: 머리글을 끌어 옮기고 가장자리·모서리를 끌어 크기를 바꿉니다(위치·크기는 localStorage, `floatingFrame.ts`). 크게 보기(머리글 두 번 누르기), 전체 화면, ⧉로 새 창 분리. 분리한 창은 같은 출처의 빈 창(`openPopupWindow`, 이름 `metacode-screen`)에 메인 창이 React 포털로 그리는 것이라 통화 연결을 새로 만들지 않습니다 (같은 신원으로 두 번 들어가면 LiveKit이 앞의 연결을 끊음). 데스크톱은 이 빈 창을 `isScreenPopup`으로 허락합니다 (0.4.0부터, 이전 앱은 안내만).
   - 데스크톱 화면 공유: Electron의 getDisplayMedia는 고르는 창이 없어서, 웹이 브리지(`screen.getSources`)로 받은 목록을 보여 주고 고른 것(`screen.select`, 30초 유효)을 메인 프로세스의 `setDisplayMediaRequestHandler`가 넘겨줍니다. 고르지 않은 요청과 앱 화면이 아닌 요청은 거절합니다. 시스템 소리(loopback)는 Windows에서만 됩니다. 데스크톱 0.1.0에는 이 브리지가 없어서 "새 버전 설치" 안내가 뜹니다.
   - 데스크톱: Electron은 권한 처리기가 없으면 모든 권한을 허락하므로, 앱 화면에만 마이크·스피커 선택·클립보드 쓰기를 허락하고 나머지(카메라 포함)는 거절합니다 (`apps/desktop/src/main/permissions.ts`).
   - 로컬에서 두 사람 음성 확인: 브라우저 패널은 마이크를 막으므로, 두 번째 사용자는 `@livekit/rtc-node`로 음을 보내는 스크립트로 확인했습니다. 실제 마이크로 말하는 확인은 사람이 해야 합니다.
@@ -141,6 +151,11 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
   - 데스크톱: `setWindowOpenHandler`가 앱 출처의 `/popout/` 주소만 같은 보안 설정(preload, sandbox)의 앱 창으로 열고, 그 창에도 같은 규칙을 겁니다 (`main/windows.ts`). 다른 http(s) 주소는 시스템 브라우저로 엽니다.
   - **dragstart에서 화면을 바꾸지 않는다:** Chromium은 dragstart 직후 누른 자리에 끄는 요소가 그대로 있는지 확인하고, 다른 요소가 덮으면 드래그를 취소합니다. 처음에는 dragstart에서 놓을 자리 덮개를 그려서 실제 마우스로는 전혀 끌리지 않았습니다 (JS로 만든 DragEvent 확인으로는 못 잡음). 지금은 끄는 패널을 ref에만 두고, `.split-host`가 dragover/drop을 받으며, 미리보기는 `pointer-events: none`입니다.
   - **그리드 행 높이 고정:** `.app`은 `grid-template-rows: minmax(0, 1fr)`입니다. `.split-host` 래퍼를 넣었을 때 긴 채팅이 행을 늘려서 입력창이 화면 밖으로 밀리고 광장이 확대된 것처럼 보였습니다 (예전엔 react-resizable-panels의 Group이 `overflow: hidden`이라 드러나지 않았음).
+- **커뮤니티 설정:** `apps/server/src/chat/community-profile.service.ts`, 웹 `features/communities/CommunitySettings.tsx`
+  - 탭: 일반(이름, 아이콘, 배너, 커뮤니티 삭제), 광장(커뮤니티 타일·오브젝트, 광장 맵 편집), 역할, 멤버. 소유자·관리자만 열 수 있고, 삭제는 소유자만 커뮤니티 이름을 그대로 입력해야 합니다. 소유자의 커뮤니티 메뉴에는 나가기가 없습니다.
+  - API: `PATCH /communities/:id {name}`, 아이콘·배너는 프로필 사진과 같은 흐름 `POST /communities/:id/images/:kind/upload` → 저장소에 PUT → `PUT /communities/:id/images/:kind`(매직 바이트 확인, 아이콘 256×256·배너 960×540으로 가운데를 채워 자른 WebP, `community-images/<id>/<종류>-<무작위>.webp`), `DELETE`로 지우기. 바뀌면 `community:updated`로 알립니다.
+  - 이미지는 `GET /community-images/<id>/<file>`로 **인증 없이** 줍니다 (초대 화면은 아직 멤버가 아니고, 데스크톱 `<img>`는 토큰을 못 붙임. 주소에 무작위 ID). 1년 캐시(immutable). 커뮤니티를 지우면 이미지도 지웁니다.
+  - 아이콘은 왼쪽 커뮤니티 목록과 초대 화면(`InviteInfo.communityIconUrl`), 배너는 채널 목록 위(16:9)에 보입니다.
 - **프로필 (닉네임, 자기소개, 사진):** `apps/server/src/users/`
   - 사용자 ID는 GitHub 로그인 이름(`username`)이고 바꿀 수 없습니다. 다른 사람에게 보이는 이름은 `nickname`(없으면 username), 자기소개는 `bio`입니다. DTO의 `displayName`은 닉네임입니다 (GitHub 이름은 DB의 `displayName`에 남지만 화면에는 쓰지 않음).
   - GitHub로 다시 로그인하면 username, GitHub 이름, GitHub 사진만 맞추고 닉네임·자기소개·올린 사진은 건드리지 않습니다.
@@ -168,10 +183,12 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
   - `Asset` 테이블: kind, name, creatorId, communityId(캐릭터는 null), manifest(JSON). S3를 쓰지 않고 매니페스트를 그대로 저장합니다 (가장 큰 오브젝트도 요청 본문 100KB 안).
   - 권한(`AssetsService`): 캐릭터는 만든 사람만 고치고 지우며 로그인한 누구나 읽습니다(광장에서 그려야 하므로). 타일·오브젝트는 멤버만 읽고 소유자·관리자(`requireManager`)만 만들고 고칩니다. 멤버가 아니면 404. 종류는 바꿀 수 없고, 캐릭터는 한 사람 20개, 커뮤니티 에셋은 200개까지.
   - API: `GET /assets`(내 캐릭터), `GET /assets?communityId=`(커뮤니티 타일·오브젝트), `GET/PUT/DELETE /assets/:id`, `POST /assets {communityId?, manifest}`.
-  - 설정 → 에셋(`AssetSettings`, 지연 로딩): 내 캐릭터, 내가 소유자·관리자인 커뮤니티마다 타일·오브젝트. 새로 그리기, 내장 에셋 복제해서 시작, 편집, 삭제.
-  - 도트 에디터(`PixelEditor`, 편집 로직은 `editorModel.ts`의 `PixelDocument`): 연필·지우개·채우기·스포이트, 좌우 대칭, 앞 프레임 겹쳐 보기, 되돌리기(붓질 한 번 = 한 단계, 색 고르기 드래그도 한 단계), 팔레트 편집(지운 색의 픽셀은 투명), 프레임 넣기·복제·옮기기·지우기, 애니메이션 미리보기, PNG 가져오기(프레임 크기 또는 가로로 이어 붙인 시트, 64색이 넘으면 가까운 색)·내보내기. 오른쪽 버튼은 지우개.
+  - 설정 → 에셋(`AssetSettings`, 지연 로딩): 내 캐릭터. 커뮤니티 타일·오브젝트와 광장 맵 편집은 커뮤니티 설정 → 광장(`CommunityPlazaAssets`)에 있습니다. 새로 그리기, 내장 에셋 복제해서 시작, 편집, 삭제.
+  - 도트 에디터(`PixelEditor`, 편집 로직은 `editorModel.ts`의 `PixelDocument`): 연필·지우개·채우기·스포이트·올가미·자르기, 좌우 대칭, 앞 프레임 겹쳐 보기, 되돌리기(붓질 한 번 = 한 단계, 색 고르기 드래그도 한 단계), 팔레트 편집(지운 색의 픽셀은 투명), 프레임 넣기·복제·옮기기·지우기, 애니메이션 미리보기, PNG 가져오기(프레임 크기 또는 가로로 이어 붙인 시트, 64색이 넘으면 가까운 색)·내보내기. 오른쪽 버튼은 지우개.
+  - 선택·자르기(`selection.ts`): 올가미는 그린 다각형 안(픽셀 가운데 기준)을 고르고, 고른 곳을 끌거나 방향키로 옮깁니다. 옮기는 동안은 떠 있는 상태(`lifted`: 아래 그림 `base` + 얹은 값)라 지나간 자리의 그림이 지워지지 않습니다. 선택은 고른 프레임에서 다른 편집이 없을 때만(`version`이 같을 때) 살아 있고, 복사한 조각은 같은 자리에 붙습니다 (다른 프레임·애니메이션에 붙여 맞추기 쉽게). 자르기는 사각형 밖을 지우고(이 프레임 또는 모든 프레임), "그림 크기도 맞추기"면 캐릭터는 가로 = max(사각형 가로, 세로/2)로 발밑 가운데, 오브젝트는 16px 단위로 왼쪽 아래에 둡니다.
+  - 발 아래 정리(`trimBelowFeet`): 광장은 그림 맨 아래를 발밑으로 세우므로, 모든 프레임에 공통으로 빈 아래 줄만큼 캐릭터 그림을 내립니다 (걷기 들썩임 유지, 빈 프레임은 세지 않음). 캐릭터를 저장할 때 자동으로 하고 에디터에서 끌 수 있습니다 (localStorage).
   - 에디터에서는 애니메이션마다 프레임을 따로 갖고, 저장할 때 같은 그림을 한 장으로 합칩니다 (`toManifest`). 캐릭터는 `missingAnimations`가 비어야 저장 버튼이 켜집니다.
-  - 에디터는 설정 창 위에 화면 전체로 뜹니다. Esc는 에디터가 먼저 받아 `preventDefault()`하고, 설정 창은 `defaultPrevented`면 닫지 않습니다. 설정 창을 닫으면 에디터 상태(`useAssetEditorStore`)도 비웁니다.
+  - 도트 에디터·맵 에디터는 앱에 하나만 둔 `AssetEditors`가 화면 전체로 띄웁니다 (설정 창과 커뮤니티 설정 어디서 열어도 그 위에 뜸). Esc는 에디터가 먼저 받아 `preventDefault()`하고, 설정 창과 `Dialog`는 `defaultPrevented`면 닫지 않습니다. 에디터를 연 창을 닫으면 에디터도 닫습니다 (`closeAssetEditors`).
 - **캐릭터 고르기 (Phase 6):** `UsersService.setCharacter`, 웹 `features/assets/CharacterSettings.tsx`
   - `User.character`(JSON `{asset, colors, version?}`), null이면 `defaultCharacter(userId)`. 프로필(`UserProfile.character`)에 실려 메시지·멤버·광장 인원 어디서나 같은 값을 씁니다.
   - `PUT /users/me/character {character | null}`: 기본 캐릭터(`BUILTIN_CHARACTERS`)나 **직접 만든** 캐릭터만 고를 수 있습니다 (남의 캐릭터 400). 색은 부위(`colorSlots`)가 있는 캐릭터에만 적용됩니다 (내장 캐릭터를 복제해 그린 것도 부위가 남음).
@@ -185,6 +202,8 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
   - 맵에 쓰고 있는 에셋은 지울 수 없습니다 (409).
   - 스냅샷의 `assets`(쓴 커뮤니티 에셋 `{id, version}`)를 클라이언트가 `['assets','one',id,version]`으로 받아 씬에 등록한 뒤 맵을 그립니다. 텍스처 키는 매니페스트마다 달라서 고친 에셋이 바로 반영됩니다.
   - 맵 에디터: 바닥 칠하기, 장식 칠하기, 바닥 채우기, 오브젝트 놓기(누른 칸 = 그림의 왼쪽 아래), 지우기(앞에 그려지는 오브젝트부터, 없으면 장식), 스폰 영역(끌어서), 막힌 칸 보기, 크기(12~64, 왼쪽 위 기준), 되돌리기. 팔레트는 내장 타일·오브젝트 + 커뮤니티 에셋(★). 열 때마다 맵을 새로 받습니다 (예전에 받아 둔 맵으로 시작해 다른 사람이 고친 것을 덮어쓰지 않게, 실제로 겪은 문제). 저장할 때 쓰지 않는 타일은 목록에서 뺍니다.
+- **프로필 사진 불러오기 실패:** `ui/Avatar.tsx`는 사진을 못 불러오면(연결이 불안정할 때) 깨진 그림 대신 이름 첫 글자를 보여 주고, 2초·5초·15초·60초 뒤와 `online` 이벤트 때 주소에 `retry=N`을 붙여 다시 불러옵니다 (같은 주소면 `<img>`가 다시 요청하지 않음).
+- **웹 새 배포 자동 반영:** 빌드마다 `__BUILD_ID__`를 앱에 넣고 같은 값을 `version.json`으로 내보냅니다 (`vite.config.ts`). 앱(`features/app/liveUpdate.ts`)은 1분마다와 창이 다시 보일 때 `version.json`을 보고, 바뀌었으면 잃을 것이 없을 때(통화 중이 아님, 에셋·맵 에디터를 열지 않음, 입력칸에 쓰던 글이 없음) `location.reload()`합니다. 기다리는 동안은 "새 버전" 안내를 띄웁니다. Caddy는 `/assets/*` 밖(index.html, version.json)에 `Cache-Control: no-cache`를 붙여, 예전처럼 데스크톱 앱이 캐시된 옛 index.html을 여는 일을 막습니다. 개발 서버에서는 동작하지 않습니다.
 - **Windows에서 파일 수정:** Windows PowerShell 5.1의 `Get-Content`/`Set-Content`는 UTF-8 한글을 깨뜨립니다. 파일 수정은 편집 도구나 bash를 씁니다.
 
 ## 확정된 결정
@@ -263,7 +282,7 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
 9. **키보드 포커스를 분리한다.** 방향키는 메타버스 패널에 포커스가 있을 때만 캐릭터를 움직입니다. 채팅 입력창에 포커스가 있으면 어떤 키도 캐릭터를 움직이지 않습니다.
 10. **통화와 근접 음성**
     - 통화 단위는 음성 채널 또는 DM입니다. 한 사람은 동시에 통화 하나에만 참여합니다 (Discord와 동일).
-    - 음성 채널에 들어가도 캐릭터는 커뮤니티 광장에 그대로 있습니다. 광장의 캐릭터에는 참여 중인 음성 채널과 말하는 중 이펙트를 표시하고, 이 표시는 광장을 보는 모든 사람에게 보입니다.
+    - 음성 채널에 들어가도 캐릭터는 커뮤니티 광장에 그대로 있습니다. 광장의 캐릭터에는 참여 중인 음성 채널과 말하는 중 이펙트를 표시합니다. 참여 중인 채널은 광장을 보는 모든 사람에게 보이고, **말하는 중은 같은 통화에 들어가 있는 사람에게만** 보입니다 (채팅 모드 참여자 목록도 같음, 2026-09-28).
     - 근접 음성은 통화마다의 설정입니다 (`Channel.proximityVoice`). 그 통화 참여자 누구나 바꿀 수 있고, 바뀌면 참여자 전원에게 알립니다.
     - ON이면 같은 통화 참여자끼리만, 서버가 가진 광장 위치로 거리를 계산합니다. 반경 밖 참여자의 오디오 트랙은 구독하지 않고(실제로 안 들리고 대역폭도 아낌), 반경 안에서는 거리에 따라 볼륨을 줄입니다.
     - 다른 통화 참여자의 음성은 거리와 상관없이 절대 섞이지 않습니다.
@@ -278,7 +297,7 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
 
 - 이름은 `도메인:동작` 형식입니다. 도메인: `message`, `channel`, `plaza`, `presence`, `voice`, `typing`, `user`
 - 클라이언트 → 서버는 명령형, 서버 → 클라이언트는 과거형으로 짓습니다.
-  - `message:send` → `message:created`
+  - `message:send` → `message:created`, `message:edit` → `message:updated`, `message:delete` → `message:deleted` (내 메시지만)
   - `typing:start` → `typing:started` (보낸 연결 제외)
   - 닉네임·프로필 사진·캐릭터 변경 → `user:updated`
   - `channel:created`, `dm:created`, `community:member-joined` / `member-left` / `deleted`, `presence:changed`
@@ -322,12 +341,12 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
 
 - `User` (구현됨): githubId, username(사용자 ID), displayName(GitHub 이름), avatarUrl(GitHub 사진), nickname, bio, avatarKey(올린 사진), character(광장 캐릭터 `{asset, colors, version?}`, null이면 기본)
 - `RefreshToken` (구현됨): userId, tokenHash, familyId, client, expiresAt, revokedAt
-- `Community` (구현됨): name, ownerId / `CommunityMember`: userId, communityId, role(`OWNER` | `ADMIN` | `MEMBER`) / `Invite`: code(8자), expiresAt(7일), uses
+- `Community` (구현됨): name, ownerId, iconKey·bannerKey(올린 아이콘·배너, 없으면 null) / `CommunityMember`: userId, communityId, role(`OWNER` | `ADMIN` | `MEMBER`) / `Invite`: code(8자), expiresAt(7일), uses
 - `Role` (구현됨): communityId, name(커뮤니티 안에서 고유), color(#rrggbb), position / `MemberRole`: 멤버 ↔ 역할 / `ChannelRoleAccess`: 비공개 채널 ↔ 볼 수 있는 역할
 - `Channel` (구현됨): type(`TEXT` | `VOICE` | `DM` | `GROUP_DM`), communityId(DM이면 null), name, position, proximityVoice, private(비공개 채널), dmKey(1:1 DM 중복 방지)
   - `ChannelMember`: DM 참여자. 커뮤니티 채널의 접근은 커뮤니티 멤버십(추후 채널 권한)으로 판단
   - 광장은 테이블이 아닙니다. 채널에서 계산합니다: `TEXT`·`VOICE` → `community:<communityId>`(분수 광장), `DM`·`GROUP_DM` → `dm:<channelId>`(모닥불 캠프)
-- `Message` (구현됨): channelId, authorId, content(최대 4000자), createdAt. id가 UUIDv7이라 id 순서 = 시간 순서
+- `Message` (구현됨): channelId, authorId, content(최대 4000자), createdAt, editedAt(고친 시각). id가 UUIDv7이라 id 순서 = 시간 순서
 - `ChannelReadState` (구현됨): channelId, userId, lastReadMessageId. 앞으로만 옮긴다
 - `Attachment` (구현됨): channelId(권한 판단), uploaderId, messageId(보내기 전 null), status(`PENDING` | `READY`), kind(`IMAGE` | `FILE`), objectKey, thumbnailKey, fileName, contentType, size, width, height
 - `Asset` (구현됨): kind(`TILE` | `OBJECT` | `CHARACTER`), name, creatorId, communityId(캐릭터는 null), manifest(에셋 매니페스트 JSON)

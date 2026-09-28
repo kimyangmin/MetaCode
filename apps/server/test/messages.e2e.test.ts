@@ -185,3 +185,92 @@ describe('전달', () => {
     expect((await forward(aliceSocket, secret.id, voice.id)).ok).toBe(false);
   });
 });
+
+function edit(socket: ClientSocket, messageId: string, content: string) {
+  return new Promise<SocketAck<MessageDto>>((resolve) =>
+    socket.emit(SocketEvent.MessageEdit, { messageId, content }, resolve),
+  );
+}
+
+function remove(socket: ClientSocket, messageId: string) {
+  return new Promise<SocketAck<null>>((resolve) =>
+    socket.emit(SocketEvent.MessageDelete, { messageId }, resolve),
+  );
+}
+
+describe('수정과 삭제', () => {
+  it('내가 보낸 메시지를 고치면 채널에 알리고, 기록에도 고친 시각과 함께 남는다', async () => {
+    const { alice, bob, general } = await setup();
+    const aliceSocket = await connect(alice);
+    const bobSocket = await connect(bob);
+    const message = await sendOk(aliceSocket, { channelId: general, content: '처음' });
+    expect(message.editedAt).toBeNull();
+
+    const updated = nextEvent(bobSocket, SocketEvent.MessageUpdated);
+    const ack = await edit(aliceSocket, message.id, '  고친 글  ');
+    expect(ack.ok && ack.data).toMatchObject({ id: message.id, content: '고친 글' });
+    const received = await updated;
+    expect(received.content).toBe('고친 글');
+    expect(received.editedAt).not.toBeNull();
+
+    const page = await bob.json<MessagePage>(`/channels/${general}/messages`);
+    expect(page.messages[0]).toMatchObject({ id: message.id, content: '고친 글' });
+  });
+
+  it('남의 메시지는 고치거나 지울 수 없고, 첨부 없는 글은 비울 수 없다', async () => {
+    const { alice, bob, general } = await setup();
+    const aliceSocket = await connect(alice);
+    const bobSocket = await connect(bob);
+    const message = await sendOk(aliceSocket, { channelId: general, content: '앨리스 글' });
+
+    const byBob = await edit(bobSocket, message.id, '가로채기');
+    expect(byBob).toMatchObject({ ok: false, error: '내가 보낸 메시지만 고칠 수 있습니다.' });
+    expect(await remove(bobSocket, message.id)).toMatchObject({ ok: false });
+    expect(await edit(aliceSocket, message.id, '   ')).toMatchObject({ ok: false });
+
+    // 멤버가 아니면 있는지도 모른다.
+    const carol = await loginUser(t);
+    const carolSocket = await connect(carol);
+    expect(await remove(carolSocket, message.id)).toMatchObject({
+      ok: false,
+      error: '채널을 찾을 수 없습니다.',
+    });
+  });
+
+  it('지우면 채널에 알리고(남은 최신 메시지와 함께), 첨부와 답장의 원래 메시지 표시도 사라진다', async () => {
+    const { alice, bob, general } = await setup();
+    const aliceSocket = await connect(alice);
+    const bobSocket = await connect(bob);
+    const first = await sendOk(aliceSocket, { channelId: general, content: '먼저' });
+    const png = Uint8Array.from(
+      Buffer.from(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+        'base64',
+      ),
+    );
+    const attachment = await upload(alice, general, 'dot.png', png);
+    const target = await sendOk(aliceSocket, {
+      channelId: general,
+      content: '지울 글',
+      attachmentIds: [attachment.id],
+    });
+    const reply = await sendOk(bobSocket, {
+      channelId: general,
+      content: '답장',
+      replyToId: target.id,
+    });
+
+    const deleted = nextEvent(bobSocket, SocketEvent.MessageDeleted);
+    expect(await remove(aliceSocket, target.id)).toEqual({ ok: true, data: null });
+    expect(await deleted).toEqual({
+      channelId: general,
+      messageId: target.id,
+      lastMessageId: reply.id,
+    });
+
+    const page = await bob.json<MessagePage>(`/channels/${general}/messages`);
+    expect(page.messages.map((m) => m.id)).toEqual([reply.id, first.id]);
+    expect(page.messages[0]!.replyTo).toBeNull();
+    expect((await alice.fetch(`/attachments/${attachment.id}`)).status).toBe(404);
+  });
+});

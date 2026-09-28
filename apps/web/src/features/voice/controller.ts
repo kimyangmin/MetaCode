@@ -11,6 +11,7 @@ import {
 import type { AppSocket } from '../../realtime/RealtimeProvider';
 import { trackVolume } from './calls';
 import type { VoiceConnection } from './connection';
+import type { ScreenQuality } from './screenQuality';
 import { useVoiceStore } from './store';
 
 const REQUEST_TIMEOUT_MS = 10_000;
@@ -188,10 +189,10 @@ export class VoiceController {
    * 내 화면 공유 시작. 브라우저는 고르는 창을 띄우고, 데스크톱 앱은 미리 고른 화면을 쓴다.
    * 취소했거나 실패하면 false
    */
-  async startScreenShare(): Promise<boolean> {
+  async startScreenShare(quality: ScreenQuality): Promise<boolean> {
     const conn = this.connection;
     if (!conn || store().sharing) return false;
-    const ok = await conn.setScreenShareEnabled(true);
+    const ok = await conn.setScreenShareEnabled(true, quality);
     if (!ok || this.connection !== conn) return false;
     store().patch({ sharing: true });
     this.sendState();
@@ -215,9 +216,7 @@ export class VoiceController {
       await this.join(channelId);
       if (store().session?.channelId !== channelId) return;
     }
-    store().patch({ watching: userId, screen: null });
-    // 내 화면은 받을 필요 없이 올리고 있는 것을 그대로 보여 준다.
-    if (userId === this.meId) store().patch({ screen: this.connection?.localScreen() ?? null });
+    store().patch({ watching: userId, screen: this.currentScreen(userId) });
     this.applyVolumes();
   }
 
@@ -227,12 +226,19 @@ export class VoiceController {
    */
   preview(userId: string | null): void {
     if (store().previewing === userId) return;
-    const self = userId === this.meId;
-    store().patch({
-      previewing: userId,
-      previewScreen: self ? (this.connection?.localScreen() ?? null) : null,
-    });
+    store().patch({ previewing: userId, previewScreen: this.currentScreen(userId) });
     this.applyVolumes();
+  }
+
+  /**
+   * 지금 바로 보여 줄 수 있는 화면 영상: 내 화면은 올리고 있는 것, 다른 사람은 이미 받고 있는 것.
+   * 미리보기로 받던 영상을 LIVE로 크게 볼 때는 구독이 새로 생기지 않아서, 여기서 넘겨주지 않으면
+   * "불러오는 중"에서 멈춘다.
+   */
+  private currentScreen(userId: string | null): MediaStream | null {
+    if (!userId) return null;
+    if (userId === this.meId) return this.connection?.localScreen() ?? null;
+    return this.connection?.screenOf(userId) ?? null;
   }
 
   /** 브라우저가 소리 재생을 막았을 때 사용자가 누른 버튼에서 부른다 */

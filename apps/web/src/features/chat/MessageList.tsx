@@ -1,5 +1,12 @@
-import type { MessageDto, UserProfile } from '@metacode/shared';
-import { Fragment, type MouseEvent, useEffect, useRef, useState } from 'react';
+import {
+  MESSAGE_MAX_LENGTH,
+  type MessageDto,
+  SocketEvent,
+  type SocketAck,
+  type UserProfile,
+} from '@metacode/shared';
+import { Fragment, type KeyboardEvent, type MouseEvent, useEffect, useRef, useState } from 'react';
+import { type AppSocket, useRealtime } from '../../realtime/RealtimeProvider';
 import { openProfile } from '../../stores/profile';
 import { Avatar } from '../../ui/Avatar';
 import { displayName, formatDay, formatTime, sameDay } from '../../ui/format';
@@ -44,6 +51,21 @@ export function MessageList(props: MessageListProps) {
   const { messages, pending, me, hasMore, loadingMore, onLoadMore } = props;
   const sentinel = useRef<HTMLDivElement>(null);
   const [menu, setMenu] = useState<MenuTarget | null>(null);
+  const [editing, setEditing] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const { socket } = useRealtime();
+
+  const remove = async (message: MessageDto) => {
+    const preview = message.content ? `"${Array.from(message.content).slice(0, 40).join('')}"` : '';
+    if (
+      !window.confirm(
+        `이 메시지를 삭제할까요? ${preview}\n첨부 파일도 함께 지워지고 되돌릴 수 없습니다.`,
+      )
+    ) {
+      return;
+    }
+    setActionError(await request(socket, SocketEvent.MessageDelete, { messageId: message.id }));
+  };
 
   useEffect(() => {
     const target = sentinel.current;
@@ -90,6 +112,8 @@ export function MessageList(props: MessageListProps) {
               mine={message.author.id === me.id}
               communityId={props.communityId}
               onMenu={setMenu}
+              editing={editing === message.id}
+              onEditDone={() => setEditing(null)}
             />
             {newDay && (
               <div className="day-divider" role="separator">
@@ -106,16 +130,50 @@ export function MessageList(props: MessageListProps) {
       <div ref={sentinel} className="message-list__top">
         {loadingMore && '이전 메시지를 불러오는 중…'}
       </div>
+      {actionError && (
+        <p className="message-list__error" role="alert">
+          {actionError}
+          <button type="button" className="icon-button" onClick={() => setActionError(null)}>
+            ×
+          </button>
+        </p>
+      )}
       {menu && (
         <MessageMenu
           target={menu}
+          mine={menu.message.author.id === me.id}
           onReply={props.onReply}
           onForward={props.onForward}
+          onEdit={(message) => setEditing(message.id)}
+          onDelete={(message) => void remove(message)}
           onClose={() => setMenu(null)}
         />
       )}
     </div>
   );
+}
+
+/** 메시지 수정·삭제 요청. 실패하면 알릴 문구, 성공하면 null (목록은 서버의 알림으로 바뀐다) */
+async function request<E extends typeof SocketEvent.MessageEdit | typeof SocketEvent.MessageDelete>(
+  socket: AppSocket | null,
+  event: E,
+  payload: E extends typeof SocketEvent.MessageEdit
+    ? { messageId: string; content: string }
+    : { messageId: string },
+): Promise<string | null> {
+  if (!socket?.connected) return '서버에 연결되어 있지 않습니다.';
+  try {
+    const ack = (await socket
+      .timeout(10_000)
+      // 이벤트마다 ack 타입이 달라서 여기서는 공통 모양으로 받는다.
+      .emitWithAck(
+        event as typeof SocketEvent.MessageDelete,
+        payload as { messageId: string },
+      )) as SocketAck<unknown>;
+    return ack.ok ? null : ack.error;
+  } catch {
+    return '서버가 응답하지 않습니다.';
+  }
 }
 
 function MessageItem({
@@ -124,12 +182,16 @@ function MessageItem({
   mine,
   communityId,
   onMenu,
+  editing,
+  onEditDone,
 }: {
   message: MessageDto;
   grouped: boolean;
   mine: boolean;
   communityId?: string;
   onMenu(target: MenuTarget): void;
+  editing: boolean;
+  onEditDone(): void;
 }) {
   const showProfile = (e: MouseEvent) => openProfile(message.author, e, communityId);
   const onContextMenu = (e: MouseEvent) => {
@@ -175,14 +237,89 @@ function MessageItem({
           </header>
         )}
         {message.forwarded && <p className="message__forwarded">↪ 전달된 메시지</p>}
-        {message.content && (
-          <p className="message__content">
-            <LinkedText text={message.content} />
-          </p>
+        {editing ? (
+          <MessageEditor message={message} onDone={onEditDone} />
+        ) : (
+          message.content && (
+            <p className="message__content">
+              <LinkedText text={message.content} />
+              {message.editedAt && (
+                <span className="message__edited" title={formatTime(message.editedAt)}>
+                  (수정됨)
+                </span>
+              )}
+            </p>
+          )
         )}
         <MessageAttachments attachments={message.attachments} />
       </div>
     </article>
+  );
+}
+
+/** 내가 보낸 메시지 고치기: Enter 저장, Shift+Enter 줄바꿈, Esc 취소 (한글 조합 중 Enter는 무시) */
+function MessageEditor({ message, onDone }: { message: MessageDto; onDone(): void }) {
+  const { socket } = useRealtime();
+  const [text, setText] = useState(message.content);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const input = useRef<HTMLTextAreaElement>(null);
+
+  // 열면 커서를 글 끝에 둔다 (이어서 고치기 쉽게).
+  useEffect(() => {
+    const el = input.current;
+    if (!el) return;
+    el.focus();
+    el.setSelectionRange(el.value.length, el.value.length);
+  }, []);
+
+  const save = async () => {
+    const content = text.trim();
+    if (content === message.content) return onDone();
+    setBusy(true);
+    const failed = await request(socket, SocketEvent.MessageEdit, {
+      messageId: message.id,
+      content,
+    });
+    setBusy(false);
+    if (failed) setError(failed);
+    else onDone();
+  };
+
+  const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.nativeEvent.isComposing || e.keyCode === 229) return;
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      onDone();
+    } else if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      void save();
+    }
+  };
+
+  return (
+    <div className="message__editor">
+      <textarea
+        ref={input}
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        onKeyDown={onKeyDown}
+        maxLength={MESSAGE_MAX_LENGTH}
+        rows={Math.min(8, text.split('\n').length + 1)}
+        disabled={busy}
+        aria-label="메시지 고치기"
+      />
+      <p className="form__hint">
+        Enter 저장 · Esc 취소
+        <button type="button" className="message__editor-action" onClick={onDone}>
+          취소
+        </button>
+        <button type="button" className="message__editor-action" onClick={() => void save()}>
+          저장
+        </button>
+      </p>
+      {error && <p className="form__error">{error}</p>}
+    </div>
   );
 }
 
