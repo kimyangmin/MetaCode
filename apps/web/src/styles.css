@@ -560,6 +560,48 @@ h3 {
   line-height: 1.45;
 }
 
+.message__edited {
+  margin-left: 4px;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+/* 내 메시지 고치기 */
+.message__editor {
+  display: grid;
+  gap: 4px;
+}
+
+.message__editor textarea {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  background: var(--bg-input);
+  color: var(--fg);
+  font: inherit;
+  resize: vertical;
+}
+
+.message__editor-action {
+  margin-left: 8px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  cursor: pointer;
+}
+
+.message-list__error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 16px;
+  color: var(--danger);
+  font-size: 0.85rem;
+}
+
 .message--pending[data-status='sending'] .message__content {
   opacity: 0.55;
 }

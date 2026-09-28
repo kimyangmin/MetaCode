@@ -32,6 +32,24 @@ export const forwardMessageSchema = z.object({
 
 export type ForwardMessageRequest = z.infer<typeof forwardMessageSchema>;
 
+/** 내가 보낸 메시지 고치기. 첨부가 없는 메시지는 글을 비울 수 없다 (서버가 확인) */
+export const editMessageSchema = z.object({
+  messageId: z.uuid(),
+  content: z.string().trim().max(MESSAGE_MAX_LENGTH),
+});
+export type EditMessageRequest = z.infer<typeof editMessageSchema>;
+
+/** 내가 보낸 메시지 지우기 (첨부도 함께 지워진다) */
+export const deleteMessageSchema = z.object({ messageId: z.uuid() });
+export type DeleteMessageRequest = z.infer<typeof deleteMessageSchema>;
+
+/** 메시지가 지워졌다. lastMessageId는 그 채널에 남은 가장 최근 메시지 (안 읽음 표시를 맞춘다) */
+export interface MessageDeleted {
+  channelId: string;
+  messageId: string;
+  lastMessageId: string | null;
+}
+
 /** 답장한 원래 메시지를 짧게 보여 주는 정보 */
 export interface MessageReference {
   id: string;
@@ -64,6 +82,8 @@ export interface MessageDto {
   /** 다른 곳에서 전달한 메시지 */
   forwarded: boolean;
   createdAt: string;
+  /** 작성자가 고친 시각 (고치지 않았으면 null) */
+  editedAt: string | null;
 }
 
 /** 최신 메시지부터 내려준다. hasMore면 마지막 메시지 ID를 before로 다음 페이지를 요청한다. */

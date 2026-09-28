@@ -1,7 +1,14 @@
 import { z } from 'zod';
 import type { ChannelSummary, DmSummary } from '../api/channel.js';
 import type { CommunityMember } from '../api/community.js';
-import type { ForwardMessageRequest, MessageDto, SendMessageRequest } from '../api/message.js';
+import type {
+  DeleteMessageRequest,
+  EditMessageRequest,
+  ForwardMessageRequest,
+  MessageDeleted,
+  MessageDto,
+  SendMessageRequest,
+} from '../api/message.js';
 import type { UserProfile } from '../api/user.js';
 import type { PlazaId } from '../domain/plaza.js';
 import type {
@@ -33,6 +40,12 @@ export const SocketEvent = {
   MessageCreated: 'message:created',
   /** 메시지 전달 (ack로 새 메시지) */
   MessageForward: 'message:forward',
+  /** 내가 보낸 메시지 고치기 (ack로 고친 메시지) → message:updated */
+  MessageEdit: 'message:edit',
+  /** 내가 보낸 메시지 지우기 → message:deleted */
+  MessageDelete: 'message:delete',
+  MessageUpdated: 'message:updated',
+  MessageDeleted: 'message:deleted',
   TypingStart: 'typing:start',
   TypingStarted: 'typing:started',
   ChannelCreated: 'channel:created',
@@ -84,6 +97,14 @@ export interface ClientToServerEvents {
     payload: ForwardMessageRequest,
     ack: (result: SocketAck<MessageDto>) => void,
   ) => void;
+  [SocketEvent.MessageEdit]: (
+    payload: EditMessageRequest,
+    ack: (result: SocketAck<MessageDto>) => void,
+  ) => void;
+  [SocketEvent.MessageDelete]: (
+    payload: DeleteMessageRequest,
+    ack: (result: SocketAck<null>) => void,
+  ) => void;
   [SocketEvent.TypingStart]: (payload: { channelId: string }) => void;
   [SocketEvent.PlazaWatch]: (
     payload: { plazaId: string },
@@ -106,6 +127,8 @@ export interface ClientToServerEvents {
 
 export interface ServerToClientEvents {
   [SocketEvent.MessageCreated]: (message: MessageDto) => void;
+  [SocketEvent.MessageUpdated]: (message: MessageDto) => void;
+  [SocketEvent.MessageDeleted]: (payload: MessageDeleted) => void;
   [SocketEvent.TypingStarted]: (payload: { channelId: string; userId: string }) => void;
   [SocketEvent.ChannelCreated]: (channel: ChannelSummary) => void;
   [SocketEvent.ChannelDeleted]: (payload: { channelId: string; communityId: string }) => void;

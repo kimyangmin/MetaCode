@@ -71,7 +71,8 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
   - 메시지 목록은 `column-reverse`로 그려 맨 아래가 기준점입니다. 이전 기록은 위쪽 끝 요소를 IntersectionObserver로 감지해 불러옵니다 (페이지가 그려지지 않는 숨은 탭에서는 동작하지 않음).
   - 입력창은 한글 조합 중 Enter(`isComposing`, keyCode 229)로 보내지 않습니다.
   - 라우터: 웹은 일반 주소, 데스크톱은 해시 주소(`#/c/...`). 로그인 전에 연 초대 링크는 sessionStorage에 기억했다가 로그인 후 이어 갑니다.
-  - 아직 없는 것: 메시지 수정/삭제, 보내기 속도 제한, 모바일 화면(가로 1000px 미만이면 멤버 목록만 숨김).
+  - 수정·삭제: 내가 보낸 메시지만 (우클릭 메뉴). `message:edit`(ack로 고친 메시지) → `message:updated`, `message:delete` → `message:deleted {channelId, messageId, lastMessageId}`. 고치면 `editedAt`이 남고 "(수정됨)"을 보여 주며, 첨부 없는 메시지는 글을 비울 수 없습니다. 지우면 첨부도 DB에서 연쇄 삭제되고 저장소 파일은 서버가 지웁니다. 답장의 원래 메시지 표시는 고치면 글이 바뀌고 지우면 비워지며(클라이언트 캐시도 같은 규칙, `updateMessageInCache`/`removeMessageFromCache`), `lastMessageId`로 채널의 안 읽음 표시를 맞춥니다. 광장은 떠 있는 말풍선의 글을 바꾸거나 내립니다.
+  - 아직 없는 것: 보내기 속도 제한, 모바일 화면(가로 1000px 미만이면 멤버 목록만 숨김).
 - **여러 사용자로 확인:** `tools/fake-github.mjs`(가짜 GitHub, 앨리스/밥/캐롤) + 서버를 `GITHUB_OAUTH_URL`/`GITHUB_API_URL`=`http://localhost:4010`으로 띄웁니다. 두 번째 사용자는 다른 브라우저나 스크립트(socket.io-client)로 접속합니다.
 - **첨부 파일 (Phase 3):** `apps/server/src/attachments/`, `apps/web/src/features/chat/uploads.ts`
   - 흐름: `POST /uploads`(권한·크기 확인, 크기를 서명에 넣은 presigned PUT) → 브라우저가 저장소에 직접 PUT → `POST /uploads/:id/complete`(크기 재확인, 이미지면 썸네일) → `message:send`의 `attachmentIds`로 메시지에 붙임(트랜잭션, 실패하면 메시지도 안 남음).
@@ -278,7 +279,7 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
 
 - 이름은 `도메인:동작` 형식입니다. 도메인: `message`, `channel`, `plaza`, `presence`, `voice`, `typing`, `user`
 - 클라이언트 → 서버는 명령형, 서버 → 클라이언트는 과거형으로 짓습니다.
-  - `message:send` → `message:created`
+  - `message:send` → `message:created`, `message:edit` → `message:updated`, `message:delete` → `message:deleted` (내 메시지만)
   - `typing:start` → `typing:started` (보낸 연결 제외)
   - 닉네임·프로필 사진·캐릭터 변경 → `user:updated`
   - `channel:created`, `dm:created`, `community:member-joined` / `member-left` / `deleted`, `presence:changed`
@@ -327,7 +328,7 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
 - `Channel` (구현됨): type(`TEXT` | `VOICE` | `DM` | `GROUP_DM`), communityId(DM이면 null), name, position, proximityVoice, private(비공개 채널), dmKey(1:1 DM 중복 방지)
   - `ChannelMember`: DM 참여자. 커뮤니티 채널의 접근은 커뮤니티 멤버십(추후 채널 권한)으로 판단
   - 광장은 테이블이 아닙니다. 채널에서 계산합니다: `TEXT`·`VOICE` → `community:<communityId>`(분수 광장), `DM`·`GROUP_DM` → `dm:<channelId>`(모닥불 캠프)
-- `Message` (구현됨): channelId, authorId, content(최대 4000자), createdAt. id가 UUIDv7이라 id 순서 = 시간 순서
+- `Message` (구현됨): channelId, authorId, content(최대 4000자), createdAt, editedAt(고친 시각). id가 UUIDv7이라 id 순서 = 시간 순서
 - `ChannelReadState` (구현됨): channelId, userId, lastReadMessageId. 앞으로만 옮긴다
 - `Attachment` (구현됨): channelId(권한 판단), uploaderId, messageId(보내기 전 null), status(`PENDING` | `READY`), kind(`IMAGE` | `FILE`), objectKey, thumbnailKey, fileName, contentType, size, width, height
 - `Asset` (구현됨): kind(`TILE` | `OBJECT` | `CHARACTER`), name, creatorId, communityId(캐릭터는 null), manifest(에셋 매니페스트 JSON)
