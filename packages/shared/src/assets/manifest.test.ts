@@ -1,0 +1,141 @@
+import { describe, expect, it } from 'vitest';
+import { BUILTIN_ASSETS, builtinAsset } from './builtin.js';
+import {
+  type AssetManifest,
+  assetManifestSchema,
+  assetRefSchema,
+  footprintCells,
+  missingAnimations,
+} from './manifest.js';
+import { colorRamp, decodePixels, encodePixels } from './pixels.js';
+
+const tile = (overrides: Partial<AssetManifest> = {}): AssetManifest => ({
+  kind: 'tile',
+  name: '테스트',
+  width: 16,
+  height: 16,
+  palette: ['#112233'],
+  frames: [encodePixels(new Uint8Array(256).fill(1))],
+  animations: { default: { frames: [0], frameMs: 1000 } },
+  ...overrides,
+});
+
+const problemsOf = (manifest: AssetManifest) => {
+  const result = assetManifestSchema.safeParse(manifest);
+  return result.success ? [] : result.error.issues.map((i) => i.message);
+};
+
+describe('픽셀 인코딩', () => {
+  it('base64로 왕복한다', () => {
+    const pixels = Uint8Array.from([0, 1, 2, 255, 64]);
+    expect(decodePixels(encodePixels(pixels))).toEqual(pixels);
+  });
+
+  it('base64가 아니면 null', () => {
+    expect(decodePixels('!!!')).toBeNull();
+  });
+
+  it('colorRamp는 밝은 면, 그림자, 외곽선 순으로 어두워진다', () => {
+    const [light, shade, outline] = colorRamp('#E84537');
+    expect(light).toBe('#e84537');
+    const sum = (hex: string) =>
+      [1, 3, 5].reduce((s, i) => s + parseInt(hex.slice(i, i + 2), 16), 0);
+    expect(sum(shade)).toBeLessThan(sum(light));
+    expect(sum(outline)).toBeLessThan(sum(shade));
+  });
+});
+
+describe('내장 에셋', () => {
+  it('모두 매니페스트 검증을 통과한다', () => {
+    for (const [ref, manifest] of Object.entries(BUILTIN_ASSETS)) {
+      expect(assetRefSchema.safeParse(ref).success, ref).toBe(true);
+      expect(problemsOf(manifest), ref).toEqual([]);
+    }
+  });
+
+  it('분수, 모닥불, 기본 캐릭터가 있다', () => {
+    expect(builtinAsset('builtin:fountain')?.kind).toBe('object');
+    expect(builtinAsset('builtin:campfire')?.animations.default!.frames.length).toBeGreaterThan(1);
+    expect(builtinAsset('builtin:char-short')?.kind).toBe('character');
+    expect(builtinAsset('builtin:char-long')?.colorSlots?.shirt).toHaveLength(3);
+    expect(builtinAsset('builtin:없음')).toBeUndefined();
+    expect(builtinAsset('toString')).toBeUndefined();
+  });
+});
+
+describe('매니페스트 검증', () => {
+  it('타일 크기가 16×16이 아니면 거절한다', () => {
+    expect(problemsOf(tile({ width: 32 }))).toContain('타일은 16×16px이어야 합니다.');
+  });
+
+  it('프레임 크기가 맞지 않거나 팔레트에 없는 색을 쓰면 거절한다', () => {
+    expect(problemsOf(tile({ frames: [encodePixels(new Uint8Array(10))] }))).toContain(
+      '1번 프레임의 크기가 맞지 않습니다.',
+    );
+    expect(problemsOf(tile({ frames: [encodePixels(new Uint8Array(256).fill(2))] }))).toContain(
+      '1번 프레임에 팔레트에 없는 색이 있습니다.',
+    );
+  });
+
+  it('없는 프레임을 가리키는 애니메이션을 거절한다', () => {
+    expect(problemsOf(tile({ animations: { default: { frames: [3], frameMs: 100 } } }))).toContain(
+      'default 애니메이션이 없는 프레임을 가리킵니다.',
+    );
+  });
+
+  it('오브젝트는 크기에 맞는 footprint가 있어야 한다', () => {
+    const object = tile({
+      kind: 'object',
+      width: 32,
+      height: 16,
+      frames: [encodePixels(new Uint8Array(512).fill(1))],
+    });
+    expect(problemsOf({ ...object, footprint: [1, 1] })).toEqual([]);
+    expect(problemsOf({ ...object, footprint: [1] })).toContain(
+      '오브젝트의 막힌 칸(footprint) 크기가 맞지 않습니다.',
+    );
+    expect(problemsOf({ ...object, width: 80, footprint: [1] })[0]).toMatch(/최대 64px/);
+  });
+});
+
+describe('캐릭터 필수 애니메이션', () => {
+  const base = builtinAsset('builtin:char-short')!;
+
+  it('내장 캐릭터는 빠진 것이 없다', () => {
+    expect(missingAnimations(base)).toEqual([]);
+  });
+
+  it('없거나 프레임이 모자라면 빠진 것으로 본다', () => {
+    const animations = Object.fromEntries(
+      Object.entries(base.animations).filter(([name]) => name !== 'walk-up'),
+    );
+    const shortWalk = { ...animations, 'walk-left': { frames: [0], frameMs: 100 } };
+    const missing = missingAnimations({ ...base, animations: shortWalk }).map((a) => a.name);
+    expect(missing).toEqual(['walk-left', 'walk-up']);
+    expect(problemsOf({ ...base, animations: shortWalk })[0]).toMatch(/그리지 않은 애니메이션/);
+  });
+
+  it('빈 프레임을 쓰면 빠진 것으로 본다', () => {
+    const frames = [...base.frames, encodePixels(new Uint8Array(16 * 32))];
+    const blank = frames.length - 1;
+    const manifest = {
+      ...base,
+      frames,
+      animations: { ...base.animations, emote: { frames: [0, blank], frameMs: 100 } },
+    };
+    expect(missingAnimations(manifest).map((a) => a.name)).toEqual(['emote']);
+  });
+});
+
+describe('footprintCells', () => {
+  it('놓은 칸(왼쪽 아래)을 기준으로 막힌 칸을 돌려준다', () => {
+    // 2×3타일, 아래 줄 두 칸만 막힘
+    const cells = footprintCells({ width: 32, height: 48, footprint: [0, 0, 0, 0, 1, 1] }, 10, 20);
+    expect(cells).toEqual([
+      { x: 10, y: 20 },
+      { x: 11, y: 20 },
+    ]);
+    const top = footprintCells({ width: 16, height: 32, footprint: [1, 0] }, 3, 5);
+    expect(top).toEqual([{ x: 3, y: 4 }]);
+  });
+});

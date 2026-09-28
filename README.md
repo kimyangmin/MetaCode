@@ -101,7 +101,7 @@ DM, 그룹 DM  →  모닥불 캠프 1개씩 (대화 기록 + 통화)
 
 - 화면에는 정수배(2~4배, 기본 3배)로만 확대합니다.
 - 캐릭터 기준점은 발밑 가운데입니다. 스프라이트시트는 행이 방향(아래, 왼쪽, 오른쪽, 위), 열이 프레임입니다.
-- 권장 제작 도구: 캐릭터·타일은 Aseprite, 맵은 Tiled
+- 에셋은 앱 안의 도트 에디터로 그립니다 (PNG 가져오기·내보내기로 Aseprite 같은 외부 도구와 주고받기). 기본 지형과 캐릭터는 CC0 에셋팩으로 만들었습니다 ([assets/CREDITS.md](assets/CREDITS.md)).
 
 ### 테마
 
@@ -198,9 +198,11 @@ MetaCode/
 ├── packages/
 │   └── shared/           # 공용 타입, 소켓 이벤트 규격, zod 스키마
 ├── assets/
-│   ├── characters/       # 캐릭터 에셋 (추후 추가)
-│   └── maps/             # 분수 광장, 모닥불 캠프 맵 (추후 추가)
-│       └── <맵>/themes/<테마>/  # 테마별 타일셋, 장식 (default, winter ...)
+│   ├── vendor/           # CC0 원본 (Kenney Tiny Town, base sprites)
+│   └── CREDITS.md        # 에셋 출처
+├── tools/
+│   ├── build-assets.mjs  # 원본 + 직접 그린 것 → 내장 에셋 JSON (packages/shared)
+│   └── assets/           # 분수·모닥불 등 직접 그리는 코드, 캐릭터 옷 입히기
 ├── infra/
 │   ├── docker-compose.yml       # 개발용: PostgreSQL, Redis, SeaweedFS(S3)
 │   ├── docker-compose.prod.yml  # 운영용: + Caddy(HTTPS), 서버, 마이그레이션
@@ -269,11 +271,13 @@ MetaCode/
 - [x] (선택) 화면 공유
 
 ### Phase 6: 캐릭터·맵 에셋
-- [ ] 매니페스트 형식 정의 (애니메이션 이름, 프레임, 부품 레이어). 크기는 타일 16×16, 캐릭터 16×32로 확정
+- [x] 에셋·맵 형식 정의 (팔레트 픽셀 + 애니메이션, 타일의 통행 불가, 오브젝트의 막힌 칸, 캐릭터의 색 부위). 내장 에셋: Kenney Tiny Town 타일(CC0), 직접 그린 분수·모닥불 등, base sprites(CC0)에 옷을 입힌 기본 캐릭터 ([assets/CREDITS.md](assets/CREDITS.md))
 - [ ] 분수 광장, 모닥불 캠프 맵의 `default` 테마 적용 (분수, 모닥불 애니메이션)
 - [ ] 캐릭터 대기, 걷기 애니메이션
 - [ ] 첨부 모션 애니메이션 (Phase 4의 임시 표시 교체)
-- [ ] 캐릭터 선택/커스터마이징 UI
+- [ ] 도트 에디터: 설정의 에셋 목록에서 캐릭터(개인)와 타일·오브젝트(커뮤니티)를 직접 그림. 캐릭터는 필수 애니메이션을 다 그려야 저장
+- [ ] 캐릭터 선택/커스터마이징 UI (기본 캐릭터 색 바꾸기, 직접 그린 캐릭터)
+- [ ] 맵 에디터: 커뮤니티 소유자·관리자가 분수 광장에 타일과 오브젝트를 배치
 
 ### Phase 7: 안정화와 배포
 - [ ] 멘션, 알림(데스크톱 네이티브 알림 포함), 메시지 검색
@@ -443,5 +447,6 @@ pnpm --filter @metacode/desktop dist:win
 | `pnpm infra:up` / `pnpm infra:down` | 로컬 인프라 시작 / 중지 |
 | `pnpm --filter @metacode/server db:migrate` | 스키마 변경을 마이그레이션으로 만들고 로컬 DB에 적용 |
 | `pnpm --filter @metacode/server db:studio` | DB 내용을 브라우저에서 보기 (Prisma Studio) |
+| `pnpm assets:build` | 내장 에셋(타일, 오브젝트, 기본 캐릭터) 다시 만들기 |
 
 `pnpm test`의 서버 테스트는 실제 PostgreSQL과 Redis를 쓰므로 `pnpm infra:up`이 먼저 필요합니다. 개발 DB는 건드리지 않고 `metacode_test` DB와 Redis 1번 DB를 따로 씁니다.
