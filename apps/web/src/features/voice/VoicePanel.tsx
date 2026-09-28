@@ -35,9 +35,8 @@ export function VoicePanel({ meId }: { meId: string }) {
 
   const toggleScreen = () => {
     if (sharing) return void voice.stopScreenShare();
-    if (!isDesktop()) return void voice.startScreenShare();
-    // 데스크톱 앱은 화면을 직접 골라야 한다. 0.1.0 앱에는 그 기능이 없다.
-    if (getDesktopBridge()?.screen) return setPickerOpen(true);
+    // 화질을 고르는 창을 먼저 띄운다. 데스크톱 앱은 여기서 화면도 고른다 (0.1.0 앱에는 그 기능이 없다).
+    if (!isDesktop() || getDesktopBridge()?.screen) return setPickerOpen(true);
     useVoiceStore.getState().patch({
       error: '화면 공유를 쓰려면 데스크톱 앱을 새 버전으로 설치해 주세요.',
     });
@@ -165,9 +164,9 @@ export function VoicePanel({ meId }: { meId: string }) {
       {pickerOpen && (
         <ScreenPicker
           onClose={() => setPickerOpen(false)}
-          onPick={() => {
+          onStart={(quality) => {
             setPickerOpen(false);
-            void voice.startScreenShare();
+            void voice.startScreenShare(quality);
           }}
         />
       )}

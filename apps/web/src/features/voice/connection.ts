@@ -14,6 +14,12 @@ import {
 import type { TrackKind } from './calls';
 import { MicGainProcessor } from './micGain';
 import { MicLevelMeter } from './micLevel';
+import {
+  DEFAULT_SCREEN_QUALITY,
+  type ScreenQuality,
+  captureOptions,
+  publishOptions,
+} from './screenQuality';
 import { SPEECH_RELEASE_MS, SpeechDetector } from './speech';
 
 export interface ConnectionHandlers {
@@ -67,6 +73,11 @@ export class VoiceConnection {
   private readonly audioHost = document.createElement('div');
   /** 트랙별로 붙인 <audio>. 구독을 끊을 때 LiveKit이 먼저 떼어 내므로 직접 기억해서 지운다 */
   private readonly elements = new Map<string, HTMLMediaElement>();
+  /**
+   * 받고 있는 화면 공유 영상 (사람별). 미리보기로 이미 받고 있던 영상을 크게 볼 때처럼,
+   * 구독이 새로 생기지 않아도 지금 받는 영상을 바로 넘겨줄 수 있게 기억해 둔다.
+   */
+  private readonly screens = new Map<string, MediaStream>();
   /** 음량을 정하기 전에는 아무것도 구독하지 않는다 (근접 음성에서 먼 사람이 잠깐 들리지 않게) */
   private policy: VolumePolicy = () => 0;
   private leaving = false;
@@ -91,7 +102,9 @@ export class VoiceConnection {
       .on(RoomEvent.TrackSubscribed, (track: RemoteTrack, _publication, participant) => {
         if (!track.sid) return;
         if (track.kind === Track.Kind.Video) {
-          handlers.onScreen(participant.identity, new MediaStream([track.mediaStreamTrack]));
+          const stream = new MediaStream([track.mediaStreamTrack]);
+          this.screens.set(participant.identity, stream);
+          handlers.onScreen(participant.identity, stream);
           return;
         }
         const element = track.attach();
@@ -100,7 +113,10 @@ export class VoiceConnection {
       })
       .on(RoomEvent.TrackUnsubscribed, (track: RemoteTrack, _publication, participant) => {
         track.detach();
-        if (track.kind === Track.Kind.Video) handlers.onScreen(participant.identity, null);
+        if (track.kind === Track.Kind.Video) {
+          this.screens.delete(participant.identity);
+          handlers.onScreen(participant.identity, null);
+        }
         if (!track.sid) return;
         this.elements.get(track.sid)?.remove();
         this.elements.delete(track.sid);
@@ -240,19 +256,27 @@ export class VoiceConnection {
 
   /**
    * 화면 공유 켜기/끄기. 켤 때는 브라우저(또는 데스크톱 앱이 미리 고른 화면)의 선택을 따르고,
-   * 가능하면 시스템 소리도 함께 보낸다. 사용자가 취소했거나 실패하면 false
+   * 가능하면 시스템 소리도 함께 보낸다. 화질은 screenQuality.ts. 사용자가 취소했거나 실패하면 false
    */
-  async setScreenShareEnabled(enabled: boolean): Promise<boolean> {
+  async setScreenShareEnabled(
+    enabled: boolean,
+    quality: ScreenQuality = DEFAULT_SCREEN_QUALITY,
+  ): Promise<boolean> {
     try {
-      await this.localParticipant.setScreenShareEnabled(enabled, {
-        audio: true,
-        systemAudio: 'include',
-        selfBrowserSurface: 'exclude',
-      });
+      await this.localParticipant.setScreenShareEnabled(
+        enabled,
+        captureOptions(quality),
+        publishOptions(quality),
+      );
       return true;
     } catch {
       return false;
     }
+  }
+
+  /** 지금 받고 있는 이 사람의 화면 공유 영상 (받고 있지 않으면 null) */
+  screenOf(identity: string): MediaStream | null {
+    return this.screens.get(identity) ?? null;
   }
 
   /** 내가 공유 중인 화면 (내 화면을 미리 볼 때) */
@@ -308,6 +332,7 @@ export class VoiceConnection {
 
   private cleanup() {
     this.elements.clear();
+    this.screens.clear();
     this.audioHost.remove();
     clearTimeout(this.fallbackTimer);
     this.meter?.dispose();
