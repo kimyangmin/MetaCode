@@ -18,6 +18,27 @@ export interface MetaCodeDesktopBridge {
   updates?: DesktopUpdatesBridge;
   /** 앱 밖(metacode:// 초대 링크)에서 온 이동. 0.4.0부터 있다 */
   navigation?: DesktopNavigationBridge;
+  /**
+   * 직접 그리는 제목 표시줄용 창 조작. 0.5.0부터 있다. 이 창이 OS 제목 표시줄 없이 떴을 때만 있고
+   * (분리한 창은 OS 제목 표시줄을 씀), 없으면 웹은 제목 표시줄을 그리지 않는다.
+   */
+  window?: DesktopWindowBridge;
+}
+
+/** 앱 창 조작 (제목 표시줄의 최소화·최대화·닫기) */
+export interface DesktopWindowBridge {
+  /**
+   * 창 조작 버튼을 OS가 그리는지. macOS는 왼쪽 위의 신호등 버튼을 그대로 쓰므로 true이고,
+   * 웹은 그 자리를 비워 두고 자기 버튼은 그리지 않는다.
+   */
+  nativeControls: boolean;
+  minimize(): Promise<void>;
+  /** 최대화 ↔ 원래 크기 */
+  toggleMaximize(): Promise<void>;
+  close(): Promise<void>;
+  isMaximized(): Promise<boolean>;
+  /** 최대화 상태가 바뀌면 호출된다 (창 끌기, 두 번 누르기 등). 반환값을 호출하면 구독이 해제된다. */
+  onMaximizedChange(listener: (maximized: boolean) => void): () => void;
 }
 
 /** 브라우저의 "앱에서 열기"로 이미 켜진 앱에 초대 링크가 오면, 새로 고치지 않고 그 화면으로 옮긴다 */

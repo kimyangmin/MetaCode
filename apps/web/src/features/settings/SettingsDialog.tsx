@@ -1,6 +1,7 @@
 import {
   AVATAR_MAX_BYTES,
   type AvatarUploadTicket,
+  type ImageCrop,
   BIO_MAX_LENGTH,
   NICKNAME_MAX_LENGTH,
   type UserDetail,
@@ -21,6 +22,14 @@ import { jsonBody } from '../../api/queries';
 import { type SettingsSection, useSettingsStore } from '../../stores/settings';
 import { Avatar } from '../../ui/Avatar';
 import { displayName } from '../../ui/format';
+import { ConfirmDialog } from '../../ui/ConfirmDialog';
+import {
+  type CropSource,
+  ImageCropDialog,
+  cropSource,
+  releaseCropSource,
+} from '../../ui/ImageCropDialog';
+import { useExitTransition } from '../../ui/useExitTransition';
 import { closeAssetEditors } from '../assets/AssetEditors';
 import { logout, meQueryKey, useMe } from '../auth/auth';
 import {
@@ -30,7 +39,17 @@ import {
   NoiseSuppressionToggle,
   OutputVolumeSlider,
 } from '../voice/devices';
-import { CircleUserRound, LogOut, Mic, Palette, Pencil, PersonStanding, X } from 'lucide-react';
+import { FeatureGuide } from './FeatureGuide';
+import {
+  CircleUserRound,
+  Keyboard,
+  LogOut,
+  Mic,
+  Palette,
+  Pencil,
+  PersonStanding,
+  X,
+} from 'lucide-react';
 
 const SECTIONS: {
   group: string;
@@ -45,13 +64,21 @@ const SECTIONS: {
     ],
   },
   { group: '앱 설정', items: [{ id: 'voice', label: '음성', icon: <Mic aria-hidden /> }] },
+  {
+    group: '도움말',
+    items: [{ id: 'features', label: '기능', icon: <Keyboard aria-hidden /> }],
+  },
 ];
 const TITLE: Record<SettingsSection, string> = {
   account: '내 계정',
   character: '캐릭터',
   assets: '에셋',
   voice: '음성',
+  features: '기능',
 };
+
+/** 여닫는 애니메이션 길이 (styles.css의 settings-in/out과 같게) */
+const TRANSITION_MS = 160;
 
 // 캐릭터, 에셋 목록은 내장 에셋(약 150KB)을 쓰므로 열 때 따로 불러온다.
 const CharacterSettings = lazy(() =>
@@ -67,14 +94,17 @@ const AssetSettings = lazy(() =>
  */
 export function SettingsDialog() {
   const section = useSettingsStore((s) => s.section);
-  if (!section) return null;
-  return <SettingsWindow section={section} />;
+  // 닫을 때는 잠깐 그대로 두고 사라지는 애니메이션을 보여 준다.
+  const { shown, closing } = useExitTransition(section, TRANSITION_MS);
+  if (!shown) return null;
+  return <SettingsWindow section={shown} closing={closing} />;
 }
 
-function SettingsWindow({ section }: { section: SettingsSection }) {
+function SettingsWindow({ section, closing }: { section: SettingsSection; closing: boolean }) {
   const { open, close } = useSettingsStore.getState();
   const me = useMe().data;
   const queryClient = useQueryClient();
+  const [confirmLogout, setConfirmLogout] = useState(false);
 
   useEffect(() => {
     // 설정 창 위에 뜬 창(도트 에디터 등)이 Esc를 먼저 처리하면(preventDefault) 닫지 않는다.
@@ -87,6 +117,7 @@ function SettingsWindow({ section }: { section: SettingsSection }) {
   useEffect(() => closeAssetEditors, []);
 
   const onLogout = async () => {
+    setConfirmLogout(false);
     close();
     await logout();
     // 먼저 로그아웃 상태로 바꿔 로그인 화면으로 돌아간 뒤, 이전 사용자의 데이터를 지운다.
@@ -97,7 +128,11 @@ function SettingsWindow({ section }: { section: SettingsSection }) {
 
   if (!me) return null;
   return (
-    <div className="settings-overlay" onMouseDown={(e) => e.target === e.currentTarget && close()}>
+    <div
+      className="settings-overlay"
+      data-closing={closing || undefined}
+      onMouseDown={(e) => e.target === e.currentTarget && close()}
+    >
       <div className="settings-window" role="dialog" aria-modal="true" aria-label="설정">
         <nav className="settings-nav" aria-label="설정 항목">
           <div className="settings-nav__me">
@@ -127,7 +162,11 @@ function SettingsWindow({ section }: { section: SettingsSection }) {
               ))}
             </div>
           ))}
-          <button type="button" className="settings-nav__logout" onClick={() => void onLogout()}>
+          <button
+            type="button"
+            className="settings-nav__logout"
+            onClick={() => setConfirmLogout(true)}
+          >
             <LogOut aria-hidden />
             로그아웃
           </button>
@@ -157,9 +196,21 @@ function SettingsWindow({ section }: { section: SettingsSection }) {
               </Suspense>
             )}
             {section === 'voice' && <VoiceSettings />}
+            {section === 'features' && <FeatureGuide />}
           </div>
         </section>
       </div>
+      {confirmLogout && (
+        <ConfirmDialog
+          title="로그아웃할까요?"
+          confirmLabel="로그아웃"
+          danger
+          onConfirm={() => void onLogout()}
+          onCancel={() => setConfirmLogout(false)}
+        >
+          다시 쓰려면 GitHub로 다시 로그인해야 합니다.
+        </ConfirmDialog>
+      )}
     </div>
   );
 }
@@ -172,6 +223,12 @@ function AccountSettings({ me }: { me: UserDetail }) {
   const [bio, setBio] = useState(me.bio ?? '');
   const [status, setStatus] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
+  // 고른 사진: 올리기 전에 보일 곳을 고른다.
+  const [cropping, setCropping] = useState<CropSource | null>(null);
+  const finishCrop = () => {
+    releaseCropSource(cropping);
+    setCropping(null);
+  };
   const fileRef = useRef<HTMLInputElement>(null);
 
   const dirty = nickname.trim() !== (me.displayName ?? '') || bio.trim() !== (me.bio ?? '');
@@ -220,13 +277,23 @@ function AccountSettings({ me }: { me: UserDetail }) {
       setStatus({ kind: 'error', text: '8MB 이하의 사진만 올릴 수 있습니다.' });
       return;
     }
-    void run(() => uploadAvatar(file), '프로필 사진을 바꿨습니다.', '사진을 올리지 못했습니다.');
+    setStatus(null);
+    setCropping(cropSource(file));
+  };
+
+  const applyCrop = (file: File, crop: ImageCrop | undefined) => {
+    finishCrop();
+    void run(
+      () => uploadAvatar(file, crop),
+      '프로필 사진을 바꿨습니다.',
+      '사진을 올리지 못했습니다.',
+    );
   };
 
   return (
     <form className="settings-form" onSubmit={save}>
       <div className="settings-profile">
-        <Avatar user={me} size={88} />
+        <Avatar user={me} size={88} animate />
         <div className="settings-profile__actions">
           <button
             type="button"
@@ -252,7 +319,9 @@ function AccountSettings({ me }: { me: UserDetail }) {
               GitHub 사진으로 되돌리기
             </button>
           )}
-          <p className="form__hint">JPEG, PNG, GIF, WebP · 8MB 이하. 정사각형으로 잘라 씁니다.</p>
+          <p className="form__hint">
+            JPEG, PNG, GIF, WebP · 8MB 이하. 올릴 때 보일 곳을 고를 수 있습니다.
+          </p>
           <input
             ref={fileRef}
             type="file"
@@ -262,6 +331,17 @@ function AccountSettings({ me }: { me: UserDetail }) {
           />
         </div>
       </div>
+
+      {cropping && (
+        <ImageCropDialog
+          source={cropping}
+          title="프로필 사진 위치 조정"
+          aspect={1}
+          shape="circle"
+          onCancel={finishCrop}
+          onApply={(crop) => applyCrop(cropping.file, crop)}
+        />
+      )}
 
       <div className="settings-field">
         <span className="settings-field__label">사용자 ID</span>
@@ -335,15 +415,15 @@ function AccountSettings({ me }: { me: UserDetail }) {
   );
 }
 
-/** 프로필 사진 올리기: 저장소에 바로 올리고, 서버가 확인·변환해 적용한다 */
-async function uploadAvatar(file: File): Promise<UserDetail> {
+/** 프로필 사진 올리기: 저장소에 바로 올리고, 서버가 확인해 고른 곳(crop)을 잘라 적용한다 */
+async function uploadAvatar(file: File, crop: ImageCrop | undefined): Promise<UserDetail> {
   const ticket = await apiFetch<AvatarUploadTicket>('/users/me/avatar/upload', {
     method: 'POST',
     ...jsonBody({ size: file.size }),
   });
   const put = await fetch(ticket.uploadUrl, { method: 'PUT', headers: ticket.headers, body: file });
   if (!put.ok) throw new Error('사진을 올리지 못했습니다.');
-  return apiFetch<UserDetail>('/users/me/avatar', { method: 'PUT' });
+  return apiFetch<UserDetail>('/users/me/avatar', { method: 'PUT', ...jsonBody({ crop }) });
 }
 
 // ── 음성 ──

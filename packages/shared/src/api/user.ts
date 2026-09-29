@@ -10,8 +10,13 @@ export interface UserProfile {
   username: string;
   /** 다른 사람에게 보이는 닉네임. 정하지 않았으면 null (username을 보여 준다) */
   displayName: string | null;
-  /** 프로필 사진: 올린 사진, 없으면 GitHub 프로필 사진 */
+  /** 프로필 사진: 올린 사진(움직이는 사진이면 첫 장면), 없으면 GitHub 프로필 사진 */
   avatarUrl: string;
+  /**
+   * 올린 사진이 GIF처럼 움직이면 움직이는 사진 (없으면 null). 채팅 목록 등은 avatarUrl(멈춘 사진)을,
+   * 멤버 목록과 정보 팝업은 이것을 쓴다. 옛 서버·캐시에는 없을 수 있다.
+   */
+  avatarAnimatedUrl?: string | null;
   /** 광장 캐릭터. 고르지 않았으면 null (사용자 ID로 고른 기본 캐릭터, defaultCharacter) */
   character: ProfileCharacter | null;
 }
@@ -58,6 +63,28 @@ export interface AvatarUploadTicket {
   headers: Record<string, string>;
   expiresAt: string;
 }
+
+/**
+ * 올린 사진에서 쓸 곳 (위치 조정). 원본을 보이는 방향(EXIF 회전 반영) 그대로 놓고 잰 0~1 비율:
+ * 왼쪽 위(x, y)와 크기(width, height). 주지 않으면 가운데를 채워 자른다.
+ * 프로필 사진, 커뮤니티 아이콘·배너가 함께 쓴다.
+ */
+export const imageCropSchema = z
+  .object({
+    x: z.number().min(0).max(1),
+    y: z.number().min(0).max(1),
+    width: z.number().gt(0).max(1),
+    height: z.number().gt(0).max(1),
+  })
+  // 소수 계산 오차는 조금 봐준다 (서버가 사진 안으로 다시 맞춘다).
+  .refine((c) => c.x + c.width <= 1.001 && c.y + c.height <= 1.001, {
+    message: '자를 곳이 사진 밖에 있습니다.',
+  });
+export type ImageCrop = z.infer<typeof imageCropSchema>;
+
+/** 올린 사진 적용하기 (PUT /users/me/avatar, PUT /communities/:id/images/:kind). 본문은 없어도 된다 */
+export const applyImageSchema = z.object({ crop: imageCropSchema.optional() }).nullish();
+export type ApplyImageRequest = z.infer<typeof applyImageSchema>;
 
 /** 캐릭터 고르기. null이면 기본 캐릭터로 돌아간다 */
 export const setCharacterSchema = z.object({ character: characterChoiceSchema.nullable() });

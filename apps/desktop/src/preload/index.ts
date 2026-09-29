@@ -1,5 +1,10 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import type { MetaCodeDesktopBridge, ScreenSource, UpdateReadyInfo } from '@metacode/shared';
+import type {
+  DesktopWindowBridge,
+  MetaCodeDesktopBridge,
+  ScreenSource,
+  UpdateReadyInfo,
+} from '@metacode/shared';
 
 // sandbox 모드의 preload는 electron 일부 모듈만 require할 수 있다.
 // 그래서 @metacode/shared는 타입만 가져오고, IPC 이름은 main/index.ts와 똑같이 적는다.
@@ -15,7 +20,37 @@ const IPC = {
   updateReady: 'metacode:update:ready',
   updateInstall: 'metacode:update:install',
   navigate: 'metacode:navigate',
+  windowMinimize: 'metacode:window:minimize',
+  windowToggleMaximize: 'metacode:window:toggle-maximize',
+  windowClose: 'metacode:window:close',
+  windowIsMaximized: 'metacode:window:is-maximized',
+  windowMaximized: 'metacode:window:maximized',
 } as const;
+
+/**
+ * 메인 창만 제목 표시줄을 웹이 그린다. 메인 프로세스가 창을 만들 때 넘긴 인자로 안다 (main/titlebar.ts의
+ * TITLEBAR_ARG와 같은 이름). 인자가 없는 창(분리한 창)은 OS 제목 표시줄을 쓰므로 창 조작 브리지를 두지 않는다.
+ */
+const titleBar = process.argv
+  .find((arg) => arg.startsWith('--metacode-titlebar='))
+  ?.slice('--metacode-titlebar='.length);
+
+const windowBridge: DesktopWindowBridge | undefined = titleBar
+  ? {
+      nativeControls: titleBar === 'native-controls',
+      minimize: () => ipcRenderer.invoke(IPC.windowMinimize) as Promise<void>,
+      toggleMaximize: () => ipcRenderer.invoke(IPC.windowToggleMaximize) as Promise<void>,
+      close: () => ipcRenderer.invoke(IPC.windowClose) as Promise<void>,
+      isMaximized: () => ipcRenderer.invoke(IPC.windowIsMaximized) as Promise<boolean>,
+      onMaximizedChange(listener) {
+        const handler = (_event: unknown, maximized: unknown) => listener(maximized === true);
+        ipcRenderer.on(IPC.windowMaximized, handler);
+        return () => {
+          ipcRenderer.removeListener(IPC.windowMaximized, handler);
+        };
+      },
+    }
+  : undefined;
 
 const bridge: MetaCodeDesktopBridge = {
   platform: 'desktop',
@@ -51,6 +86,7 @@ const bridge: MetaCodeDesktopBridge = {
       };
     },
   },
+  window: windowBridge,
   auth: {
     login: () => ipcRenderer.invoke(IPC.login) as Promise<void>,
     logout: () => ipcRenderer.invoke(IPC.logout) as Promise<void>,

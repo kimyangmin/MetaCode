@@ -12,6 +12,7 @@ import { useChannelLabel } from './hooks';
 import { ScreenPicker } from './ScreenPicker';
 import { useCall, useVoiceStore } from './store';
 import { useVoice } from './VoiceProvider';
+import { canShareScreen } from '../../platform';
 import {
   ChevronUp,
   HeadphoneOff,
@@ -146,17 +147,20 @@ export function VoicePanel({ meId }: { meId: string }) {
               </button>
               <MenuCaret kind="headset" open={menu === 'headset'} onToggle={toggleMenu} />
             </div>
-            <button
-              type="button"
-              className="voice-toggle"
-              aria-pressed={sharing}
-              disabled={session.status !== 'connected'}
-              onClick={toggleScreen}
-              title={sharing ? '화면 공유 중지' : '화면 공유'}
-            >
-              <MonitorUp aria-hidden />
-              <span>화면</span>
-            </button>
+            {/* 휴대폰(브라우저, 안드로이드 앱)은 화면 공유를 할 수 없어 버튼을 두지 않는다 (보기는 됨) */}
+            {canShareScreen() && (
+              <button
+                type="button"
+                className="voice-toggle"
+                aria-pressed={sharing}
+                disabled={session.status !== 'connected'}
+                onClick={toggleScreen}
+                title={sharing ? '화면 공유 중지' : '화면 공유'}
+              >
+                <MonitorUp aria-hidden />
+                <span>화면</span>
+              </button>
+            )}
             {menu && (
               <VoiceMenu
                 kind={menu}

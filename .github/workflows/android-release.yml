@@ -1,0 +1,115 @@
+name: Android Release
+
+# android-v<버전> 태그를 push하면 서명한 APK를 만들어 GitHub Release로 올린다.
+# 데스크톱 앱이 저장소의 Latest Release로 업데이트를 확인하므로, 안드로이드 Release는 Latest로 올리지 않는다.
+# 태그의 버전은 apps/android/package.json의 version과 같아야 한다. 절차는 docs/android.md.
+# 손으로 실행(workflow_dispatch)하면 Release 없이 APK만 만들어 Actions 아티팩트로 남긴다 (빌드 확인용).
+on:
+  push:
+    tags: ['android-v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-release
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check version
+        id: version
+        run: |
+          version=$(node -p "require('./apps/android/package.json').version")
+          if [ "$GITHUB_REF_TYPE" = "tag" ] && [ "android-v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::태그($GITHUB_REF_NAME)와 apps/android/package.json 버전($version)이 다릅니다."
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+
+      - uses: android-actions/setup-android@v3
+
+      # 네이티브 프로젝트에 설정(capacitor.config.json)과 플러그인(App, Browser)을 넣는다.
+      - run: pnpm --filter @metacode/android exec cap sync android
+
+      # 서명 키는 저장소 비밀값에서 꺼낸다 (docs/android.md "서명 키 만들기"). 태그 빌드는 키가 꼭 있어야 한다.
+      - name: Prepare signing key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+              echo "::error::ANDROID_KEYSTORE_BASE64 비밀값이 없습니다. docs/android.md를 보고 서명 키를 넣어 주세요."
+              exit 1
+            fi
+            echo "::warning::서명 키가 없어 디버그 서명 APK를 만듭니다 (설치 확인용)."
+            exit 0
+          fi
+          echo "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/release.jks"
+          echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+
+      - name: Build APK
+        working-directory: apps/android/android
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          chmod +x gradlew
+          mkdir -p ../upload
+          if [ -n "$ANDROID_KEYSTORE_PATH" ]; then
+            ./gradlew --no-daemon assembleRelease
+            cp app/build/outputs/apk/release/app-release.apk "../upload/MetaCode-$VERSION.apk"
+          else
+            ./gradlew --no-daemon assembleDebug
+            cp app/build/outputs/apk/debug/app-debug.apk "../upload/MetaCode-$VERSION-debug.apk"
+          fi
+          ls -la ../upload
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-apk
+          path: apps/android/upload/*.apk
+          if-no-files-found: error
+
+      - name: Publish release
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ steps.version.outputs.version }}
+        working-directory: apps/android/upload
+        run: |
+          gh release create "$GITHUB_REF_NAME" "MetaCode-$VERSION.apk" \
+            --latest=false \
+            --title "MetaCode 안드로이드 $VERSION" \
+            --notes "## 설치
+          1. 휴대폰에서 이 페이지를 열고 \`MetaCode-$VERSION.apk\`를 받습니다.
+          2. 받은 파일을 열면 \"출처를 알 수 없는 앱\" 설치를 허용할지 묻습니다. 허용하고 설치합니다.
+
+          앱 화면은 운영 웹(https://metacode.kimyangmin.me)을 그대로 여는 것이라, 기능 업데이트는 앱을 다시 설치하지 않아도 들어옵니다.
+          앱 자체가 바뀌었을 때만(이 Release처럼) 새 APK를 받아 덮어 설치하면 됩니다. 로그인은 그대로 남습니다.
+
+          안드로이드 7.0 이상, Chrome(또는 Android System WebView)이 최신이어야 합니다."

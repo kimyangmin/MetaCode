@@ -18,6 +18,7 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
 - **Phase 1~6 완료.** Phase 7을 먼저 진행하다가 2026-09-28 Phase 6(에셋)을 했습니다: CC0 에셋팩으로 기본 지형·캐릭터, 캐릭터 애니메이션·첨부 모션, 도트 에디터, 캐릭터 고르기, 맵 에디터. PR은 `feature/asset-format` → `builtin-maps` → `character-animation` → `asset-editor` → `character-select` → `map-editor` 순서로 이어져 있습니다 (#33~#38). 운영 서버의 음성 통화는 2026-09-27에 켰습니다 (`docs/deploy.md` 10단계: 7882/udp, 7881/tcp, `.env.production`의 LiveKit 키).
 - **운영 중:** https://metacode.kimyangmin.me (2026-09-26 첫 배포, `main` 기준). 서버는 SSH 별칭 `myserver3`(ubuntu, `~/MetaCode`)로 접속할 수 있고, 업데이트는 `main`에 push되면 CI 통과 후 GitHub Actions가 SSH로 `infra/deploy.sh`를 실행해 자동으로 합니다 (배포 전용 키는 `authorized_keys`의 `command=`로 이 스크립트만 실행 가능, 설정은 `docs/deploy.md` 9단계). 손으로 할 때는 서버에서 `bash infra/deploy.sh`입니다. DB 백업은 서버 crontab이 매일 04:00 KST(19:00 UTC)에 `infra/backup.sh`를 실행합니다 (`~/MetaCode/backups/`, 14일 보관, 로그 `backups/backup.log`). 운영 서버에서 무언가를 바꾸기 전에는 사용자에게 확인받습니다.
 - Phase 7 진행 중: 데스크톱 자동 업데이트(GitHub Releases, `desktop-v*` 태그) 완료. 코드 서명은 정식 공개 때 정합니다.
+- 2026-09-29: 사진 위치 조정, 로그아웃 확인, 분할 화면 위아래 배치의 경계 조절, 광장 `/` → 보내면 광장으로, Ctrl+1~0 이동, 여닫는 애니메이션, 설정 → 기능(단축키·마크다운), 휴대폰 화면(반응형), 안드로이드 앱(Capacitor, `android-v*` 태그 → APK). 안드로이드 서명 키는 사용자가 저장소 비밀값에 넣어야 첫 Release가 나갑니다 (`docs/android.md`).
 - 개발용 GitHub OAuth App(`localhost` 콜백)으로 웹·데스크톱, 운영용 OAuth App으로 운영 웹의 실제 로그인을 확인했습니다 (2026-09-26).
 - 기술 스택은 README 표대로 확정되었습니다 (2026-09-26). 메타버스 렌더링은 Phaser 3 대신 Phaser 4로 정했습니다 (2026-09-27).
 - Phase를 진행하면 이 섹션과 README 로드맵 체크박스를 함께 갱신합니다.
@@ -232,7 +233,40 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
   - lucide의 `File`, `Map`, `Link`, `Image`는 DOM 타입·전역과 이름이 겹치므로 `File as FileIcon`처럼 바꿔 가져옵니다.
   - 로그인 화면과 설정 창은 MetaCode 팔레트(`--mc-*`: 밤하늘 #1B1E30, 잉크 #262B44, 모닥불 #FDBE53, 분수 #2FA8E0, 잔디 #84C669, 새벽돌 #E9EDF5)를 씁니다. 전역 `:root` 토큰은 그대로 두고, `.settings-overlay` 안에서만 전역 토큰(`--bg`, `--accent` 등)을 이 팔레트로 다시 정의해 안에 들어가는 컴포넌트가 따라오게 합니다. 제목 글꼴은 Galmuri11 Bold(`galmuri` 패키지, OFL)로 24/36px 같은 정수 크기에만 씁니다.
   - 밝은 accent(모닥불색)에서는 브라우저 기본 range의 빈 쪽 막대가 검게 칠해져서, 설정 창의 슬라이더는 직접 그립니다 (채운 길이는 `--fill`).
-- **Windows에서 파일 수정:** Windows PowerShell 5.1의 `Get-Content`/`Set-Content`는 UTF-8 한글을 깨뜨립니다. 파일 수정은 편집 도구나 bash를 씁니다.
+- **사진 위치 조정:** `ui/ImageCropDialog.tsx`(틀 고정, 사진을 끌고 휠·두 손가락·막대로 확대), 계산은 `ui/imageCrop.ts`
+  - 프로필 사진, 커뮤니티 아이콘·배너를 고르면 먼저 이 창이 뜹니다. 고른 곳은 원본 기준 0~1 비율(`ImageCrop`)로 `PUT /users/me/avatar`, `PUT /communities/:id/images/:kind`의 본문 `{crop}`에 실어 보내고, 서버가 sharp로 `rotate()`(EXIF 방향) → `extract()` → 크기 맞추기를 합니다. 본문이 없으면 예전처럼 가운데를 자릅니다. 브라우저의 `<img>`도 EXIF 방향을 반영해 보여 주므로 두 쪽의 좌표가 같습니다 (돌려 찍은 사진 테스트 있음).
+  - 미리 보기 주소(`URL.createObjectURL`)는 여는 쪽이 만들고 닫을 때 지웁니다 (`cropSource`/`releaseCropSource`). 창 안의 effect에서 지우면 StrictMode의 가짜 언마운트 때 지워져 사진이 안 떴습니다.
+  - 올린 원본은 적용 뒤 지우므로, 이미 올린 사진의 위치를 나중에 다시 고치지는 못합니다 (다시 올려야 함).
+- **여닫는 애니메이션:** 설정 창은 `ui/useExitTransition.ts`(값이 null이 된 뒤에도 잠깐 남겨 `data-closing`), `Dialog`는 스스로 닫을 때(Esc, 바깥, ✕)만 사라지는 애니메이션 뒤에 `onClose`를 부릅니다 (부모가 직접 내리면 바로 사라짐). 시간은 animationend 대신 setTimeout으로 잽니다 (움직임 줄이기 설정에서는 이벤트가 오지 않음). 멤버 목록은 내리지 않고 `.members-slot`의 폭을 줄입니다 (`inert`).
+- **사용자 정보 팝업:** 연 요소(`anchor`)를 다시 누르면 닫습니다 (`openProfile`이 같은 사람·같은 요소면 닫고, 바깥 누르기 처리는 그 요소를 건너뜀). 여닫을 때 애니메이션(`useExitTransition`). 역할 아래에 그 사람의 광장 캐릭터(고른 색 그대로)가 걷는 무대가 있습니다 (`ProfileCharacter`, 내장 에셋 때문에 lazy, 직접 그린 캐릭터는 광장과 같은 `['assets','one',id,version]` 캐시).
+- **움직이는 사진(GIF):** 서버(`makeCoverImages`)가 첫 장면만 담은 멈춘 WebP와, 원본이 움직이면 움직이는 WebP(최대 150장면, 압축 폭탄 제한 안에서)를 만듭니다. 크롭은 장면마다 같은 곳을 자릅니다.
+  - 프로필 사진은 둘 다 저장합니다: `avatarKey`(멈춘 사진) + `avatarAnimatedKey`(`<id>-animated.webp`, 없으면 null) → DTO `avatarUrl` / `avatarAnimatedUrl`. 채팅 목록 등 사진이 많이 모이는 곳은 멈춘 사진, 멤버 목록·정보 팝업·설정의 내 사진은 움직이는 사진(`<Avatar animate />`).
+  - 커뮤니티 아이콘·배너는 움직이는 사진이면 그것 하나만 저장해 어디서나 움직입니다.
+- **채널 만들기:** 채널 목록의 "텍스트 채널"·"음성 채널" 머리글 오른쪽 +(관리자). 누른 구역의 종류가 골라진 채로 열립니다. 음성 채널이 없어도 관리자에게는 음성 채널 머리글을 보여 줍니다.
+- **데스크톱 제목 표시줄 (0.5.0):** `apps/desktop/src/main/titlebar.ts`, 웹 `features/desktop/TitleBar.tsx`
+  - 메인 창은 OS 제목 표시줄 없이(`frame: false`, macOS는 `titleBarStyle: 'hidden'`으로 신호등만 남김) 띄우고, Windows·Linux는 메뉴 막대도 없앱니다(`Menu.setApplicationMenu(null)`, 개발 중에는 F12·Ctrl+Shift+I·F5를 되살림).
+  - preload는 창을 만들 때 넘긴 인자(`--metacode-titlebar=custom|native-controls`)가 있을 때만 브리지 `window`(최소화·최대화·닫기·최대화 상태)를 둡니다. 분리한 창은 인자가 없어 OS 제목 표시줄을 씁니다. 웹은 `window`가 있을 때만 제목 표시줄을 그리므로 브라우저와 0.4.x 앱에서는 그리지 않습니다.
+  - 제목 표시줄: 왼쪽 도움말(설정 → 기능), 가운데 지금 커뮤니티 이름 / DM이면 Direct Message(`titleFor`), 오른쪽 최소화·최대화(최대화면 이전 크기 아이콘)·닫기. 빈 곳은 `-webkit-app-region: drag`라 끌어 옮기고 두 번 누르면 OS가 최대화합니다 (그 자리에는 마우스 이벤트가 오지 않음). 높이는 `--titlebar-h`(32px)이고, 화면을 덮는 창(설정, 대화 상자, 도트 에디터 등)은 그 아래부터 덮습니다.
+- **한 번 더 묻기:** `ui/ConfirmDialog.tsx`. Esc를 캡처 단계에서 먼저 받아 `preventDefault()`하므로 아래의 설정 창은 닫히지 않습니다. 사진 위치 조정 창도 같은 방식입니다 (Dialog 안에 Dialog를 겹치면 둘 다 Esc로 닫혀서 쓰지 않음).
+- **단축키:** Ctrl+1(DM), Ctrl+2~9(커뮤니티 1~8번째), Ctrl+0(9번째)은 `layout/navShortcuts.ts` + `AppLayout`. 숫자 줄의 `e.code`(Digit1 등)로 보고, 브라우저의 탭 옮기기보다 먼저 받아 막습니다. 떠 있는 창(`[aria-modal="true"]`)이 있으면 옮기지 않습니다. 광장의 `/`는 입력창에 `data-return-focus="plaza"`를 적어 두고, 보내거나 Esc를 누르면 광장으로 돌아갑니다 (다른 곳으로 포커스가 나가면 지움). 설정 → 기능(`features/settings/FeatureGuide.tsx`)에 단축키와 마크다운을 정리했으니 바꾸면 함께 고칩니다.
+- **분할 화면 내용 유지:** 배치를 바꾸면 `Group`만 새로 그리고, 채팅·광장은 `SplitPanels`가 가진 요소(`createContentHost`)에 포털로 그린 채 새 패널이 그 요소를 옮겨 붙입니다. 예전엔 옮길 때마다 광장(Phaser, WebGL)을 새로 만들어 가끔 그려지지 않았고 쓰던 글도 사라졌습니다. 옮겨 간 배치에서 한쪽을 접어 둔 기억(크기 0)은 지워 두 패널을 모두 보여 줍니다 (`forgetCollapsed`).
+  - Phaser의 `Scale.RESIZE`는 창 크기만 보고 패널 크기가 바뀐 것은 모릅니다. `PlazaView`가 ResizeObserver로 `scale.getParentBounds()` → `refresh()`를 부릅니다 (`resize()`만 부르면 기억한 부모 크기로 되돌아감). 이게 없어서 구분선을 끌거나 패널을 옮기면 캔버스가 예전 크기로 남아 광장 일부가 비어 보였습니다.
+  - 브라우저 패널로 확인할 때: 화면이 그려지지 않으면 ResizeObserver·rAF가 돌지 않으므로 스크린샷으로 그리게 한 뒤 잽니다. 끌어 놓기는 합성 DragEvent로 확인하되 `dragend`는 보내지 않습니다 (화면 좌표가 0이라 창 밖으로 보고 분리 창을 엶).
+- **분할 화면 구분선:** 위아래 배치면 구분선이 `aria-orientation="horizontal"`이 되는데, CSS가 가로 배치(세로 막대)만 있어서 높이가 0이라 잡을 수 없었습니다. 창이 좁아 두 패널의 최소 크기(채팅 300px + 광장 240px)가 함께 들어가지 않을 때도 끌리지 않습니다.
+- **휴대폰 화면 (반응형):** `ui/useMediaQuery.ts`(`PHONE_QUERY` 768px, `NARROW_QUERY` 1000px), `stores/ui.ts`(서랍 상태), `layout/NavButton.tsx`, `layout/drawerSwipe.ts`
+  - 1000px 이하: 멤버 목록은 오른쪽 서랍(처음엔 닫힘, 기억하지 않음, 화면을 옮기면 닫힘). 768px 이하: 커뮤니티 막대와 채널 목록은 왼쪽 서랍(머리글 ☰, 다른 곳에 안 읽은 메시지가 있으면 점). 이 서랍은 커뮤니티·DM을 오가는 동안 열어 두고, 목록에서 채널·대화(`.sidebar a[href]`)를 고르거나 바깥(`.app__backdrop`)을 누르면 닫습니다.
+  - 서랍은 반대쪽으로 밀어 닫습니다 (`useDrawerSwipe`: 처음 10px로 가로·세로를 가르고, 미는 동안 `.app`의 `--drawer-drag`로 손가락을 따라오고, 60px 넘게 밀면 닫음).
+  - 채팅과 광장은 위아래로만 나눕니다 (`SplitPanels`의 `phone`: 세로 고정, 최소 140px, 크기는 `metacode-split-phone`으로 따로 기억, ⇅로 위아래 바꾸기 = `phoneFirst`, 처음엔 광장이 위). 옮기기(⠿)·분리는 없고, 구분선은 손가락으로 잡기 쉽게 두껍습니다. 광장 아래의 방향키·/ 안내는 숨깁니다.
+  - 손가락으로 쓰는 기기(`pointer: coarse`)에서는 Enter가 줄 바꾸기이고 보내기 버튼으로 보냅니다.
+  - 휴대폰 브라우저와 안드로이드 WebView는 `getDisplayMedia`가 없어 화면 공유 버튼을 숨깁니다 (`canShareScreen`). 보기는 됩니다.
+  - 브라우저 패널의 모바일 크기 에뮬레이션에서는 화면이 그려지지 않을 때가 있어(전환 애니메이션이 멈춰 보임) DOM 크기로 확인했습니다.
+- **안드로이드 앱:** `apps/android`(Capacitor 8), 웹 `platform/android.ts`, `platform/appLinks.ts`, 자세한 것은 `docs/android.md`
+  - 데스크톱처럼 운영 웹을 여는 셸입니다(`server.url`). Capacitor는 이 주소의 HTML을 앱 안에서 받아 브리지 스크립트를 넣어 주므로, 웹 번들의 `@capacitor/*`가 네이티브 플러그인(App, Browser)을 부릅니다. 이 코드는 `isAndroidApp()`(User-Agent의 `MetaCodeAndroid` + `window.Capacitor`)일 때만 `loadAndroid()`로 불러오고, ESLint가 `src/platform` 밖에서 `@capacitor/*`를 못 쓰게 막습니다.
+  - 로그인: Custom Tab으로 `client=android&code_challenge=` → 서버가 `metacode://auth?code=`로 돌려보내는 페이지(바로 열고, 막히면 버튼) → `POST /auth/android/session`이 **웹과 같은 쿠키**를 심습니다. 이후는 웹과 똑같이 쿠키로 인증·갱신합니다. 앱 코드는 종류별로 따로 저장해(`oauth:<client>:<code>`) 데스크톱 코드와 섞이지 않습니다 (테스트 있음). PKCE verifier는 localStorage에 잠깐 두고, 앱을 켠 주소는 새로 고침해도 다시 오므로 처리한 주소를 sessionStorage에 적어 두 번 처리하지 않습니다.
+  - 첨부 받기: `GET /attachments/:id/link`(권한 확인 후 `{url}`, no-store) → 시스템 브라우저. 뒤로 가기: 서랍 → 떠 있는 창(Esc를 보냄) → 앞 화면 → 앱 내리기. 분리 창(⧉)은 만들지 않습니다.
+  - Release는 `android-v*` 태그, **Latest로 올리지 않습니다** (데스크톱 업데이트가 `/releases/latest`를 봄). 서명 키는 저장소 비밀값(`ANDROID_KEYSTORE_BASE64` 등)에서 꺼냅니다. 아이콘·시작 화면은 `scripts/icons.mjs`가 만든 도트 모닥불입니다.
+  - PC에 Android SDK가 없어 APK는 GitHub Actions에서만 빌드했습니다. 실제 기기에서의 로그인·통화·딥링크 확인은 사람이 해야 합니다.
+- **Windows에서 파일 수정:** Windows PowerShell 5.1의 `Get-Content`/`Set-Content`는 UTF-8 한글을 깨뜨립니다. 파일 수정은 편집 도구나 bash를 씁니다. Windows용 Python으로 고칠 때는 `newline=''`로 열어야 줄바꿈이 CRLF로 바뀌지 않습니다 (Prettier가 LF를 요구함).
 
 ## 확정된 결정
 
@@ -260,6 +294,7 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
 | 맵 편집 | 커뮤니티 소유자·관리자가 맵 에디터로 분수 광장에 타일·오브젝트를 배치. 커뮤니티마다 맵이 다름. DM 모닥불 캠프는 내장 맵만 씀 (2026-09-28) |
 | 데스크톱 코드 서명 | 당분간 하지 않음 (테스트 단계). 설치 때 "Windows의 PC 보호" 경고는 추가 정보 → 실행으로 넘김. 정식 공개 때 다시 정함 (2026-09-27) |
 | 모니터링 | 셀프 호스팅 (같은 서버에 Uptime Kuma). 외부 서비스는 쓰지 않음 (2026-09-27) |
+| 안드로이드 앱 | Capacitor로 운영 웹을 감싼 앱. GitHub Releases에 서명한 APK로 배포 (Play 스토어는 쓰지 않음) (2026-09-29) |
 | 채널 권한 | Discord식 사용자 정의 역할. 역할을 만들고 채널마다 역할별로 허용 (2026-09-27) |
 
 ## 용어
@@ -368,7 +403,7 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
 
 `apps/server/prisma/schema.prisma`가 기준입니다. 바꾸면 여기도 고칩니다.
 
-- `User` (구현됨): githubId, username(사용자 ID), displayName(GitHub 이름), avatarUrl(GitHub 사진), nickname, bio, avatarKey(올린 사진), character(광장 캐릭터 `{asset, colors, version?}`, null이면 기본)
+- `User` (구현됨): githubId, username(사용자 ID), displayName(GitHub 이름), avatarUrl(GitHub 사진), nickname, bio, avatarKey(올린 사진, 멈춘 것), avatarAnimatedKey(GIF로 올렸으면 움직이는 사진), character(광장 캐릭터 `{asset, colors, version?}`, null이면 기본)
 - `RefreshToken` (구현됨): userId, tokenHash, familyId, client, expiresAt, revokedAt
 - `Friendship` (구현됨): requesterId, addresseeId(둘이 기본 키), status(`PENDING` | `ACCEPTED`), createdAt, acceptedAt
 - `Community` (구현됨): name, ownerId, iconKey·bannerKey(올린 아이콘·배너, 없으면 null) / `CommunityMember`: userId, communityId, role(`OWNER` | `ADMIN` | `MEMBER`) / `Invite`: code(8자), expiresAt(7일), uses
@@ -450,6 +485,7 @@ tools/
 | `pnpm --filter @metacode/<패키지> <스크립트>` | 패키지 하나만 실행 (예: `pnpm --filter @metacode/shared test`) |
 | `pnpm infra:up` / `pnpm infra:down` | 로컬 PostgreSQL, Redis, SeaweedFS(S3) |
 | `pnpm assets:build` | 내장 에셋 다시 만들기 (`--preview <폴더>`로 확대 PNG) |
+| `pnpm --filter @metacode/android sync` | 안드로이드 네이티브 프로젝트에 설정·플러그인 넣기 (`open`으로 Android Studio) |
 | `pnpm --filter @metacode/server db:migrate` | 스키마 변경 → 마이그레이션 생성 + 로컬 DB 적용 (`--name <이름>`) |
 | `pnpm --filter @metacode/server db:deploy` | 만들어 둔 마이그레이션만 적용 (운영, CI) |
 

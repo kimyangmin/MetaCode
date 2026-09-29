@@ -259,6 +259,21 @@ describe('메시지에 붙이기', () => {
     expect(redirect.status).toBe(302);
     expect(redirect.headers.get('cache-control')).toBe('no-store');
   });
+
+  it('link는 보내지 않고 주소만 준다 (안드로이드 앱의 받기). 권한은 같다', async () => {
+    const attachment = await upload(alice, channelId, '받기.txt', new TextEncoder().encode('내용'));
+    const res = await alice.fetch(`/attachments/${attachment.id}/link?download=1`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get('cache-control')).toBe('no-store');
+    const { url } = (await res.json()) as { url: string };
+    // 쿠키 없이 그 주소만으로 받을 수 있다.
+    const file = await fetch(url);
+    expect(file.headers.get('content-disposition')).toMatch(/^attachment;/);
+    expect(await file.text()).toBe('내용');
+
+    const carol = await loginUser(t);
+    expect((await carol.fetch(`/attachments/${attachment.id}/link`)).status).toBe(404);
+  });
 });
 
 describe('저장소 정리', () => {

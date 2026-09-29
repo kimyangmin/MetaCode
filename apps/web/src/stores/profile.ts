@@ -8,6 +8,8 @@ export interface ProfileTarget {
   y: number;
   /** 커뮤니티 화면에서 열었으면 그 커뮤니티의 역할을 함께 보여 준다 */
   communityId?: string;
+  /** 팝업을 연 요소 (같은 요소를 다시 누르면 닫는다) */
+  anchor?: Element;
 }
 
 interface ProfileState {
@@ -23,9 +25,19 @@ export const useProfileStore = create<ProfileState>((set) => ({
   close: () => set({ target: null }),
 }));
 
-/** 아바타·이름 버튼의 onClick에 넣는다 */
-export const openProfile = (
+/**
+ * 아바타·이름 버튼의 onClick에 넣는다. 같은 사람의 팝업을 연 요소를 다시 누르면 닫는다.
+ */
+export function openProfile(
   user: UserProfile,
-  event: { clientX: number; clientY: number },
+  event: { clientX: number; clientY: number; currentTarget?: EventTarget | null },
   communityId?: string,
-) => useProfileStore.getState().open({ user, x: event.clientX, y: event.clientY, communityId });
+): void {
+  const store = useProfileStore.getState();
+  const anchor = event.currentTarget instanceof Element ? event.currentTarget : undefined;
+  if (anchor && store.target?.anchor === anchor && store.target.user.id === user.id) {
+    store.close();
+    return;
+  }
+  store.open({ user, x: event.clientX, y: event.clientY, communityId, anchor });
+}

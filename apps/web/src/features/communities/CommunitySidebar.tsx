@@ -19,9 +19,10 @@ import { useVoice } from '../voice/VoiceProvider';
 import { ChannelAccessFields, ChannelSettings } from './ChannelSettings';
 import { CommunitySettings } from './CommunitySettings';
 import { useMeRequired } from './hooks';
-import { Ellipsis, Hash, Lock, Settings, Volume2 } from 'lucide-react';
+import { Ellipsis, Hash, Lock, Plus, Settings, Volume2 } from 'lucide-react';
 
-type Modal = 'invite' | 'channel' | 'settings' | { edit: ChannelSummary } | null;
+type ChannelType = 'TEXT' | 'VOICE';
+type Modal = 'invite' | 'settings' | { create: ChannelType } | { edit: ChannelSummary } | null;
 
 /** 커뮤니티 화면 왼쪽: 이름과 메뉴, 텍스트 채널과 음성 채널 목록, 내 프로필 */
 export function CommunitySidebar({
@@ -94,11 +95,6 @@ export function CommunitySidebar({
               초대하기
             </button>
             {canManage && (
-              <button role="menuitem" onClick={() => (setMenuOpen(false), setModal('channel'))}>
-                채널 만들기
-              </button>
-            )}
-            {canManage && (
               <button role="menuitem" onClick={() => (setMenuOpen(false), setModal('settings'))}>
                 커뮤니티 설정
               </button>
@@ -113,7 +109,10 @@ export function CommunitySidebar({
       </header>
 
       <nav className="sidebar__list" aria-label="채널">
-        <h3 className="sidebar__section">텍스트 채널</h3>
+        <SectionHeader
+          title="텍스트 채널"
+          onAdd={canManage ? () => setModal({ create: 'TEXT' }) : undefined}
+        />
         {textChannels.map((channel) => (
           <ChannelLink
             key={channel.id}
@@ -124,7 +123,13 @@ export function CommunitySidebar({
             onEdit={canManage ? () => setModal({ edit: channel }) : undefined}
           />
         ))}
-        {voiceChannels.length > 0 && <h3 className="sidebar__section">음성 채널</h3>}
+        {/* 음성 채널이 없어도 관리자에게는 만들 수 있게 머리글을 보여 준다. */}
+        {(voiceChannels.length > 0 || canManage) && (
+          <SectionHeader
+            title="음성 채널"
+            onAdd={canManage ? () => setModal({ create: 'VOICE' }) : undefined}
+          />
+        )}
         {voiceChannels.map((channel) => (
           <VoiceChannelItem
             key={channel.id}
@@ -140,13 +145,17 @@ export function CommunitySidebar({
       {modal === 'invite' && (
         <InviteDialog communityId={community.id} onClose={() => setModal(null)} />
       )}
-      {modal === 'channel' && (
-        <CreateChannelDialog community={community} onClose={() => setModal(null)} />
+      {modal && typeof modal === 'object' && 'create' in modal && (
+        <CreateChannelDialog
+          community={community}
+          initialType={modal.create}
+          onClose={() => setModal(null)}
+        />
       )}
       {modal === 'settings' && (
         <CommunitySettings community={community} onClose={() => setModal(null)} />
       )}
-      {modal && typeof modal === 'object' && (
+      {modal && typeof modal === 'object' && 'edit' in modal && (
         <ChannelSettings
           community={community}
           channel={modal.edit}
@@ -154,6 +163,26 @@ export function CommunitySidebar({
         />
       )}
     </aside>
+  );
+}
+
+/** 채널 목록의 구역 머리글. 관리자에게는 오른쪽 끝에 그 종류의 채널을 만드는 + 버튼 */
+function SectionHeader({ title, onAdd }: { title: string; onAdd?: () => void }) {
+  return (
+    <div className="sidebar__section-row">
+      <h3 className="sidebar__section">{title}</h3>
+      {onAdd && (
+        <button
+          type="button"
+          className="icon-button sidebar__add"
+          onClick={onAdd}
+          aria-label={`${title} 만들기`}
+          title={`${title} 만들기`}
+        >
+          <Plus aria-hidden />
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -300,16 +329,19 @@ function InviteDialog({ communityId, onClose }: { communityId: string; onClose()
 
 function CreateChannelDialog({
   community,
+  initialType,
   onClose,
 }: {
   community: CommunitySummary;
+  /** 누른 + 버튼의 구역 (텍스트 채널, 음성 채널) */
+  initialType: ChannelType;
   onClose(): void;
 }) {
   const communityId = community.id;
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [name, setName] = useState('');
-  const [type, setType] = useState<'TEXT' | 'VOICE'>('TEXT');
+  const [type, setType] = useState<ChannelType>(initialType);
   const [access, setAccess] = useState({ isPrivate: false, roleIds: [] as string[] });
   const [error, setError] = useState<string | null>(null);
 

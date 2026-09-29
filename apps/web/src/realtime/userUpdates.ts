@@ -28,6 +28,7 @@ export function withUserProfile<T>(data: T, user: UserProfile): T {
         value.username === user.username &&
         value.displayName === user.displayName &&
         value.avatarUrl === user.avatarUrl &&
+        (value.avatarAnimatedUrl ?? null) === (user.avatarAnimatedUrl ?? null) &&
         JSON.stringify(value.character) === JSON.stringify(user.character)
       ) {
         return value;
@@ -37,6 +38,7 @@ export function withUserProfile<T>(data: T, user: UserProfile): T {
         username: user.username,
         displayName: user.displayName,
         avatarUrl: user.avatarUrl,
+        avatarAnimatedUrl: user.avatarAnimatedUrl ?? null,
         character: user.character,
       };
     }

@@ -13,11 +13,13 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import {
+  type ApplyImageRequest,
   type AvatarUploadRequest,
   type AvatarUploadTicket,
   type UserDetail,
   type SetCharacterRequest,
   type UserProfile,
+  applyImageSchema,
   avatarUploadSchema,
   setCharacterSchema,
   updateProfileSchema,
@@ -68,10 +70,13 @@ export class UsersController {
     return this.users.createAvatarUpload(userId, body.size);
   }
 
-  /** 프로필 사진 올리기 2단계: 올린 원본을 확인해 적용한다 */
+  /** 프로필 사진 올리기 2단계: 올린 원본을 확인해 적용한다 (crop: 사용자가 고른 곳) */
   @Put('me/avatar')
-  applyAvatar(@CurrentUserId() userId: string): Promise<UserDetail> {
-    return this.users.applyAvatar(userId);
+  applyAvatar(
+    @CurrentUserId() userId: string,
+    @Body(new ZodValidationPipe(applyImageSchema)) body: ApplyImageRequest,
+  ): Promise<UserDetail> {
+    return this.users.applyAvatar(userId, body?.crop);
   }
 
   /** GitHub 사진으로 돌아가기 */
@@ -96,7 +101,7 @@ export class UsersController {
   }
 }
 
-const AVATAR_FILE = /^[0-9a-f-]{36}\.webp$/;
+const AVATAR_FILE = /^[0-9a-f-]{36}(-animated)?\.webp$/;
 
 /**
  * 프로필 사진 파일. <img>로 바로 쓰도록 인증 없이 준다 (데스크톱 앱의 <img>는 토큰을 붙일 수 없다).
