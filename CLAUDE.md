@@ -18,6 +18,7 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
 - **Phase 1~6 완료.** Phase 7을 먼저 진행하다가 2026-09-28 Phase 6(에셋)을 했습니다: CC0 에셋팩으로 기본 지형·캐릭터, 캐릭터 애니메이션·첨부 모션, 도트 에디터, 캐릭터 고르기, 맵 에디터. PR은 `feature/asset-format` → `builtin-maps` → `character-animation` → `asset-editor` → `character-select` → `map-editor` 순서로 이어져 있습니다 (#33~#38). 운영 서버의 음성 통화는 2026-09-27에 켰습니다 (`docs/deploy.md` 10단계: 7882/udp, 7881/tcp, `.env.production`의 LiveKit 키).
 - **운영 중:** https://metacode.kimyangmin.me (2026-09-26 첫 배포, `main` 기준). 서버는 SSH 별칭 `myserver3`(ubuntu, `~/MetaCode`)로 접속할 수 있고, 업데이트는 `main`에 push되면 CI 통과 후 GitHub Actions가 SSH로 `infra/deploy.sh`를 실행해 자동으로 합니다 (배포 전용 키는 `authorized_keys`의 `command=`로 이 스크립트만 실행 가능, 설정은 `docs/deploy.md` 9단계). 손으로 할 때는 서버에서 `bash infra/deploy.sh`입니다. DB 백업은 서버 crontab이 매일 04:00 KST(19:00 UTC)에 `infra/backup.sh`를 실행합니다 (`~/MetaCode/backups/`, 14일 보관, 로그 `backups/backup.log`). 운영 서버에서 무언가를 바꾸기 전에는 사용자에게 확인받습니다.
 - Phase 7 진행 중: 데스크톱 자동 업데이트(GitHub Releases, `desktop-v*` 태그) 완료. 코드 서명은 정식 공개 때 정합니다.
+- 2026-09-29: 사진 위치 조정, 로그아웃 확인, 분할 화면 위아래 배치의 경계 조절, 광장 `/` → 보내면 광장으로, Ctrl+1~0 이동, 여닫는 애니메이션, 설정 → 기능(단축키·마크다운), 휴대폰 화면(반응형), 안드로이드 앱(Capacitor, `android-v*` 태그 → APK). 안드로이드 서명 키는 사용자가 저장소 비밀값에 넣어야 첫 Release가 나갑니다 (`docs/android.md`).
 - 개발용 GitHub OAuth App(`localhost` 콜백)으로 웹·데스크톱, 운영용 OAuth App으로 운영 웹의 실제 로그인을 확인했습니다 (2026-09-26).
 - 기술 스택은 README 표대로 확정되었습니다 (2026-09-26). 메타버스 렌더링은 Phaser 3 대신 Phaser 4로 정했습니다 (2026-09-27).
 - Phase를 진행하면 이 섹션과 README 로드맵 체크박스를 함께 갱신합니다.
@@ -232,7 +233,26 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
   - lucide의 `File`, `Map`, `Link`, `Image`는 DOM 타입·전역과 이름이 겹치므로 `File as FileIcon`처럼 바꿔 가져옵니다.
   - 로그인 화면과 설정 창은 MetaCode 팔레트(`--mc-*`: 밤하늘 #1B1E30, 잉크 #262B44, 모닥불 #FDBE53, 분수 #2FA8E0, 잔디 #84C669, 새벽돌 #E9EDF5)를 씁니다. 전역 `:root` 토큰은 그대로 두고, `.settings-overlay` 안에서만 전역 토큰(`--bg`, `--accent` 등)을 이 팔레트로 다시 정의해 안에 들어가는 컴포넌트가 따라오게 합니다. 제목 글꼴은 Galmuri11 Bold(`galmuri` 패키지, OFL)로 24/36px 같은 정수 크기에만 씁니다.
   - 밝은 accent(모닥불색)에서는 브라우저 기본 range의 빈 쪽 막대가 검게 칠해져서, 설정 창의 슬라이더는 직접 그립니다 (채운 길이는 `--fill`).
-- **Windows에서 파일 수정:** Windows PowerShell 5.1의 `Get-Content`/`Set-Content`는 UTF-8 한글을 깨뜨립니다. 파일 수정은 편집 도구나 bash를 씁니다.
+- **사진 위치 조정:** `ui/ImageCropDialog.tsx`(틀 고정, 사진을 끌고 휠·두 손가락·막대로 확대), 계산은 `ui/imageCrop.ts`
+  - 프로필 사진, 커뮤니티 아이콘·배너를 고르면 먼저 이 창이 뜹니다. 고른 곳은 원본 기준 0~1 비율(`ImageCrop`)로 `PUT /users/me/avatar`, `PUT /communities/:id/images/:kind`의 본문 `{crop}`에 실어 보내고, 서버가 sharp로 `rotate()`(EXIF 방향) → `extract()` → 크기 맞추기를 합니다. 본문이 없으면 예전처럼 가운데를 자릅니다. 브라우저의 `<img>`도 EXIF 방향을 반영해 보여 주므로 두 쪽의 좌표가 같습니다 (돌려 찍은 사진 테스트 있음).
+  - 미리 보기 주소(`URL.createObjectURL`)는 여는 쪽이 만들고 닫을 때 지웁니다 (`cropSource`/`releaseCropSource`). 창 안의 effect에서 지우면 StrictMode의 가짜 언마운트 때 지워져 사진이 안 떴습니다.
+  - 올린 원본은 적용 뒤 지우므로, 이미 올린 사진의 위치를 나중에 다시 고치지는 못합니다 (다시 올려야 함).
+- **여닫는 애니메이션:** 설정 창은 `ui/useExitTransition.ts`(값이 null이 된 뒤에도 잠깐 남겨 `data-closing`), `Dialog`는 스스로 닫을 때(Esc, 바깥, ✕)만 사라지는 애니메이션 뒤에 `onClose`를 부릅니다 (부모가 직접 내리면 바로 사라짐). 시간은 animationend 대신 setTimeout으로 잽니다 (움직임 줄이기 설정에서는 이벤트가 오지 않음). 멤버 목록은 내리지 않고 `.members-slot`의 폭을 줄입니다 (`inert`).
+- **한 번 더 묻기:** `ui/ConfirmDialog.tsx`. Esc를 캡처 단계에서 먼저 받아 `preventDefault()`하므로 아래의 설정 창은 닫히지 않습니다. 사진 위치 조정 창도 같은 방식입니다 (Dialog 안에 Dialog를 겹치면 둘 다 Esc로 닫혀서 쓰지 않음).
+- **단축키:** Ctrl+1(DM), Ctrl+2~9(커뮤니티 1~8번째), Ctrl+0(9번째)은 `layout/navShortcuts.ts` + `AppLayout`. 숫자 줄의 `e.code`(Digit1 등)로 보고, 브라우저의 탭 옮기기보다 먼저 받아 막습니다. 떠 있는 창(`[aria-modal="true"]`)이 있으면 옮기지 않습니다. 광장의 `/`는 입력창에 `data-return-focus="plaza"`를 적어 두고, 보내거나 Esc를 누르면 광장으로 돌아갑니다 (다른 곳으로 포커스가 나가면 지움). 설정 → 기능(`features/settings/FeatureGuide.tsx`)에 단축키와 마크다운을 정리했으니 바꾸면 함께 고칩니다.
+- **분할 화면 구분선:** 위아래 배치면 구분선이 `aria-orientation="horizontal"`이 되는데, CSS가 가로 배치(세로 막대)만 있어서 높이가 0이라 잡을 수 없었습니다. 창이 좁아 두 패널의 최소 크기(채팅 300px + 광장 240px)가 함께 들어가지 않을 때도 끌리지 않습니다.
+- **휴대폰 화면 (반응형):** `ui/useMediaQuery.ts`(`PHONE_QUERY` 768px, `NARROW_QUERY` 1000px), `stores/ui.ts`(서랍 상태), `layout/NavButton.tsx`, `SplitView`의 `PhoneSplit`
+  - 1000px 이하: 멤버 목록은 오른쪽 서랍(처음엔 닫힘, 기억하지 않음). 768px 이하: 커뮤니티 막대와 채널 목록은 왼쪽 서랍(머리글 ☰, 다른 곳에 안 읽은 메시지가 있으면 점), 채팅과 광장은 머리글의 "채팅 | 광장"으로 하나씩 (채팅은 숨기기만, 광장은 내림). 패널 옮기기·분리는 없습니다. 서랍은 화면을 옮기거나 바깥(`.app__backdrop`)을 누르면 닫힙니다.
+  - 손가락으로 쓰는 기기(`pointer: coarse`)에서는 Enter가 줄 바꾸기이고 보내기 버튼으로 보냅니다.
+  - 휴대폰 브라우저와 안드로이드 WebView는 `getDisplayMedia`가 없어 화면 공유 버튼을 숨깁니다 (`canShareScreen`). 보기는 됩니다.
+  - 브라우저 패널의 모바일 크기 에뮬레이션에서는 화면이 그려지지 않을 때가 있어(전환 애니메이션이 멈춰 보임) DOM 크기로 확인했습니다.
+- **안드로이드 앱:** `apps/android`(Capacitor 8), 웹 `platform/android.ts`, `platform/appLinks.ts`, 자세한 것은 `docs/android.md`
+  - 데스크톱처럼 운영 웹을 여는 셸입니다(`server.url`). Capacitor는 이 주소의 HTML을 앱 안에서 받아 브리지 스크립트를 넣어 주므로, 웹 번들의 `@capacitor/*`가 네이티브 플러그인(App, Browser)을 부릅니다. 이 코드는 `isAndroidApp()`(User-Agent의 `MetaCodeAndroid` + `window.Capacitor`)일 때만 `loadAndroid()`로 불러오고, ESLint가 `src/platform` 밖에서 `@capacitor/*`를 못 쓰게 막습니다.
+  - 로그인: Custom Tab으로 `client=android&code_challenge=` → 서버가 `metacode://auth?code=`로 돌려보내는 페이지(바로 열고, 막히면 버튼) → `POST /auth/android/session`이 **웹과 같은 쿠키**를 심습니다. 이후는 웹과 똑같이 쿠키로 인증·갱신합니다. 앱 코드는 종류별로 따로 저장해(`oauth:<client>:<code>`) 데스크톱 코드와 섞이지 않습니다 (테스트 있음). PKCE verifier는 localStorage에 잠깐 두고, 앱을 켠 주소는 새로 고침해도 다시 오므로 처리한 주소를 sessionStorage에 적어 두 번 처리하지 않습니다.
+  - 첨부 받기: `GET /attachments/:id/link`(권한 확인 후 `{url}`, no-store) → 시스템 브라우저. 뒤로 가기: 서랍 → 떠 있는 창(Esc를 보냄) → 앞 화면 → 앱 내리기. 분리 창(⧉)은 만들지 않습니다.
+  - Release는 `android-v*` 태그, **Latest로 올리지 않습니다** (데스크톱 업데이트가 `/releases/latest`를 봄). 서명 키는 저장소 비밀값(`ANDROID_KEYSTORE_BASE64` 등)에서 꺼냅니다. 아이콘·시작 화면은 `scripts/icons.mjs`가 만든 도트 모닥불입니다.
+  - PC에 Android SDK가 없어 APK는 GitHub Actions에서만 빌드했습니다. 실제 기기에서의 로그인·통화·딥링크 확인은 사람이 해야 합니다.
+- **Windows에서 파일 수정:** Windows PowerShell 5.1의 `Get-Content`/`Set-Content`는 UTF-8 한글을 깨뜨립니다. 파일 수정은 편집 도구나 bash를 씁니다. Windows용 Python으로 고칠 때는 `newline=''`로 열어야 줄바꿈이 CRLF로 바뀌지 않습니다 (Prettier가 LF를 요구함).
 
 ## 확정된 결정
 
@@ -260,6 +280,7 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
 | 맵 편집 | 커뮤니티 소유자·관리자가 맵 에디터로 분수 광장에 타일·오브젝트를 배치. 커뮤니티마다 맵이 다름. DM 모닥불 캠프는 내장 맵만 씀 (2026-09-28) |
 | 데스크톱 코드 서명 | 당분간 하지 않음 (테스트 단계). 설치 때 "Windows의 PC 보호" 경고는 추가 정보 → 실행으로 넘김. 정식 공개 때 다시 정함 (2026-09-27) |
 | 모니터링 | 셀프 호스팅 (같은 서버에 Uptime Kuma). 외부 서비스는 쓰지 않음 (2026-09-27) |
+| 안드로이드 앱 | Capacitor로 운영 웹을 감싼 앱. GitHub Releases에 서명한 APK로 배포 (Play 스토어는 쓰지 않음) (2026-09-29) |
 | 채널 권한 | Discord식 사용자 정의 역할. 역할을 만들고 채널마다 역할별로 허용 (2026-09-27) |
 
 ## 용어
@@ -450,6 +471,7 @@ tools/
 | `pnpm --filter @metacode/<패키지> <스크립트>` | 패키지 하나만 실행 (예: `pnpm --filter @metacode/shared test`) |
 | `pnpm infra:up` / `pnpm infra:down` | 로컬 PostgreSQL, Redis, SeaweedFS(S3) |
 | `pnpm assets:build` | 내장 에셋 다시 만들기 (`--preview <폴더>`로 확대 PNG) |
+| `pnpm --filter @metacode/android sync` | 안드로이드 네이티브 프로젝트에 설정·플러그인 넣기 (`open`으로 Android Studio) |
 | `pnpm --filter @metacode/server db:migrate` | 스키마 변경 → 마이그레이션 생성 + 로컬 DB 적용 (`--name <이름>`) |
 | `pnpm --filter @metacode/server db:deploy` | 만들어 둔 마이그레이션만 적용 (운영, CI) |
 

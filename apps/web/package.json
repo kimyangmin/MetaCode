@@ -11,6 +11,9 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@capacitor/app": "^8.1.1",
+    "@capacitor/browser": "^8.0.4",
+    "@capacitor/core": "^8.5.2",
     "@metacode/shared": "workspace:*",
     "@sapphi-red/web-noise-suppressor": "0.4.1",
     "@tanstack/react-query": "^5.104.0",

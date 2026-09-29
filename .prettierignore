@@ -8,3 +8,6 @@ pnpm-lock.yaml
 apps/server/src/generated
 # tools/build-assets.mjs가 만드는 파일
 packages/shared/src/assets/builtin/*.json
+# 안드로이드 네이티브 프로젝트: cap sync가 넣는 파일과 Gradle 빌드 결과
+apps/android/android/app/src/main/assets
+apps/android/android/**/build

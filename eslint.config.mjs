@@ -10,7 +10,13 @@ export default tseslint.config(
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
-    files: ['apps/server/**/*.ts', 'apps/desktop/**/*.ts', '*.mjs', 'tools/**/*.mjs'],
+    files: [
+      'apps/server/**/*.ts',
+      'apps/desktop/**/*.ts',
+      'apps/android/scripts/**/*.mjs',
+      '*.mjs',
+      'tools/**/*.mjs',
+    ],
     languageOptions: {
       globals: globals.node,
     },
@@ -32,6 +38,17 @@ export default tseslint.config(
     files: ['apps/web/**/*.{ts,tsx}'],
     rules: {
       'no-restricted-imports': ['error', { paths: ['electron'] }],
+    },
+  },
+  {
+    // Capacitor(안드로이드 앱) 플러그인도 src/platform에서만 쓴다 (브라우저에서는 불러오지 않게).
+    files: ['apps/web/**/*.{ts,tsx}'],
+    ignores: ['apps/web/src/platform/**'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        { paths: ['electron'], patterns: [{ group: ['@capacitor/*'] }] },
+      ],
     },
   },
 );

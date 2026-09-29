@@ -27,6 +27,7 @@ import {
 } from './arrangement';
 import { GripVertical, SquareArrowOutUpRight, X } from 'lucide-react';
 import { useIsPhone } from '../ui/useMediaQuery';
+import { isAndroidApp } from '../platform';
 import { NavButton } from './NavButton';
 
 /** 패널을 끌 때 다른 드래그(파일, 목록 순서)와 구분하는 데이터 형식 */
@@ -258,8 +259,8 @@ function SplitPanels({
           dragged.current = panel;
           if (!panel) setDrop(null);
         }}
-        // 다른 패널이 닫혀 있으면 메인 창이 비므로 분리하지 않는다.
-        onDetach={open[otherPanel(key)] ? (at) => onDetach(key, at) : undefined}
+        // 다른 패널이 닫혀 있으면 메인 창이 비므로 분리하지 않는다. 안드로이드 앱은 새 창을 열 수 없다.
+        onDetach={open[otherPanel(key)] && !isAndroidApp() ? (at) => onDetach(key, at) : undefined}
       />
     ),
   });

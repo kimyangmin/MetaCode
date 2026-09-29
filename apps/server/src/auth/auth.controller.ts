@@ -12,11 +12,14 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
+  type AndroidSessionRequest,
   AuthClient,
   type AuthTokens,
   type DesktopTokenRequest,
   type GithubLoginQuery,
   type RefreshTokenBody,
+  androidAuthRedirectUrl,
+  androidSessionRequestSchema,
   desktopLoopbackUrl,
   desktopTokenRequestSchema,
   githubLoginQuerySchema,
@@ -41,7 +44,7 @@ const callbackQuerySchema = z.object({
 
 type CallbackQuery = z.infer<typeof callbackQuerySchema>;
 
-/** 로그인 실패 사유. 웹은 ?login_error=, 데스크톱은 루프백 주소의 ?error=로 전달한다. */
+/** 로그인 실패 사유. 웹은 ?login_error=, 데스크톱은 루프백 주소, 안드로이드는 딥링크의 ?error=로 전달한다. */
 type LoginError = 'invalid_state' | 'access_denied' | 'github_error';
 
 @Controller('auth')
@@ -78,7 +81,9 @@ export class AuthController {
             codeChallenge: query.code_challenge,
             redirectPort: query.redirect_port,
           }
-        : { client: AuthClient.Web },
+        : query.client === AuthClient.Android
+          ? { client: AuthClient.Android, codeChallenge: query.code_challenge }
+          : { client: AuthClient.Web },
     );
     if (query.client === AuthClient.Web) {
       // state를 이 브라우저에 묶어 둔다. 다른 사람이 만든 콜백 링크로 로그인되는 것(login CSRF)을 막는다.
@@ -87,7 +92,10 @@ export class AuthController {
     res.redirect(this.github.authorizeUrl(state));
   }
 
-  /** GitHub가 돌려보내는 곳. 웹은 쿠키를 심고, 데스크톱은 일회용 코드를 앱의 루프백 주소로 넘긴다. */
+  /**
+   * GitHub가 돌려보내는 곳. 웹은 쿠키를 심고, 데스크톱은 일회용 코드를 앱의 루프백 주소로,
+   * 안드로이드는 앱의 딥링크(metacode://auth)로 넘긴다.
+   */
   @Get('github/callback')
   async githubCallback(
     @Query(new ZodValidationPipe(callbackQuerySchema)) query: CallbackQuery,
@@ -127,10 +135,14 @@ export class AuthController {
       res.redirect(this.webOrigin);
       return;
     }
-    const code = await this.store.createDesktopCode({
+    const code = await this.store.createAppCode(pending.client, {
       userId: user.id,
       codeChallenge: pending.codeChallenge,
     });
+    if (pending.client === AuthClient.Android) {
+      sendAppRedirect(res, androidAuthRedirectUrl({ code }));
+      return;
+    }
     res.redirect(desktopLoopbackUrl(pending.redirectPort, { code }));
   }
 
@@ -140,11 +152,28 @@ export class AuthController {
   async desktopToken(
     @Body(new ZodValidationPipe(desktopTokenRequestSchema)) body: DesktopTokenRequest,
   ): Promise<AuthTokens> {
-    const entry = await this.store.consumeDesktopCode(body.code);
+    const entry = await this.store.consumeAppCode(AuthClient.Desktop, body.code);
     if (!entry || !verifyPkce(body.codeVerifier, entry.codeChallenge)) {
       throw new UnauthorizedException('로그인 코드가 올바르지 않거나 만료되었습니다.');
     }
     return this.sessions.issue(entry.userId, AuthClient.Desktop);
+  }
+
+  /**
+   * 안드로이드: 딥링크로 받은 코드 + PKCE verifier를 확인하고 웹과 같은 로그인 쿠키를 심는다.
+   * 앱 안의 화면은 운영 웹 그대로라, 이후로는 웹과 똑같이 쿠키로 인증하고 갱신한다.
+   */
+  @Post('android/session')
+  @HttpCode(204)
+  async androidSession(
+    @Body(new ZodValidationPipe(androidSessionRequestSchema)) body: AndroidSessionRequest,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<void> {
+    const entry = await this.store.consumeAppCode(AuthClient.Android, body.code);
+    if (!entry || !verifyPkce(body.codeVerifier, entry.codeChallenge)) {
+      throw new UnauthorizedException('로그인 코드가 올바르지 않거나 만료되었습니다.');
+    }
+    this.setAuthCookies(res, await this.sessions.issue(entry.userId, AuthClient.Android));
   }
 
   /** 웹은 쿠키로, 데스크톱은 본문으로 리프레시 토큰을 보낸다. 응답도 같은 방식으로 돌려준다. */
@@ -189,8 +218,35 @@ export class AuthController {
       res.redirect(url.href);
       return;
     }
+    if (pending.client === AuthClient.Android) {
+      sendAppRedirect(res, androidAuthRedirectUrl({ error: reason }));
+      return;
+    }
     res.redirect(desktopLoopbackUrl(pending.redirectPort, { error: reason }));
   }
+}
+
+/**
+ * 앱 스킴(metacode://)으로 돌려보내는 페이지. 302만 보내면 브라우저가 사용자 동작 없이 앱을 여는 것을
+ * 막을 때가 있어서(이미 허락한 GitHub 앱이라 누르지 않고 바로 돌아온 경우 등), 바로 열어 보고
+ * 안 되면 누를 수 있는 버튼을 보여 준다. 주소는 서버가 만든 것만 넣는다.
+ */
+function sendAppRedirect(res: Response, url: string): void {
+  const href = url.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+  res
+    .status(200)
+    .set('Cache-Control', 'no-store')
+    .type('html')
+    .send(
+      '<!doctype html><html lang="ko"><head><meta charset="utf-8">' +
+        '<meta name="viewport" content="width=device-width, initial-scale=1">' +
+        `<meta http-equiv="refresh" content="0;url=${href}"><title>MetaCode</title>` +
+        '<style>body{display:grid;place-content:center;gap:16px;min-height:100vh;margin:0;' +
+        'background:#1b1e30;color:#e8ebf4;font-family:system-ui,sans-serif;text-align:center}' +
+        'a{padding:12px 20px;border-radius:8px;background:#fdbe53;color:#262b44;' +
+        'font-weight:700;text-decoration:none}</style></head><body>' +
+        `<p>MetaCode 앱으로 돌아갑니다.</p><a href="${href}">앱으로 돌아가기</a></body></html>`,
+    );
 }
 
 function readRefreshCookie(req: Request): string | undefined {
