@@ -17,6 +17,7 @@ import { apiFetch } from '../../api/client';
 import { useRealtime } from '../../realtime/RealtimeProvider';
 import { displayName } from '../../ui/format';
 import { useVoiceStore } from '../voice/store';
+import { requestPanelFocus } from '../../layout/panelFocus';
 import { markdownToPlain } from '../../ui/markdownParser';
 import { EMOTE_DURATION_MS, bubbleDurationMs, bubbleText, emoteText } from './bubbles';
 import { PlazaScene } from './PlazaScene';
@@ -241,6 +242,19 @@ export default function PlazaView({ plazaId, me, channelLabels, voiceLabels }: P
   }, [scene]);
 
   const onKeyDown = (e: KeyboardEvent) => {
+    // /는 채팅 입력창으로 (게임처럼 바로 말하기). 한글 자판에서도 되도록 자리(code)로도 본다.
+    if (
+      (e.key === '/' || e.code === 'Slash') &&
+      !e.shiftKey &&
+      !e.altKey &&
+      !e.ctrlKey &&
+      !e.metaKey
+    ) {
+      e.preventDefault();
+      scene?.releaseAll();
+      requestPanelFocus('chat');
+      return;
+    }
     if (!ARROW_KEYS.has(e.key) || e.altKey || e.ctrlKey || e.metaKey) return;
     e.preventDefault();
     scene?.press(e.key);
@@ -275,8 +289,11 @@ export default function PlazaView({ plazaId, me, channelLabels, voiceLabels }: P
         </p>
       )}
       {status === 'ready' && !focused && (
-        <p className="plaza__hint">광장을 누르면 방향키로 움직일 수 있어요</p>
+        <p className="plaza__hint">
+          광장을 누르면 방향키로 움직일 수 있어요 · Shift+Tab으로 오가기
+        </p>
       )}
+      {status === 'ready' && focused && <p className="plaza__hint">/ 를 누르면 바로 채팅</p>}
     </div>
   );
 }
