@@ -356,6 +356,8 @@ a.button {
   /* 행 높이를 창 높이로 고정한다. 내용(긴 채팅)이 행을 늘리면 입력창이 화면 밖으로 밀리고 광장이 확대된 것처럼 보인다 */
   grid-template-rows: minmax(0, 1fr);
   height: 100vh;
+  /* 휴대폰 브라우저는 주소 창이 들어가고 나오면서 높이가 바뀐다 */
+  height: 100dvh;
   overflow: hidden;
 }
 
@@ -1329,13 +1331,6 @@ a.button {
   font-size: 0.7rem;
 }
 
-/* 좁은 화면에서는 멤버 목록을 숨긴다 */
-@media (max-width: 1000px) {
-  .members {
-    display: none;
-  }
-}
-
 /* ── 대화상자, 폼 ──────────────────────── */
 
 .dialog__overlay {
@@ -1549,6 +1544,20 @@ a.button {
 .split__separator:focus-visible {
   outline: none;
   background: linear-gradient(to right, transparent 1px, var(--accent) 1px 4px, transparent 4px);
+}
+
+/* 위아래 배치: 구분선이 가로로 눕는다 (세로 막대 모양 그대로면 높이가 0이라 잡을 수 없었음) */
+.split__separator[aria-orientation='horizontal'] {
+  width: auto;
+  height: 5px;
+  margin: -2px 0;
+  background: linear-gradient(to bottom, transparent 2px, var(--border) 2px 3px, transparent 3px);
+}
+
+.split__separator[aria-orientation='horizontal']:hover,
+.split__separator[aria-orientation='horizontal'][data-separator='active'],
+.split__separator[aria-orientation='horizontal']:focus-visible {
+  background: linear-gradient(to bottom, transparent 1px, var(--accent) 1px 4px, transparent 4px);
 }
 
 .chat__actions {
@@ -4822,5 +4831,527 @@ a {
 
   .settings-overlay .settings-content__body {
     padding: 12px 16px 32px;
+  }
+}
+
+/* ── 한 번 더 묻기 (로그아웃 등) ── */
+
+.confirm__overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 130;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgb(10 12 24 / 0.45);
+  animation: fade-in 0.14s ease-out;
+}
+
+.confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: min(380px, 100%);
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg);
+  color: var(--fg);
+  box-shadow: 0 16px 48px rgb(0 0 0 / 0.35);
+  animation: pop-in 0.16s cubic-bezier(0.2, 0.9, 0.3, 1.2);
+}
+
+.confirm__title {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.confirm__body {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.confirm__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.confirm .button--danger {
+  background: var(--danger);
+  color: #fff;
+  font-weight: 700;
+}
+
+.confirm .button--danger:hover {
+  background: color-mix(in srgb, var(--danger) 85%, #000);
+}
+
+/* ── 설정 → 기능 (단축키, 마크다운) ── */
+
+.feature-guide__group h4 {
+  margin: 0 0 6px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.feature-guide__group dl {
+  display: grid;
+  margin: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.feature-guide__row {
+  display: grid;
+  grid-template-columns: minmax(150px, 38%) minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  font-size: 14px;
+}
+
+.feature-guide__row + .feature-guide__row {
+  border-top: 1px solid var(--border);
+}
+
+.feature-guide__row dd {
+  margin: 0;
+}
+
+.feature-guide__keys {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 3px;
+}
+
+.feature-guide__keys kbd {
+  min-width: 22px;
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-bottom-width: 2px;
+  border-radius: 5px;
+  background: var(--bg-input);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.feature-guide__plus,
+.feature-guide__or {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.feature-guide__or {
+  margin: 0 3px;
+}
+
+.feature-guide__markdown {
+  display: grid;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.feature-guide__md-row {
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr) minmax(0, 1fr);
+  align-items: start;
+  gap: 12px;
+  padding: 10px 12px;
+  font-size: 14px;
+}
+
+.feature-guide__md-row + .feature-guide__md-row {
+  border-top: 1px solid var(--border);
+}
+
+.feature-guide__md-label {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.feature-guide__syntax {
+  font-size: 13px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.feature-guide__preview {
+  user-select: text;
+}
+
+@media (max-width: 640px) {
+  .feature-guide__row {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+
+  .feature-guide__md-row {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .feature-guide__md-label {
+    grid-column: 1 / -1;
+  }
+}
+
+/* ── 여닫는 애니메이션: 설정 창, 대화 상자(커뮤니티 설정 등), 멤버 목록 ── */
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes fade-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.97);
+  }
+}
+
+@keyframes pop-out {
+  to {
+    opacity: 0;
+    transform: translateY(8px) scale(0.97);
+  }
+}
+
+.settings-overlay,
+.dialog__overlay {
+  animation: fade-in 0.16s ease-out;
+}
+
+.settings-window,
+.dialog {
+  animation: pop-in 0.18s cubic-bezier(0.2, 0.9, 0.3, 1.1);
+}
+
+/* 닫는 중: 사라지는 동안 누르지 못하게 한다 (useExitTransition, Dialog) */
+.settings-overlay[data-closing],
+.dialog__overlay[data-closing] {
+  animation: fade-out 0.16s ease-in forwards;
+  pointer-events: none;
+}
+
+.settings-overlay[data-closing] .settings-window,
+.dialog__overlay[data-closing] .dialog {
+  animation: pop-out 0.16s ease-in forwards;
+}
+
+/* 멤버 목록: 폭을 줄이며 오른쪽으로 밀려 나간다 (닫혀도 그대로 두고 inert) */
+.members-slot {
+  display: flex;
+  justify-content: flex-start;
+  width: 232px;
+  min-height: 0;
+  overflow: hidden;
+  transition:
+    width 0.2s ease,
+    opacity 0.2s ease;
+}
+
+.members-slot > .members {
+  flex: none;
+  transition: transform 0.2s ease;
+}
+
+.members-slot[data-open='false'] {
+  width: 0;
+  opacity: 0;
+}
+
+.members-slot[data-open='false'] > .members {
+  transform: translateX(24px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .settings-overlay,
+  .settings-window,
+  .dialog__overlay,
+  .dialog,
+  .confirm,
+  .confirm__overlay {
+    animation-duration: 1ms !important;
+  }
+
+  .members-slot,
+  .members-slot > .members {
+    transition: none;
+  }
+}
+
+/* ── 사진 위치 조정 (프로필 사진, 커뮤니티 아이콘·배너) ── */
+
+.confirm.image-crop {
+  width: min(440px, 100%);
+}
+
+.image-crop__body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.image-crop__stage {
+  position: relative;
+  max-width: 100%;
+  border-radius: 10px;
+  background: #0d0f1a;
+  overflow: hidden;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.image-crop__stage:active {
+  cursor: grabbing;
+}
+
+.image-crop__stage:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.image-crop__stage img {
+  position: absolute;
+  max-width: none;
+  pointer-events: none;
+}
+
+/* 틀 밖을 어둡게 덮는다 (큰 그림자) */
+.image-crop__frame {
+  position: absolute;
+  border: 2px solid rgb(255 255 255 / 0.9);
+  box-shadow: 0 0 0 999px rgb(8 10 20 / 0.62);
+  pointer-events: none;
+}
+
+.image-crop__stage[data-shape='circle'] .image-crop__frame {
+  border-radius: 50%;
+}
+
+.image-crop__stage[data-shape='rounded'] .image-crop__frame {
+  border-radius: 22%;
+}
+
+.image-crop__failed {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  margin: 0;
+  padding: 24px;
+  color: #fff;
+  font-size: 0.85rem;
+  text-align: center;
+}
+
+.image-crop__zoom {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: min(280px, 100%);
+  color: var(--muted);
+}
+
+.image-crop__zoom input {
+  flex: 1;
+  accent-color: var(--accent);
+}
+
+/* ── 좁은 화면·휴대폰 ──
+ * 1000px 이하: 멤버 목록은 오른쪽 서랍 (자리를 차지하지 않음)
+ * 768px 이하: 커뮤니티 막대와 채널 목록은 왼쪽 서랍(☰), 채팅과 광장은 하나씩 */
+
+.nav-button {
+  position: relative;
+  display: none;
+  flex: none;
+}
+
+.nav-button__unread {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--danger);
+}
+
+.app__backdrop {
+  display: none;
+}
+
+.split__content[hidden] {
+  display: none;
+}
+
+.split--phone {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.split--phone > .split__content {
+  flex: 1;
+  min-height: 0;
+}
+
+@media (max-width: 1000px) {
+  .app {
+    grid-template-columns: 72px 240px minmax(0, 1fr);
+  }
+
+  .app__backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 35;
+    display: block;
+    background: rgb(0 0 0 / 0.5);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease;
+  }
+
+  .app[data-nav-open='true'] .app__backdrop,
+  .app[data-members-open='true'] .app__backdrop {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .members-slot,
+  .members-slot[data-open='false'] {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 40;
+    width: min(280px, 85vw);
+    opacity: 1;
+    box-shadow: -8px 0 24px rgb(0 0 0 / 0.25);
+    transform: translateX(100%);
+    transition: transform 0.22s ease;
+  }
+
+  .members-slot[data-open='false'] {
+    box-shadow: none;
+  }
+
+  .members-slot[data-open='true'] {
+    transform: none;
+  }
+
+  .members-slot > .members,
+  .members-slot[data-open='false'] > .members {
+    width: 100%;
+    transform: none;
+  }
+}
+
+@media (max-width: 768px) {
+  .app {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .nav-button {
+    display: grid;
+  }
+
+  .rail,
+  .sidebar {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    z-index: 40;
+    transition: transform 0.22s ease;
+  }
+
+  .rail {
+    left: 0;
+    width: 72px;
+    transform: translateX(-100%);
+  }
+
+  .sidebar {
+    left: 72px;
+    width: min(300px, calc(100vw - 72px - 40px));
+    transform: translateX(calc(-100% - 72px));
+  }
+
+  .app[data-nav-open='true'] .rail,
+  .app[data-nav-open='true'] .sidebar {
+    transform: none;
+  }
+
+  .app[data-nav-open='true'] .sidebar {
+    box-shadow: 8px 0 24px rgb(0 0 0 / 0.25);
+  }
+
+  .invite {
+    grid-column: 1 / -1;
+  }
+
+  /* 머리글이 좁으므로 여백을 줄인다 */
+  .chat__header {
+    gap: 4px;
+    padding: 0 8px;
+  }
+
+  .chat__actions {
+    gap: 4px;
+  }
+
+  .view-toggles__button {
+    padding-inline: 8px;
+  }
+
+  /* 떠 있는 화면 공유 보기 창은 화면을 채운다 */
+  .screen-viewer {
+    inset: 0 !important;
+    width: auto !important;
+    height: auto !important;
+    border-radius: 0;
+  }
+
+  .profile-popup {
+    max-width: calc(100vw - 16px);
+  }
+
+  .dialog__overlay {
+    padding: 8px;
+  }
+
+  .dialog {
+    max-height: calc(100dvh - 16px);
+    padding: 16px;
+  }
+
+  .friends__header {
+    overflow-x: auto;
+  }
+}
+
+@media (max-width: 768px) and (prefers-reduced-motion: reduce) {
+  .rail,
+  .sidebar {
+    transition: none;
   }
 }

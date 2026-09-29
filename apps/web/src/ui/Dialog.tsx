@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useRef } from 'react';
+import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { X } from 'lucide-react';
 
 interface DialogProps {
@@ -9,19 +9,38 @@ interface DialogProps {
   className?: string;
 }
 
-/** 모달 창. 바깥을 누르거나 Esc를 누르면 닫힌다. */
+/** 닫는 애니메이션 길이 (styles.css의 pop-out과 같게) */
+const CLOSE_MS = 150;
+
+/**
+ * 모달 창. 바깥을 누르거나 Esc, 닫기 버튼을 누르면 사라지는 애니메이션 뒤에 닫힌다.
+ * (부모가 직접 내리는 경우, 예를 들어 저장하고 닫을 때는 바로 사라진다)
+ */
 export function Dialog({ title, onClose, children, className }: DialogProps) {
   const ref = useRef<HTMLDivElement>(null);
+  const [closing, setClosing] = useState(false);
   // 부모가 다시 그려질 때마다 onClose가 새 함수여도 아래 effect가 다시 돌지 않도록 ref로 둔다.
   const onCloseRef = useRef(onClose);
   useEffect(() => {
     onCloseRef.current = onClose;
   }, [onClose]);
 
+  const closingRef = useRef(false);
+  const requestClose = () => {
+    if (closingRef.current) return;
+    closingRef.current = true;
+    setClosing(true);
+    setTimeout(() => onCloseRef.current(), CLOSE_MS);
+  };
+  const requestCloseRef = useRef(requestClose);
+  useEffect(() => {
+    requestCloseRef.current = requestClose;
+  });
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       // 위에 뜬 창(도트 에디터 등)이 먼저 Esc를 처리했으면(preventDefault) 닫지 않는다.
-      if (e.key === 'Escape' && !e.defaultPrevented) onCloseRef.current();
+      if (e.key === 'Escape' && !e.defaultPrevented) requestCloseRef.current();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -39,7 +58,11 @@ export function Dialog({ title, onClose, children, className }: DialogProps) {
   }, []);
 
   return (
-    <div className="dialog__overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+    <div
+      className="dialog__overlay"
+      data-closing={closing || undefined}
+      onMouseDown={(e) => e.target === e.currentTarget && requestClose()}
+    >
       <div
         className={className ? `dialog ${className}` : 'dialog'}
         role="dialog"
@@ -49,7 +72,12 @@ export function Dialog({ title, onClose, children, className }: DialogProps) {
       >
         <header className="dialog__header">
           <h2>{title}</h2>
-          <button className="icon-button" onClick={onClose} aria-label="닫기" title="닫기 (Esc)">
+          <button
+            className="icon-button"
+            onClick={requestClose}
+            aria-label="닫기"
+            title="닫기 (Esc)"
+          >
             <X aria-hidden />
           </button>
         </header>

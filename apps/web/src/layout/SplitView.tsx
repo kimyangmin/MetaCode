@@ -9,7 +9,13 @@ import {
   usePanelRef,
 } from 'react-resizable-panels';
 import { useLayoutStore } from '../stores/layout';
-import { PANEL_FOCUS_EVENT, ownsFocus, panelFocusTarget } from './panelFocus';
+import {
+  PANEL_FOCUS_EVENT,
+  type PanelFocusRequest,
+  RETURN_FOCUS_ATTR,
+  ownsFocus,
+  panelFocusTarget,
+} from './panelFocus';
 import {
   type Arrangement,
   type Edge,
@@ -20,6 +26,8 @@ import {
   otherPanel,
 } from './arrangement';
 import { GripVertical, SquareArrowOutUpRight, X } from 'lucide-react';
+import { useIsPhone } from '../ui/useMediaQuery';
+import { NavButton } from './NavButton';
 
 /** 패널을 끌 때 다른 드래그(파일, 목록 순서)와 구분하는 데이터 형식 */
 const PANEL_TYPE = 'application/x-metacode-panel';
@@ -67,7 +75,11 @@ export function SplitView({ chat, plaza, popoutPaths }: SplitViewProps) {
   const arrangement = useLayoutStore((s) => s.arrangement);
   const detached = useLayoutStore((s) => s.detached);
   const [notice, setNotice] = useState<string | null>(null);
+  const phone = useIsPhone();
   const render = { chat, plaza };
+
+  // 휴대폰 화면은 나란히 놓을 자리가 없으므로 하나씩 바꿔 보여 준다 (옮기기·분리 없음).
+  if (phone) return <PhoneSplit render={render} />;
 
   const detach = (key: PanelKey, at?: { x: number; y: number }) => {
     const ok = useLayoutStore.getState().detach(key, popoutPaths[key], at);
@@ -178,15 +190,17 @@ function SplitPanels({
   };
 
   // 패널에 포커스 주기: 접혀 있으면 펼치고, 그려질 때까지 몇 프레임 기다린다 (광장은 펼칠 때 새로 뜬다).
-  const focusPanel = (key: PanelKey) => {
+  const focusPanel = (key: PanelKey, returnTo?: PanelKey) => {
     const host = hostRef.current;
     if (!host) return;
     if (!open[key]) toggle(key);
     let tries = 0;
     const attempt = () => {
       const target = panelFocusTarget(host, key);
-      if (target) target.focus({ preventScroll: true });
-      else if (tries++ < 90) requestAnimationFrame(attempt);
+      if (target) {
+        target.focus({ preventScroll: true });
+        if (returnTo) target.setAttribute(RETURN_FOCUS_ATTR, returnTo);
+      } else if (tries++ < 90) requestAnimationFrame(attempt);
     };
     attempt();
   };
@@ -202,7 +216,10 @@ function SplitPanels({
       const inPlaza = !!document.activeElement?.closest('[data-panel="plaza"]');
       focusPanel(inPlaza ? 'chat' : 'plaza');
     };
-    const onRequest = (e: Event) => focusPanel((e as CustomEvent<PanelKey>).detail);
+    const onRequest = (e: Event) => {
+      const { panel, returnTo } = (e as CustomEvent<PanelFocusRequest>).detail;
+      focusPanel(panel, returnTo);
+    };
     window.addEventListener('keydown', onKey, true);
     window.addEventListener(PANEL_FOCUS_EVENT, onRequest);
     return () => {
@@ -376,5 +393,68 @@ function ReattachButton({ panel }: { panel: PanelKey }) {
     >
       {LABEL[panel]} 돌려놓기
     </button>
+  );
+}
+
+/**
+ * 휴대폰 화면: 채팅과 광장을 머리글의 버튼으로 바꿔 가며 하나씩 보여 준다.
+ * 채팅은 쓰던 글이 남도록 숨기기만 하고, 광장은 보지 않을 때 내려서 그리기와 구독을 멈춘다.
+ * /(광장 → 입력창)와 보낸 뒤 돌아가기 같은 포커스 요청도 보이는 패널을 바꿔 처리한다.
+ */
+function PhoneSplit({ render }: { render: Record<PanelKey, (slots: PanelSlots) => ReactNode> }) {
+  const [active, setActive] = useState<PanelKey>('chat');
+  const hostRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const onRequest = (e: Event) => {
+      const { panel, returnTo } = (e as CustomEvent<PanelFocusRequest>).detail;
+      setActive(panel);
+      let tries = 0;
+      const attempt = () => {
+        const target = hostRef.current && panelFocusTarget(hostRef.current, panel);
+        if (target) {
+          target.focus({ preventScroll: true });
+          if (returnTo) target.setAttribute(RETURN_FOCUS_ATTR, returnTo);
+        } else if (tries++ < 90) requestAnimationFrame(attempt);
+      };
+      requestAnimationFrame(attempt);
+    };
+    window.addEventListener(PANEL_FOCUS_EVENT, onRequest);
+    return () => window.removeEventListener(PANEL_FOCUS_EVENT, onRequest);
+  }, []);
+
+  const toggles = (
+    <div className="view-toggles" role="group" aria-label="보기">
+      {(['chat', 'plaza'] as const).map((key) => (
+        <button
+          key={key}
+          type="button"
+          className="view-toggles__button"
+          aria-pressed={active === key}
+          onClick={() => setActive(key)}
+        >
+          {LABEL[key]}
+        </button>
+      ))}
+    </div>
+  );
+  const slots: PanelSlots = { actions: toggles, handle: <NavButton /> };
+
+  return (
+    <div ref={hostRef} className="split split--phone">
+      <div
+        className="split__content"
+        data-panel="chat"
+        hidden={active !== 'chat'}
+        inert={active !== 'chat'}
+      >
+        {render.chat(slots)}
+      </div>
+      {active === 'plaza' && (
+        <div className="split__content" data-panel="plaza">
+          {render.plaza(slots)}
+        </div>
+      )}
+    </div>
   );
 }

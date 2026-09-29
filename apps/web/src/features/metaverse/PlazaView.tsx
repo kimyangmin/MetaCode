@@ -251,7 +251,8 @@ export default function PlazaView({ plazaId, me, channelLabels, voiceLabels }: P
     ) {
       e.preventDefault();
       scene?.releaseAll();
-      requestPanelFocus('chat');
+      // 메시지를 보내면(또는 Esc) 광장으로 돌아온다.
+      requestPanelFocus('chat', 'plaza');
       return;
     }
     if (!ARROW_KEYS.has(e.key) || e.altKey || e.ctrlKey || e.metaKey) return;

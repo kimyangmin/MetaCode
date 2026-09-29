@@ -11,6 +11,8 @@ import {
 import { type AttachmentDraft, formatBytes } from './uploads';
 import { File as FileIcon, Paperclip, Reply, SendHorizontal, X } from 'lucide-react';
 import { FileCount } from '../../ui/icons';
+import { RETURN_FOCUS_ATTR, returnPanelFocus } from '../../layout/panelFocus';
+import { isTouchDevice } from '../../ui/useMediaQuery';
 
 const MAX_HEIGHT_PX = 200;
 
@@ -33,7 +35,7 @@ interface ComposerProps {
 }
 
 /**
- * 메시지 입력창. Enter로 보내고 Shift+Enter로 줄을 바꾼다.
+ * 메시지 입력창. Enter로 보내고 Shift+Enter로 줄을 바꾼다 (손가락으로 쓰는 기기는 Enter가 줄 바꾸기).
  * 한글 입력 중(IME 조합 중)의 Enter는 글자 확정이므로 보내지 않는다.
  * 파일은 📎 버튼, 붙여넣기(스크린샷 등), 채팅 영역에 끌어 놓기로 붙인다.
  */
@@ -77,6 +79,8 @@ export function Composer(props: ComposerProps) {
     if (uploading || (!content && !hasReadyAttachments)) return;
     onSend(content);
     setValue('');
+    // 광장에서 /로 왔으면 보낸 뒤 광장으로 돌아간다 (계속 걸으며 말하기).
+    returnPanelFocus(ref.current);
   };
 
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -84,8 +88,14 @@ export function Composer(props: ComposerProps) {
       props.onCancelReply();
       return;
     }
+    if (e.key === 'Escape' && returnPanelFocus(ref.current)) {
+      e.preventDefault();
+      return;
+    }
     if (e.key !== 'Enter' || e.shiftKey) return;
     if (e.nativeEvent.isComposing || e.keyCode === 229) return;
+    // 휴대폰·태블릿의 화면 자판에서는 Enter가 줄 바꾸기이고, 보내기 버튼으로 보낸다.
+    if (isTouchDevice()) return;
     e.preventDefault();
     submit();
   };
@@ -174,6 +184,8 @@ export function Composer(props: ComposerProps) {
           }}
           onKeyDown={onKeyDown}
           onPaste={onPaste}
+          // 다른 곳으로 포커스가 나가면 "보내면 광장으로" 약속을 지운다.
+          onBlur={(e) => e.currentTarget.removeAttribute(RETURN_FOCUS_ATTR)}
           aria-label={placeholder}
         />
         <button

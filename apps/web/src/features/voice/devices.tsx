@@ -150,10 +150,7 @@ export function NoiseSuppressionToggle() {
         />
         잡음 제거
       </label>
-      <span className="form__hint">
-        키보드·선풍기 같은 주변 소리를 걸러 목소리만 보냅니다 (RNNoise). 끄면 브라우저 기본 잡음
-        억제만 씁니다.
-      </span>
+      <span className="form__hint">주변 소음을 줄이고 목소리만 보냅니다.</span>
     </div>
   );
 }
