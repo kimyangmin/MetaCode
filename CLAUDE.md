@@ -66,7 +66,8 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
   - 로그인과 별개로 `metacode://`를 씁니다. 받는 주소는 `metacode://invite/<코드>` 하나뿐이고, URL로 풀지 않고 글자 그대로 정규식으로 맞춥니다 (`new URL`은 `../`를 풀어서 다른 경로가 통과했음, 테스트 있음).
   - 설치한 앱만 `setAsDefaultProtocolClient`로 등록합니다 (개발용 앱이 가져가지 않게, 확인하려면 `METACODE_REGISTER_PROTOCOL=1`). electron-builder의 `protocols`에도 적었습니다.
   - 받는 곳: 처음 켤 때는 실행 인자, 이미 켜져 있으면 Windows·Linux는 `second-instance`의 인자, macOS는 `open-url`. 창이 없으면 `#/invite/<코드>`로 열고, 떠 있으면 IPC `metacode:navigate` → 브리지 `navigation.onNavigate`로 웹 라우터가 옮깁니다 (새로 고치지 않아 통화가 끊기지 않음). 로그인 전이면 초대를 기억했다가 로그인 뒤 이어 갑니다.
-  - 웹: Windows 브라우저에서 `/invite/<코드>`를 열면 먼저 "데스크톱 앱에서 여는 중" 화면이 뜨고 한 번 `metacode://`로 열어 봅니다 (브라우저의 "MetaCode 열기" 확인). "브라우저에서 계속"을 누르면 그 탭에서는 그 초대를 다시 묻지 않습니다 (sessionStorage). 데스크톱은 Windows용만 배포하므로 다른 OS에서는 묻지 않습니다 (앱 없는 OS에서 "주소를 열 수 없음" 오류를 피함).
+  - 웹: Windows·macOS·Linux 브라우저에서 `/invite/<코드>`를 열면 먼저 "데스크톱 앱에서 여는 중" 화면이 뜨고 한 번 `metacode://`로 열어 봅니다 (브라우저의 "MetaCode 열기" 확인). "브라우저에서 계속"을 누르면 그 탭에서는 그 초대를 다시 묻지 않습니다 (sessionStorage). 앱이 없는 기기(iPad — iPadOS Safari는 Mac이라고 알리므로 터치 지점 수로 가림 —, Android, ChromeOS)에서는 묻지 않습니다 (`desktopOs`).
+  - 여는 방법(`appOpenMethod`): Chromium 계열은 앱이 없으면 조용히 넘어가므로 페이지를 옮기고, Safari·Firefox는 앱이 없으면 경고 창이나 오류 페이지로 바뀌므로 숨긴 iframe으로 열어 봅니다. "앱에서 열기" 버튼은 `metacode://` 링크라 사용자가 누르면 어느 브라우저든 열립니다.
   - 0.3.x 이하 앱은 프로토콜을 등록하지 않았으므로, 앱을 0.4.0으로 업데이트해야 동작합니다. 0.4.0에는 화면 공유 보기 창 떼어 내기(`isScreenPopup`)도 들어 있습니다.
 - **채팅 구조 (Phase 2):**
   - 서버: `apps/server/src/chat/`. 권한 판단은 `AccessService` 한 곳에서 합니다 (권한 없으면 존재 여부도 숨기려고 404).

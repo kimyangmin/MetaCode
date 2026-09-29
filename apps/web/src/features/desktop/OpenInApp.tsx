@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { DESKTOP_DOWNLOAD_URL } from '../../config';
-import { appInviteUrl } from './inviteLink';
+import { appInviteUrl, openAppUrl } from './inviteLink';
 
 /** 같은 초대로 두 번 열지 않게 (개발 모드의 effect 두 번 실행 등) */
 const opened = new Set<string>();
@@ -13,7 +13,7 @@ export function OpenInApp({ code, onContinue }: { code: string; onContinue(): vo
   useEffect(() => {
     if (opened.has(code)) return;
     opened.add(code);
-    window.location.href = appInviteUrl(code);
+    openAppUrl(appInviteUrl(code));
   }, [code]);
 
   return (
