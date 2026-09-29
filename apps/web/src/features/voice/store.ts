@@ -1,6 +1,13 @@
 import type { VoiceCall } from '@metacode/shared';
 import { create } from 'zustand';
 import { type Calls, callsFromList, withMember, withProximity, withoutMember } from './calls';
+import {
+  DEFAULT_SENSITIVITY,
+  type Sensitivity,
+  THRESHOLD_MAX_DB,
+  THRESHOLD_MIN_DB,
+  clamp,
+} from './gate';
 
 export interface VoiceSession {
   channelId: string;
@@ -37,6 +44,10 @@ interface VoiceState {
   inputGain: number;
   /** 들리는 소리 전체의 크기 (0~1) */
   outputVolume: number;
+  /** RNNoise 잡음 제거 (끄면 브라우저 기본 잡음 억제) */
+  noiseSuppression: boolean;
+  /** 입력 감도: 자동 또는 직접 정한 소리 문턱 */
+  sensitivity: Sensitivity;
 
   setCalls(list: VoiceCall[]): void;
   upsertMember(channelId: string, member: VoiceCall['members'][number]): void;
@@ -63,6 +74,8 @@ interface VoiceState {
   setDevice(kind: 'audioinput' | 'audiooutput', deviceId: string): void;
   setInputGain(value: number): void;
   setOutputVolume(value: number): void;
+  setNoiseSuppression(on: boolean): void;
+  setSensitivity(sensitivity: Sensitivity): void;
 }
 
 const DEVICE_KEYS = {
@@ -76,6 +89,45 @@ const LEVEL_KEYS = {
 } as const;
 
 export const INPUT_GAIN_MAX = 2;
+
+const NOISE_SUPPRESSION_KEY = 'metacode:voice-noise-suppression';
+const SENSITIVITY_KEY = 'metacode:voice-sensitivity';
+
+/** 잡음 제거는 처음에는 켜 둔다 (Discord와 같이) */
+function readNoiseSuppression(): boolean {
+  try {
+    return localStorage.getItem(NOISE_SUPPRESSION_KEY) !== 'off';
+  } catch {
+    return true;
+  }
+}
+
+function readSensitivity(): Sensitivity {
+  try {
+    const saved = JSON.parse(localStorage.getItem(SENSITIVITY_KEY) ?? 'null') as Sensitivity | null;
+    if (
+      saved &&
+      (saved.mode === 'auto' || saved.mode === 'manual') &&
+      Number.isFinite(saved.thresholdDb)
+    ) {
+      return {
+        mode: saved.mode,
+        thresholdDb: clamp(saved.thresholdDb, THRESHOLD_MIN_DB, THRESHOLD_MAX_DB),
+      };
+    }
+  } catch {
+    // 기억한 값이 없거나 읽을 수 없으면 기본값
+  }
+  return DEFAULT_SENSITIVITY;
+}
+
+function remember(key: string, value: string) {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // 기억하지 못해도 이번 실행에서는 적용된다.
+  }
+}
 
 function readDevice(kind: keyof typeof DEVICE_KEYS): string | null {
   try {
@@ -120,6 +172,8 @@ export const useVoiceStore = create<VoiceState>((set) => ({
   outputDeviceId: readDevice('audiooutput'),
   inputGain: readLevel('inputGain', INPUT_GAIN_MAX),
   outputVolume: readLevel('outputVolume', 1),
+  noiseSuppression: readNoiseSuppression(),
+  sensitivity: readSensitivity(),
 
   setCalls: (list) => set({ calls: callsFromList(list) }),
   upsertMember: (channelId, member) =>
@@ -147,6 +201,18 @@ export const useVoiceStore = create<VoiceState>((set) => ({
     const outputVolume = Math.min(1, Math.max(0, value));
     saveLevel('outputVolume', outputVolume);
     set({ outputVolume });
+  },
+  setNoiseSuppression: (on) => {
+    remember(NOISE_SUPPRESSION_KEY, on ? 'on' : 'off');
+    set({ noiseSuppression: on });
+  },
+  setSensitivity: (value) => {
+    const sensitivity: Sensitivity = {
+      mode: value.mode,
+      thresholdDb: clamp(Math.round(value.thresholdDb), THRESHOLD_MIN_DB, THRESHOLD_MAX_DB),
+    };
+    remember(SENSITIVITY_KEY, JSON.stringify(sensitivity));
+    set({ sensitivity });
   },
 }));
 
