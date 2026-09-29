@@ -6,6 +6,8 @@ import {
   useState,
 } from 'react';
 import { createPortal } from 'react-dom';
+import type { UserProfile } from '@metacode/shared';
+import { Avatar } from '../../ui/Avatar';
 import { displayName } from '../../ui/format';
 import { openPopupWindow, usePopupWindow } from '../../ui/usePopupWindow';
 import {
@@ -23,8 +25,10 @@ import { useVoice } from './VoiceProvider';
 import {
   Expand,
   Maximize2,
+  MicOff,
   Minimize2,
   PictureInPicture2,
+  RotateCw,
   SquareArrowOutUpRight,
   X,
 } from 'lucide-react';
@@ -41,19 +45,72 @@ const viewport = () => ({ width: window.innerWidth, height: window.innerHeight }
 export function ScreenViewer() {
   const watching = useVoiceStore((s) => s.watching);
   const session = useVoiceStore((s) => s.session);
-  if (!watching || !session) return null;
+  const joining = useVoiceStore((s) => s.watchJoining);
+  const failed = useVoiceStore((s) => s.watchError !== null);
+  // 보려고 통화에 들어가는 중이거나 들어가지 못했을 때도 창을 띄워 둔다 (누르자마자 반응하도록).
+  if (!watching || (!session && !joining && !failed)) return null;
   // 보기를 닫으면 창 부분이 사라지면서 분리해 둔 창도 닫힌다.
   return <ViewerWindow />;
+}
+
+/** 이만큼 기다려도 영상이 오지 않으면 다시 시도를 권한다 */
+const LOADING_TIMEOUT_MS = 10_000;
+
+/** 보기 창의 상태: 들어가는 중 → 불러오는 중 → 보는 중, 또는 실패·끝남 */
+export type ViewerStatus =
+  | { kind: 'joining' }
+  | { kind: 'loading'; slow: boolean }
+  | { kind: 'playing' }
+  | { kind: 'ended' }
+  | { kind: 'error'; message: string };
+
+export function viewerStatus(state: {
+  joining: boolean;
+  error: string | null;
+  connecting: boolean;
+  sharing: boolean;
+  stream: boolean;
+  slow: boolean;
+}): ViewerStatus {
+  if (state.error) return { kind: 'error', message: state.error };
+  if (state.joining || state.connecting) return { kind: 'joining' };
+  if (!state.sharing) return { kind: 'ended' };
+  if (!state.stream) return { kind: 'loading', slow: state.slow };
+  return { kind: 'playing' };
 }
 
 function ViewerWindow() {
   const voice = useVoice();
   const stream = useVoiceStore((s) => s.screen);
-  const member = useVoiceStore((s) =>
-    s.session && s.watching
-      ? s.calls[s.session.channelId]?.members.find((m) => m.user.id === s.watching)
-      : undefined,
-  );
+  const member = useVoiceStore((s) => {
+    const channelId = s.watchChannel ?? s.session?.channelId;
+    return channelId && s.watching
+      ? s.calls[channelId]?.members.find((m) => m.user.id === s.watching)
+      : undefined;
+  });
+  const joining = useVoiceStore((s) => s.watchJoining);
+  const error = useVoiceStore((s) => s.watchError);
+  const connecting = useVoiceStore((s) => s.session?.status === 'connecting');
+  const mutedOnJoin = useVoiceStore((s) => s.watchMutedOnJoin && s.muted);
+  // 영상을 기다린 지 오래되면 알린다.
+  const [slow, setSlow] = useState(false);
+  const waiting = !stream && !joining && !connecting && !error && !!member?.sharing;
+  useEffect(() => {
+    if (!waiting) return;
+    const timer = setTimeout(() => setSlow(true), LOADING_TIMEOUT_MS);
+    return () => {
+      clearTimeout(timer);
+      setSlow(false);
+    };
+  }, [waiting]);
+  const status = viewerStatus({
+    joining,
+    error,
+    connecting,
+    sharing: !!member?.sharing,
+    stream: !!stream,
+    slow,
+  });
   const [frame, setFrame] = useState<Frame>(() =>
     clampFrame(readFrame() ?? defaultFrame(viewport()), viewport()),
   );
@@ -87,8 +144,36 @@ function ViewerWindow() {
     return () => window.removeEventListener('resize', onResize);
   }, []);
 
-  const ended = !member?.sharing;
   const close = () => void voice.watch(null, null);
+  const stageProps = {
+    stageRef,
+    stream,
+    status,
+    user: member?.user ?? null,
+    name,
+    fullscreen: fullscreen.mode,
+    onToggleFullscreen: fullscreen.toggle,
+    onRetry: () => voice.retryWatch(),
+    onClose: close,
+  };
+  // 보려고 들어오면서 꺼 둔 마이크를 바로 켤 수 있게 알린다.
+  const micNotice = mutedOnJoin && (
+    <p className="screen-viewer__mic" role="status">
+      <MicOff aria-hidden />
+      보려고 들어와서 마이크를 꺼 두었어요.
+      <button type="button" className="button" onClick={() => void voice.toggleMute()}>
+        마이크 켜기
+      </button>
+      <button
+        type="button"
+        className="icon-button"
+        onClick={() => useVoiceStore.getState().patch({ watchMutedOnJoin: false })}
+        aria-label="알림 닫기"
+      >
+        <X aria-hidden />
+      </button>
+    </p>
+  );
 
   const beginDrag = (e: ReactPointerEvent<HTMLElement>, edge: Edge | 'move') => {
     if (e.button !== 0 || maximized) return;
@@ -144,13 +229,8 @@ function ViewerWindow() {
           }}
           onClose={close}
         />
-        <ViewerStage
-          stageRef={stageRef}
-          stream={stream}
-          ended={ended}
-          fullscreen={fullscreen.mode}
-          onToggleFullscreen={fullscreen.toggle}
-        />
+        {micNotice}
+        <ViewerStage {...stageProps} />
       </section>,
       popup.container,
     );
@@ -190,13 +270,8 @@ function ViewerWindow() {
           {notice}
         </p>
       )}
-      <ViewerStage
-        stageRef={stageRef}
-        stream={stream}
-        ended={ended}
-        fullscreen={fullscreen.mode}
-        onToggleFullscreen={fullscreen.toggle}
-      />
+      {micNotice}
+      <ViewerStage {...stageProps} />
       {!maximized &&
         EDGES.map((edge) => (
           <span
@@ -296,15 +371,23 @@ function ViewerHeader({
 function ViewerStage({
   stageRef,
   stream,
-  ended,
+  status,
+  user,
+  name,
   fullscreen,
   onToggleFullscreen,
+  onRetry,
+  onClose,
 }: {
   stageRef: RefObject<HTMLDivElement | null>;
   stream: MediaStream | null;
-  ended: boolean;
+  status: ViewerStatus;
+  user: UserProfile | null;
+  name: string;
   fullscreen: FullscreenMode;
   onToggleFullscreen: () => void;
+  onRetry: () => void;
+  onClose: () => void;
 }) {
   const videoRef: RefObject<HTMLVideoElement | null> = useRef(null);
   useEffect(() => {
@@ -318,7 +401,7 @@ function ViewerStage({
         autoPlay
         playsInline
         muted
-        hidden={!stream || ended}
+        hidden={status.kind !== 'playing'}
         onDoubleClick={onToggleFullscreen}
       />
       {fullscreen !== 'off' && (
@@ -330,10 +413,62 @@ function ViewerStage({
           전체 화면 끝내기 (Esc)
         </button>
       )}
-      {(ended || !stream) && (
-        <p className="screen-viewer__status">
-          {ended ? '화면 공유가 끝났습니다.' : '화면을 불러오는 중…'}
-        </p>
+      {status.kind !== 'playing' && (
+        <ViewerStatusPanel
+          status={status}
+          user={user}
+          name={name}
+          onRetry={onRetry}
+          onClose={onClose}
+        />
+      )}
+    </div>
+  );
+}
+
+/** 영상이 없을 때 가운데에 보여 주는 것: 공유한 사람, 지금 상태, 할 수 있는 일 */
+function ViewerStatusPanel({
+  status,
+  user,
+  name,
+  onRetry,
+  onClose,
+}: {
+  status: Exclude<ViewerStatus, { kind: 'playing' }>;
+  user: UserProfile | null;
+  name: string;
+  onRetry: () => void;
+  onClose: () => void;
+}) {
+  const busy = status.kind === 'joining' || (status.kind === 'loading' && !status.slow);
+  const text = {
+    joining: `${name}님의 통화에 들어가는 중…`,
+    loading:
+      status.kind === 'loading' && status.slow
+        ? '화면이 오지 않습니다. 연결이 느리거나 공유한 사람의 연결이 불안정할 수 있어요.'
+        : '화면을 불러오는 중…',
+    ended: `${name}님의 화면 공유가 끝났습니다.`,
+    error: status.kind === 'error' ? status.message : '',
+  }[status.kind];
+  const canRetry = status.kind === 'error' || (status.kind === 'loading' && status.slow);
+  return (
+    <div className="screen-viewer__status" role={status.kind === 'error' ? 'alert' : 'status'}>
+      {user && <Avatar user={user} size={56} animate />}
+      <p>
+        {busy && <span className="screen-viewer__spinner" aria-hidden />}
+        {text}
+      </p>
+      {(canRetry || status.kind === 'ended') && (
+        <div className="screen-viewer__actions">
+          {canRetry && (
+            <button type="button" className="button button--primary" onClick={onRetry}>
+              <RotateCw aria-hidden /> 다시 시도
+            </button>
+          )}
+          <button type="button" className="button" onClick={onClose}>
+            닫기
+          </button>
+        </div>
       )}
     </div>
   );

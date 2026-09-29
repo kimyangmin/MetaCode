@@ -40,7 +40,10 @@ import {
   OutputVolumeSlider,
 } from '../voice/devices';
 import { FeatureGuide } from './FeatureGuide';
+import { useIsPhone } from '../../ui/useMediaQuery';
 import {
+  ChevronLeft,
+  ChevronRight,
   CircleUserRound,
   Keyboard,
   LogOut,
@@ -105,13 +108,27 @@ function SettingsWindow({ section, closing }: { section: SettingsSection; closin
   const me = useMe().data;
   const queryClient = useQueryClient();
   const [confirmLogout, setConfirmLogout] = useState(false);
+  // 휴대폰은 목록과 내용을 한 화면씩 보여 준다 (넓은 화면은 둘 다 보이므로 쓰지 않음).
+  const phone = useIsPhone();
+  const [page, setPage] = useState<'list' | 'content'>(() =>
+    useSettingsStore.getState().listFirst ? 'list' : 'content',
+  );
+  const show = (id: SettingsSection) => {
+    open(id);
+    setPage('content');
+  };
 
   useEffect(() => {
     // 설정 창 위에 뜬 창(도트 에디터 등)이 Esc를 먼저 처리하면(preventDefault) 닫지 않는다.
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && !e.defaultPrevented && close();
+    // 휴대폰에서 내용을 보고 있으면 목록으로 돌아간다 (안드로이드 뒤로 가기도 Esc로 온다).
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || e.defaultPrevented) return;
+      if (phone && page === 'content') setPage('list');
+      else close();
+    };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [close]);
+  }, [close, phone, page]);
 
   // 설정 창을 닫으면 열려 있던 도트 에디터와 맵 에디터도 닫는다.
   useEffect(() => closeAssetEditors, []);
@@ -133,14 +150,27 @@ function SettingsWindow({ section, closing }: { section: SettingsSection; closin
       data-closing={closing || undefined}
       onMouseDown={(e) => e.target === e.currentTarget && close()}
     >
-      <div className="settings-window" role="dialog" aria-modal="true" aria-label="설정">
+      <div
+        className="settings-window"
+        role="dialog"
+        aria-modal="true"
+        aria-label="설정"
+        data-page={page}
+      >
         <nav className="settings-nav" aria-label="설정 항목">
+          {/* 휴대폰 목록 화면의 머리글 (넓은 화면에서는 CSS로 숨김) */}
+          <div className="settings-nav__header">
+            <h2>설정</h2>
+            <button className="icon-button" onClick={close} aria-label="설정 닫기">
+              <X aria-hidden />
+            </button>
+          </div>
           <div className="settings-nav__me">
             <Avatar user={me} size={44} />
             <div>
               <strong>{displayName(me)}</strong>
               <span className="settings-nav__username">@{me.username}</span>
-              <button type="button" onClick={() => open('account')}>
+              <button type="button" onClick={() => show('account')}>
                 <Pencil aria-hidden />
                 프로필 편집
               </button>
@@ -149,17 +179,20 @@ function SettingsWindow({ section, closing }: { section: SettingsSection; closin
           {SECTIONS.map(({ group, items }) => (
             <div key={group} className="settings-nav__group">
               <p>{group}</p>
-              {items.map((item) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  aria-current={section === item.id ? 'page' : undefined}
-                  onClick={() => open(item.id)}
-                >
-                  {item.icon}
-                  {item.label}
-                </button>
-              ))}
+              <div className="settings-nav__items">
+                {items.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    aria-current={section === item.id ? 'page' : undefined}
+                    onClick={() => show(item.id)}
+                  >
+                    {item.icon}
+                    {item.label}
+                    <ChevronRight className="settings-nav__chevron" aria-hidden />
+                  </button>
+                ))}
+              </div>
             </div>
           ))}
           <button
@@ -173,6 +206,14 @@ function SettingsWindow({ section, closing }: { section: SettingsSection; closin
         </nav>
         <section className="settings-content">
           <header className="settings-content__header">
+            {/* 휴대폰: 목록으로 돌아가기 (넓은 화면에서는 CSS로 숨김) */}
+            <button
+              className="icon-button settings-content__back"
+              onClick={() => setPage('list')}
+              aria-label="설정 목록으로"
+            >
+              <ChevronLeft aria-hidden />
+            </button>
             <h2>{TITLE[section]}</h2>
             <button
               className="icon-button"
