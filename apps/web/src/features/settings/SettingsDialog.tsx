@@ -22,7 +22,13 @@ import { Avatar } from '../../ui/Avatar';
 import { displayName } from '../../ui/format';
 import { closeAssetEditors } from '../assets/AssetEditors';
 import { logout, meQueryKey, useMe } from '../auth/auth';
-import { DeviceSelect, InputGainSlider, OutputVolumeSlider } from '../voice/devices';
+import {
+  DeviceSelect,
+  InputGainSlider,
+  InputSensitivity,
+  NoiseSuppressionToggle,
+  OutputVolumeSlider,
+} from '../voice/devices';
 
 const SECTIONS: { group: string; items: { id: SettingsSection; label: string }[] }[] = [
   {
@@ -338,6 +344,8 @@ function VoiceSettings() {
     <div className="settings-form">
       <h3 className="settings-form__title">입력</h3>
       <DeviceSelect kind="audioinput" />
+      <NoiseSuppressionToggle />
+      <InputSensitivity preview />
       <InputGainSlider />
       <h3 className="settings-form__title">출력</h3>
       <DeviceSelect kind="audiooutput" />
