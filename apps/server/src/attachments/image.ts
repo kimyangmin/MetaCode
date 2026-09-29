@@ -68,26 +68,69 @@ export async function processImage(input: Buffer): Promise<ProcessedImage | null
   }
 }
 
-/**
- * 프로필 사진: 가운데를 기준으로 정사각형(size px)으로 잘라 WebP로 만든다.
- * 움직이는 이미지는 첫 프레임으로 만든다. 읽을 수 없는 파일이면 null
- */
-export async function makeAvatar(input: Buffer, size: number): Promise<Buffer | null> {
-  return makeCover(input, size, size);
+/** 올린 사진에서 쓸 곳: 원본(EXIF 방향을 반영해 보이는 그대로) 기준 0~1 비율 */
+export interface CropRatio {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
 }
 
-/** 가운데를 채워 자른 WebP (커뮤니티 아이콘·배너). 이미지가 아니면 null */
+/**
+ * 비율로 받은 자를 곳을 실제 픽셀로 바꾼다. 사진 밖으로 나가지 않게 맞추고, 적어도 1픽셀은 남긴다.
+ */
+export function cropPixels(
+  crop: CropRatio,
+  width: number,
+  height: number,
+): { left: number; top: number; width: number; height: number } {
+  const left = Math.min(width - 1, Math.max(0, Math.round(crop.x * width)));
+  const top = Math.min(height - 1, Math.max(0, Math.round(crop.y * height)));
+  return {
+    left,
+    top,
+    width: Math.max(1, Math.min(width - left, Math.round(crop.width * width))),
+    height: Math.max(1, Math.min(height - top, Math.round(crop.height * height))),
+  };
+}
+
+/**
+ * 프로필 사진: 정사각형(size px) WebP. crop이 없으면 가운데를 기준으로 자른다.
+ * 움직이는 이미지는 첫 프레임으로 만든다. 읽을 수 없는 파일이면 null
+ */
+export async function makeAvatar(
+  input: Buffer,
+  size: number,
+  crop?: CropRatio,
+): Promise<Buffer | null> {
+  return makeCover(input, size, size, crop);
+}
+
+/**
+ * 커뮤니티 아이콘·배너, 프로필 사진: crop으로 고른 곳(없으면 가운데)을 width×height로 채운 WebP.
+ * 고른 곳의 비율이 조금 달라도 가운데를 채워 맞춘다. 이미지가 아니면 null
+ */
 export async function makeCover(
   input: Buffer,
   width: number,
   height: number,
+  crop?: CropRatio,
 ): Promise<Buffer | null> {
   try {
-    return await sharp(input, { limitInputPixels: MAX_INPUT_PIXELS, animated: false })
-      .rotate()
-      .resize(width, height, { fit: 'cover' })
-      .webp({ quality: 85 })
-      .toBuffer();
+    const options = { limitInputPixels: MAX_INPUT_PIXELS, animated: false };
+    let image = sharp(input, options).rotate();
+    if (crop) {
+      // 사용자는 회전된(보이는) 사진 위에서 골랐으므로, 회전을 먼저 반영한 크기로 잰다.
+      const meta = await sharp(input, options).metadata();
+      if (!meta.width || !meta.height) return null;
+      const rotated = (meta.orientation ?? 1) >= 5;
+      const shown = rotated
+        ? { width: meta.height, height: meta.width }
+        : { width: meta.width, height: meta.height };
+      // rotate() 다음에 extract()를 부르면 회전한 뒤의 사진에서 자른다 (sharp는 부른 순서대로 적용).
+      image = image.extract(cropPixels(crop, shown.width, shown.height));
+    }
+    return await image.resize(width, height, { fit: 'cover' }).webp({ quality: 85 }).toBuffer();
   } catch {
     return null;
   }

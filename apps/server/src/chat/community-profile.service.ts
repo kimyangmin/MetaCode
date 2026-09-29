@@ -6,7 +6,7 @@ import {
   COMMUNITY_IMAGE_SIZE,
   type CommunityImageKind,
 } from '@metacode/shared';
-import { SNIFF_BYTES, makeCover, sniffRasterFormat } from '../attachments/image.js';
+import { type CropRatio, SNIFF_BYTES, makeCover, sniffRasterFormat } from '../attachments/image.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { StorageService } from '../storage/storage.service.js';
 import { AccessService } from './access.service.js';
@@ -63,10 +63,15 @@ export class CommunityProfileService {
   }
 
   /**
-   * 이미지 올리기 2단계: 파일 앞부분으로 이미지인지 확인하고, 종류별 크기로 가운데를 채워 자른 WebP로 적용한다.
-   * 원본과 이전 이미지는 지운다.
+   * 이미지 올리기 2단계: 파일 앞부분으로 이미지인지 확인하고, 종류별 크기로 자른 WebP로 적용한다.
+   * crop이 있으면 사용자가 고른 곳을, 없으면 가운데를 채워 자른다. 원본과 이전 이미지는 지운다.
    */
-  async apply(userId: string, communityId: string, kind: CommunityImageKind): Promise<void> {
+  async apply(
+    userId: string,
+    communityId: string,
+    kind: CommunityImageKind,
+    crop?: CropRatio,
+  ): Promise<void> {
     await this.access.requireManager(userId, communityId, '커뮤니티 설정');
     const source = uploadKey(communityId, kind);
     const size = await this.storage.size(source);
@@ -77,7 +82,7 @@ export class CommunityProfileService {
         throw new BadRequestException('JPEG, PNG, GIF, WebP, AVIF 이미지만 쓸 수 있습니다.');
       }
       const { width, height } = COMMUNITY_IMAGE_SIZE[kind];
-      const image = await makeCover(await this.storage.read(source), width, height);
+      const image = await makeCover(await this.storage.read(source), width, height, crop);
       if (!image) throw new BadRequestException('이미지를 읽지 못했습니다.');
       const key = newImageKey(communityId, kind);
       await this.storage.write(key, image, 'image/webp');

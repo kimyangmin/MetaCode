@@ -12,7 +12,12 @@ import {
   type UserDetail,
   type UserProfile,
 } from '@metacode/shared';
-import { SNIFF_BYTES, makeAvatar, sniffRasterFormat } from '../attachments/image.js';
+import {
+  type CropRatio,
+  SNIFF_BYTES,
+  makeAvatar,
+  sniffRasterFormat,
+} from '../attachments/image.js';
 import type { Env } from '../config/env.js';
 import { Prisma, type User } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
@@ -112,9 +117,9 @@ export class UsersService {
 
   /**
    * 프로필 사진 올리기 2단계: 올린 원본이 이미지인지 파일 앞부분으로 확인하고, 정사각형 WebP로 만들어 적용한다.
-   * 원본과 이전 사진은 지운다.
+   * crop이 있으면 사용자가 고른 곳을, 없으면 가운데를 자른다. 원본과 이전 사진은 지운다.
    */
-  async applyAvatar(userId: string): Promise<UserDetail> {
+  async applyAvatar(userId: string, crop?: CropRatio): Promise<UserDetail> {
     const uploadKey = avatarUploadKey(userId);
     const size = await this.storage.size(uploadKey);
     if (size === null) throw new BadRequestException('올린 사진이 없습니다. 다시 올려 주세요.');
@@ -123,7 +128,7 @@ export class UsersService {
       if (!sniffRasterFormat(await this.storage.readHead(uploadKey, SNIFF_BYTES))) {
         throw new BadRequestException('JPEG, PNG, GIF, WebP, AVIF 이미지만 쓸 수 있습니다.');
       }
-      const avatar = await makeAvatar(await this.storage.read(uploadKey), AVATAR_SIZE_PX);
+      const avatar = await makeAvatar(await this.storage.read(uploadKey), AVATAR_SIZE_PX, crop);
       if (!avatar) throw new BadRequestException('이미지를 읽지 못했습니다.');
 
       const previous = await this.find(userId);

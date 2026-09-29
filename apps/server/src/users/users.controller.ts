@@ -13,11 +13,13 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import {
+  type ApplyImageRequest,
   type AvatarUploadRequest,
   type AvatarUploadTicket,
   type UserDetail,
   type SetCharacterRequest,
   type UserProfile,
+  applyImageSchema,
   avatarUploadSchema,
   setCharacterSchema,
   updateProfileSchema,
@@ -68,10 +70,13 @@ export class UsersController {
     return this.users.createAvatarUpload(userId, body.size);
   }
 
-  /** 프로필 사진 올리기 2단계: 올린 원본을 확인해 적용한다 */
+  /** 프로필 사진 올리기 2단계: 올린 원본을 확인해 적용한다 (crop: 사용자가 고른 곳) */
   @Put('me/avatar')
-  applyAvatar(@CurrentUserId() userId: string): Promise<UserDetail> {
-    return this.users.applyAvatar(userId);
+  applyAvatar(
+    @CurrentUserId() userId: string,
+    @Body(new ZodValidationPipe(applyImageSchema)) body: ApplyImageRequest,
+  ): Promise<UserDetail> {
+    return this.users.applyAvatar(userId, body?.crop);
   }
 
   /** GitHub 사진으로 돌아가기 */

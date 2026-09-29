@@ -49,15 +49,45 @@ async function connect(user: TestUser) {
 /** 프로필 사진 주소는 PUBLIC_SERVER_URL 기준이라, 테스트 서버에서는 경로만 쓴다 */
 const avatarPath = (url: string) => new URL(url).pathname;
 
-async function uploadAvatar(user: TestUser, body: Uint8Array): Promise<Response> {
+async function uploadAvatar(
+  user: TestUser,
+  body: Uint8Array,
+  apply?: { crop: { x: number; y: number; width: number; height: number } },
+): Promise<Response> {
   const ticket = await user.json<AvatarUploadTicket>(
     '/users/me/avatar/upload',
     json('POST', { size: body.byteLength }),
   );
   const put = await fetch(ticket.uploadUrl, { method: 'PUT', headers: ticket.headers, body });
   expect(put.ok).toBe(true);
-  return user.fetch('/users/me/avatar', { method: 'PUT' });
+  return user.fetch('/users/me/avatar', apply ? json('PUT', apply) : { method: 'PUT' });
 }
+
+/** 왼쪽 절반은 빨강, 오른쪽 절반은 파랑인 600×300 사진 */
+const halves = () =>
+  sharp({ create: { width: 600, height: 300, channels: 3, background: '#ff0000' } })
+    .composite([
+      {
+        input: { create: { width: 300, height: 300, channels: 3, background: '#0000ff' } },
+        left: 300,
+        top: 0,
+      },
+    ])
+    .png()
+    .toBuffer();
+
+/** 받은 사진의 가운데 픽셀 색 [r, g, b] */
+async function centerColor(url: string): Promise<number[]> {
+  const file = await t.fetch(avatarPath(url));
+  const { data, info } = await sharp(Buffer.from(await file.arrayBuffer()))
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  const i = (Math.floor(info.height / 2) * info.width + Math.floor(info.width / 2)) * info.channels;
+  return [data[i]!, data[i + 1]!, data[i + 2]!];
+}
+
+const isBlue = ([r, g, b]: number[]) => b! > 200 && r! < 60 && g! < 60;
+const isRed = ([r, g, b]: number[]) => r! > 200 && b! < 60 && g! < 60;
 
 const png = (color: string) =>
   sharp({ create: { width: 600, height: 300, channels: 3, background: color } })
@@ -164,6 +194,52 @@ describe('프로필 사진', () => {
     const reset = await user.json<UserDetail>('/users/me/avatar', json('DELETE'));
     expect(reset).toMatchObject({ customAvatar: false, avatarUrl: githubAvatar });
     expect((await t.fetch(avatarPath(second.avatarUrl))).status).toBe(404);
+  });
+
+  it('고른 곳(crop)을 잘라 쓰고, 고르지 않으면 가운데를 자른다', async () => {
+    const user = await loginUser(t);
+    const right = (await (
+      await uploadAvatar(user, await halves(), {
+        crop: { x: 0.5, y: 0, width: 0.5, height: 1 },
+      })
+    ).json()) as UserDetail;
+    expect(isBlue(await centerColor(right.avatarUrl))).toBe(true);
+
+    const left = (await (
+      await uploadAvatar(user, await halves(), {
+        crop: { x: 0, y: 0, width: 0.5, height: 1 },
+      })
+    ).json()) as UserDetail;
+    expect(isRed(await centerColor(left.avatarUrl))).toBe(true);
+
+    // 사진 밖을 고르면 거절한다.
+    const outside = await uploadAvatar(user, await halves(), {
+      crop: { x: 0.8, y: 0, width: 0.5, height: 1 },
+    });
+    expect(outside.status).toBe(400);
+  });
+
+  it('EXIF로 돌려 찍은 사진은 보이는 방향 기준으로 자른다', async () => {
+    const user = await loginUser(t);
+    // 저장은 300×600(위 빨강, 아래 파랑)이고 EXIF 6(시계 방향 90도)이라, 보이는 모습은
+    // 600×300에 왼쪽 파랑, 오른쪽 빨강이다.
+    const stored = await sharp({
+      create: { width: 300, height: 600, channels: 3, background: '#ff0000' },
+    })
+      .composite([
+        {
+          input: { create: { width: 300, height: 300, channels: 3, background: '#0000ff' } },
+          left: 0,
+          top: 300,
+        },
+      ])
+      .withMetadata({ orientation: 6 })
+      .jpeg()
+      .toBuffer();
+    const applied = (await (
+      await uploadAvatar(user, stored, { crop: { x: 0, y: 0, width: 0.5, height: 1 } })
+    ).json()) as UserDetail;
+    expect(isBlue(await centerColor(applied.avatarUrl))).toBe(true);
   });
 
   it('이미지가 아니면 거절한다 (SVG 포함)', async () => {
