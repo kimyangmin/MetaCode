@@ -8,12 +8,15 @@ import { Dialog } from '../../ui/Dialog';
 import { displayName, dmTitle } from '../../ui/format';
 import { UserPanel } from '../auth/UserPanel';
 import { useDms, useMeRequired, useOpenDm } from '../communities/hooks';
+import { useFriends } from '../friends/api';
 import { useCall } from '../voice/store';
 
 /** DM 화면 왼쪽: 대화 목록과 새 대화 */
 export function DmSidebar({ activeId }: { activeId?: string }) {
   const me = useMeRequired();
   const dms = useDms();
+  const friends = useFriends();
+  const incoming = friends.data?.incoming.length ?? 0;
   const [creating, setCreating] = useState(false);
 
   return (
@@ -30,6 +33,16 @@ export function DmSidebar({ activeId }: { activeId?: string }) {
         </button>
       </header>
       <nav className="sidebar__list" aria-label="대화">
+        <NavLink to="/dm" end className="sidebar__item sidebar__item--friends">
+          <span aria-hidden>👥</span>
+          <span className="sidebar__label">친구</span>
+          {incoming > 0 && (
+            <span className="friends__badge" aria-label={`받은 친구 요청 ${incoming}개`}>
+              {incoming}
+            </span>
+          )}
+        </NavLink>
+        <h3 className="sidebar__section">다이렉트 메시지</h3>
         {dms.data?.length === 0 && (
           <p className="sidebar__empty">아직 대화가 없습니다. + 를 눌러 시작해 보세요.</p>
         )}
@@ -76,11 +89,26 @@ function NewDmDialog({ onClose }: { onClose(): void }) {
     return () => clearTimeout(timer);
   }, [query]);
 
+  const friends = useFriends().data?.friends ?? [];
+  // 친구는 검색하지 않아도 보이고, 입력한 글자로 이름·ID를 거른다. 검색 결과에서는 친구를 뺀다.
+  const needle = query.trim().toLowerCase();
+  const shownFriends = friends
+    .map((f) => f.user)
+    .filter(
+      (u) =>
+        !needle ||
+        u.username.toLowerCase().includes(needle) ||
+        displayName(u).toLowerCase().includes(needle),
+    );
+  const friendIds = new Set(friends.map((f) => f.user.id));
+
   const results = useQuery({
     queryKey: ['user-search', debounced],
     queryFn: () => apiFetch<UserProfile[]>(`/users/search?q=${encodeURIComponent(debounced)}`),
     enabled: debounced.length > 0,
   });
+
+  const others = (results.data ?? []).filter((user) => !friendIds.has(user.id));
 
   const toggle = (user: UserProfile) =>
     setSelected((list) =>
@@ -95,7 +123,7 @@ function NewDmDialog({ onClose }: { onClose(): void }) {
     <Dialog title="새 대화" onClose={onClose}>
       <div className="form">
         <label>
-          GitHub 아이디로 찾기
+          친구나 GitHub 아이디로 찾기
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
@@ -111,23 +139,32 @@ function NewDmDialog({ onClose }: { onClose(): void }) {
             ))}
           </div>
         )}
-        <ul className="search-results">
-          {results.data?.map((user) => (
-            <li key={user.id}>
-              <label className="search-results__item">
-                <input
-                  type="checkbox"
+        {shownFriends.length > 0 && (
+          <>
+            <h3 className="search-results__title">친구</h3>
+            <ul className="search-results">
+              {shownFriends.map((user) => (
+                <UserPick
+                  key={user.id}
+                  user={user}
                   checked={selected.some((u) => u.id === user.id)}
-                  onChange={() => toggle(user)}
+                  onToggle={() => toggle(user)}
                 />
-                <Avatar user={user} size={28} />
-                <span>
-                  {displayName(user)} <small>@{user.username}</small>
-                </span>
-              </label>
-            </li>
+              ))}
+            </ul>
+          </>
+        )}
+        {debounced && <h3 className="search-results__title">다른 사용자</h3>}
+        <ul className="search-results">
+          {others.map((user) => (
+            <UserPick
+              key={user.id}
+              user={user}
+              checked={selected.some((u) => u.id === user.id)}
+              onToggle={() => toggle(user)}
+            />
           ))}
-          {debounced && results.data?.length === 0 && (
+          {debounced && others.length === 0 && shownFriends.length === 0 && (
             <li className="form__hint">
               찾는 사용자가 없습니다. MetaCode에 로그인한 적이 있어야 합니다.
             </li>
@@ -146,5 +183,28 @@ function NewDmDialog({ onClose }: { onClose(): void }) {
         </button>
       </div>
     </Dialog>
+  );
+}
+
+/** 새 대화에서 고를 사람 한 줄 */
+function UserPick({
+  user,
+  checked,
+  onToggle,
+}: {
+  user: UserProfile;
+  checked: boolean;
+  onToggle(): void;
+}) {
+  return (
+    <li>
+      <label className="search-results__item">
+        <input type="checkbox" checked={checked} onChange={onToggle} />
+        <Avatar user={user} size={28} showStatus />
+        <span>
+          {displayName(user)} <small>@{user.username}</small>
+        </span>
+      </label>
+    </li>
   );
 }

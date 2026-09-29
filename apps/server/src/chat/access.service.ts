@@ -107,15 +107,25 @@ export class AccessService {
     ];
   }
 
-  /** 이 사용자의 온라인 상태를 알아야 하는 방: 같은 커뮤니티들, DM 상대들 */
+  /** 이 사용자의 온라인 상태를 알아야 하는 방: 같은 커뮤니티들, DM 상대들, 친구들 */
   async presenceAudience(userId: string): Promise<string[]> {
     const communityIds = await this.communityIdsOf(userId);
-    const partners = await this.prisma.channelMember.findMany({
-      where: { userId: { not: userId }, channel: { members: { some: { userId } } } },
-      select: { userId: true },
-      distinct: ['userId'],
-    });
-    return [...communityIds.map(room.community), ...partners.map((p) => room.user(p.userId))];
+    const [partners, friends] = await Promise.all([
+      this.prisma.channelMember.findMany({
+        where: { userId: { not: userId }, channel: { members: { some: { userId } } } },
+        select: { userId: true },
+        distinct: ['userId'],
+      }),
+      this.prisma.friendship.findMany({
+        where: { status: 'ACCEPTED', OR: [{ requesterId: userId }, { addresseeId: userId }] },
+        select: { requesterId: true, addresseeId: true },
+      }),
+    ]);
+    const people = new Set([
+      ...partners.map((p) => p.userId),
+      ...friends.map((f) => (f.requesterId === userId ? f.addresseeId : f.requesterId)),
+    ]);
+    return [...communityIds.map(room.community), ...[...people].map(room.user)];
   }
 
   private async canSeeCommunityChannel(

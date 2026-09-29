@@ -218,9 +218,9 @@ export class UsersService {
     return user;
   }
 
-  /** 닉네임, 사진, 캐릭터가 바뀌었다: 같은 커뮤니티·DM 사람과 본인(다른 탭·기기)에게 알린다 */
+  /** 닉네임, 사진, 캐릭터가 바뀌었다: 같은 커뮤니티·DM 사람, 친구(요청 포함)와 본인(다른 탭·기기)에게 알린다 */
   private async announce(user: User): Promise<void> {
-    const [communities, channels] = await Promise.all([
+    const [communities, channels, friends] = await Promise.all([
       this.prisma.communityMember.findMany({
         where: { userId: user.id },
         select: { communityId: true },
@@ -229,12 +229,18 @@ export class UsersService {
         where: { userId: user.id },
         select: { channelId: true },
       }),
+      // 친구 목록에도 이름·사진이 보이므로 요청 중인 사람까지 알린다.
+      this.prisma.friendship.findMany({
+        where: { OR: [{ requesterId: user.id }, { addresseeId: user.id }] },
+        select: { requesterId: true, addresseeId: true },
+      }),
     ]);
     this.realtime.emit(
       [
         `user:${user.id}`,
         ...communities.map((m) => `community:${m.communityId}`),
         ...channels.map((m) => `channel:${m.channelId}`),
+        ...friends.map((f) => `user:${f.requesterId === user.id ? f.addresseeId : f.requesterId}`),
       ],
       SocketEvent.UserUpdated,
       toProfile(user),

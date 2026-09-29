@@ -156,6 +156,11 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
   - API: `PATCH /communities/:id {name}`, 아이콘·배너는 프로필 사진과 같은 흐름 `POST /communities/:id/images/:kind/upload` → 저장소에 PUT → `PUT /communities/:id/images/:kind`(매직 바이트 확인, 아이콘 256×256·배너 960×540으로 가운데를 채워 자른 WebP, `community-images/<id>/<종류>-<무작위>.webp`), `DELETE`로 지우기. 바뀌면 `community:updated`로 알립니다.
   - 이미지는 `GET /community-images/<id>/<file>`로 **인증 없이** 줍니다 (초대 화면은 아직 멤버가 아니고, 데스크톱 `<img>`는 토큰을 못 붙임. 주소에 무작위 ID). 1년 캐시(immutable). 커뮤니티를 지우면 이미지도 지웁니다.
   - 아이콘은 왼쪽 커뮤니티 목록과 초대 화면(`InviteInfo.communityIconUrl`), 배너는 채널 목록 위(16:9)에 보입니다.
+- **친구:** `apps/server/src/friends/`, 웹 `features/friends/`
+  - `Friendship`(requesterId, addresseeId, status `PENDING`|`ACCEPTED`): 두 사람 사이에 줄 하나. 사용자 ID(username)로 요청하고, 상대의 요청이 이미 와 있으면 요청만으로 친구가 됩니다. 거절·취소·끊기는 줄을 지웁니다.
+  - API: `GET /friends`(friends/incoming/outgoing + 온라인 여부), `POST /friends/requests {username}`, `POST /friends/requests/:userId/accept`, `DELETE /friends/:userId`(거절·취소·끊기). 바뀔 때마다 두 사람의 `user:` 방에 `friend:updated {userId, status}`(상대 기준 관계)를 보내고 웹은 친구 목록을 다시 받습니다.
+  - 친구끼리는 커뮤니티·DM이 겹치지 않아도 온라인 상태(`presenceAudience`)와 프로필 변경(`user:updated`, 요청 중 포함)을 받습니다.
+  - 화면: DM 홈(대화를 고르지 않았을 때)이 친구 화면(온라인 · 모두 · 대기 중 · 친구 추가), DM 목록 위 "친구"와 왼쪽 DM 아이콘에 받은 요청 표시, 사용자 정보 팝업의 친구 버튼(추가/취소/수락/끊기), 새 대화 창에 친구 목록(검색하지 않아도 체크해서 그룹 대화).
 - **프로필 (닉네임, 자기소개, 사진):** `apps/server/src/users/`
   - 사용자 ID는 GitHub 로그인 이름(`username`)이고 바꿀 수 없습니다. 다른 사람에게 보이는 이름은 `nickname`(없으면 username), 자기소개는 `bio`입니다. DTO의 `displayName`은 닉네임입니다 (GitHub 이름은 DB의 `displayName`에 남지만 화면에는 쓰지 않음).
   - GitHub로 다시 로그인하면 username, GitHub 이름, GitHub 사진만 맞추고 닉네임·자기소개·올린 사진은 건드리지 않습니다.
@@ -295,11 +300,12 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
 
 ## 실시간 이벤트 규칙
 
-- 이름은 `도메인:동작` 형식입니다. 도메인: `message`, `channel`, `plaza`, `presence`, `voice`, `typing`, `user`
+- 이름은 `도메인:동작` 형식입니다. 도메인: `message`, `channel`, `plaza`, `presence`, `voice`, `typing`, `user`, `friend`
 - 클라이언트 → 서버는 명령형, 서버 → 클라이언트는 과거형으로 짓습니다.
   - `message:send` → `message:created`, `message:edit` → `message:updated`, `message:delete` → `message:deleted` (내 메시지만)
   - `typing:start` → `typing:started` (보낸 연결 제외)
   - 닉네임·프로필 사진·캐릭터 변경 → `user:updated`
+  - 친구 요청·수락·거절·취소·끊기 → `friend:updated` (두 사람의 `user:` 방)
   - `channel:created`, `dm:created`, `community:member-joined` / `member-left` / `deleted`, `presence:changed`
   - `plaza:watch` / `plaza:unwatch`: 광장 화면을 열고 닫을 때 (위치 업데이트 구독)
   - `plaza:move` → `plaza:moved`
@@ -341,6 +347,7 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
 
 - `User` (구현됨): githubId, username(사용자 ID), displayName(GitHub 이름), avatarUrl(GitHub 사진), nickname, bio, avatarKey(올린 사진), character(광장 캐릭터 `{asset, colors, version?}`, null이면 기본)
 - `RefreshToken` (구현됨): userId, tokenHash, familyId, client, expiresAt, revokedAt
+- `Friendship` (구현됨): requesterId, addresseeId(둘이 기본 키), status(`PENDING` | `ACCEPTED`), createdAt, acceptedAt
 - `Community` (구현됨): name, ownerId, iconKey·bannerKey(올린 아이콘·배너, 없으면 null) / `CommunityMember`: userId, communityId, role(`OWNER` | `ADMIN` | `MEMBER`) / `Invite`: code(8자), expiresAt(7일), uses
 - `Role` (구현됨): communityId, name(커뮤니티 안에서 고유), color(#rrggbb), position / `MemberRole`: 멤버 ↔ 역할 / `ChannelRoleAccess`: 비공개 채널 ↔ 볼 수 있는 역할
 - `Channel` (구현됨): type(`TEXT` | `VOICE` | `DM` | `GROUP_DM`), communityId(DM이면 null), name, position, proximityVoice, private(비공개 채널), dmKey(1:1 DM 중복 방지)
