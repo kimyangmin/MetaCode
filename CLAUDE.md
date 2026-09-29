@@ -142,7 +142,12 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
 - **채팅 편의:**
   - 답장: `message:send`의 `replyToId`(같은 채널의 메시지만), DTO의 `replyTo`(앞 120자, 원래 메시지가 지워지면 null). 전달: `message:forward`(볼 수 있는 메시지를 쓸 수 있는 채널로, 보낸 사람은 전달한 사람, `forwarded: true`). 전달할 때 첨부는 저장소 파일까지 복사해서 원래 채널이 지워져도 남습니다.
   - 메시지 우클릭 메뉴(답장, 전달, 텍스트 복사, 링크 복사). 글을 골라 둔 상태면 브라우저 기본 메뉴를 씁니다.
-  - 링크: `ui/links.ts`의 `splitLinks`로 http(s) 주소만 나눠 React 요소로 그립니다 (HTML을 해석하지 않음, javascript: 주소는 글자로 남음). 새 창으로 열리고, 데스크톱은 setWindowOpenHandler가 시스템 브라우저로 엽니다.
+  - 마크다운(`ui/markdownParser.ts` → `ui/Markdown.tsx`): Discord와 비슷한 범위. 블록은 ```코드 블록```, `>` 인용, `>>>` 끝까지 인용, `#`~`###` 제목, `-`/`*`/`1.` 목록, 나머지는 문단(줄바꿈 유지). 글자는 `**굵게**`, `*기울임*`/`_기울임_`(단어 속 `_`는 제외), `__밑줄__`, `~~취소선~~`, `||스포일러||`(누르면 보임), `` `코드` ``, `[글](https://…)`, `\`로 기호 그대로. 파서가 트리를 만들고 React 요소로 그리므로 HTML을 해석하지 않습니다.
+  - 링크: http(s) 주소만 링크로 만듭니다 (`ui/links.ts`의 `splitLinks`, `[글](주소)`도 http(s)만. javascript: 주소는 글자로 남음). 새 창으로 열리고, 데스크톱은 setWindowOpenHandler가 시스템 브라우저로 엽니다.
+  - 광장 말풍선과 답장 미리보기는 `markdownToPlain`으로 기호를 뺀 글을 씁니다 (스포일러는 `▒`로 가림).
+  - GIF(`image/gif`, 15MB 이하)는 목록에서 썸네일(첫 장면만 담긴 WebP) 대신 원본을 틀어 움직이게 합니다. 더 크면 썸네일에 GIF 표시만 하고 크게 보기에서 움직입니다.
+  - 목록을 맨 아래에서 400px 넘게 올리면 "맨 아래로" 버튼이 뜨고, 그 사이 온 메시지 수를 함께 보여 줍니다.
+  - 여러 줄 메시지의 아바타는 위에 붙입니다 (`.message__gutter`의 `align-items: flex-start`, 예전엔 버튼이 줄 높이만큼 늘어나 가운데로 내려갔음).
   - 앱 화면의 글자는 고르거나 끌 수 없게(`user-select: none`) 하고, 메시지 내용·입력칸·정보 팝업만 고를 수 있습니다.
   - 사용자 정보 팝업(`stores/profile.ts`, `ProfilePopup`): 메시지·멤버 목록·통화 참여자의 아바타나 이름을 누르면 뜹니다. 멤버 목록은 예전처럼 바로 DM을 열지 않고 팝업의 "메시지 보내기"로 엽니다. 멤버 목록 보이기/숨기기(👥)는 localStorage에 기억합니다.
 - **패널 배치와 분리:** `layout/SplitView.tsx`, `layout/arrangement.ts`, `stores/layout.ts`, `layout/Popout.tsx`
