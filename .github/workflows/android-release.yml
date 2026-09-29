@@ -49,6 +49,8 @@ jobs:
           cache: gradle
 
       - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
 
       # 네이티브 프로젝트에 설정(capacitor.config.json)과 플러그인(App, Browser)을 넣는다.
       - run: pnpm --filter @metacode/android exec cap sync android
