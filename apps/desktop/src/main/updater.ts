@@ -10,10 +10,16 @@ export interface UpdaterLike {
   checkForUpdates(): Promise<unknown>;
   quitAndInstall(isSilent?: boolean, isForceRunAfter?: boolean): void;
   on(event: 'update-downloaded', listener: (info: { version: string }) => void): unknown;
+  on(event: 'update-available', listener: (info: { version: string }) => void): unknown;
   on(event: 'error', listener: (error: Error) => void): unknown;
 }
 
 export interface AutoUpdateOptions {
+  /**
+   * 스스로 설치할 수 없는 앱: 받지 않고 새 버전이 있다는 것만 알린다 (웹이 "새 버전 받기"를 띄움).
+   * 서명하지 않은 macOS 앱(Squirrel.Mac은 서명을 확인함)과 deb로 설치한 Linux 앱.
+   */
+  manual?: boolean;
   /** 새 버전을 다 받았을 때. 앱 화면에 "다시 시작" 안내를 띄운다 */
   onReady(info: UpdateReadyInfo): void;
   log(message: string): void;
@@ -32,8 +38,16 @@ export class AutoUpdate {
     private readonly updater: UpdaterLike,
     private readonly options: AutoUpdateOptions,
   ) {
-    updater.autoDownload = true;
-    updater.autoInstallOnAppQuit = true;
+    const manual = options.manual ?? false;
+    updater.autoDownload = !manual;
+    updater.autoInstallOnAppQuit = !manual;
+    if (manual) {
+      updater.on('update-available', (info) => {
+        this.ready = { version: info.version, manual: true };
+        options.log(`${info.version} 있음 (직접 설치)`);
+        options.onReady(this.ready);
+      });
+    }
     updater.on('update-downloaded', (info) => {
       this.ready = { version: info.version };
       options.log(`${info.version} 받음`);
@@ -55,7 +69,8 @@ export class AutoUpdate {
 
   /** 앱을 끄고 새 버전을 설치한 뒤 다시 켠다. 받아 둔 것이 없으면 아무것도 하지 않는다 */
   install() {
-    if (!this.ready) return;
+    // 직접 설치해야 하는 앱은 웹 화면이 설치 파일 받는 곳을 연다.
+    if (!this.ready || this.ready.manual) return;
     // 설치 창 없이(oneClick NSIS) 설치하고 앱을 다시 켠다.
     this.updater.quitAndInstall(true, true);
   }

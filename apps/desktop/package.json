@@ -3,6 +3,8 @@
   "version": "0.4.1",
   "description": "MetaCode 데스크톱 앱",
   "author": "kimyangmin",
+  "homepage": "https://github.com/kimyangmin/MetaCode",
+  "desktopName": "metacode.desktop",
   "private": true,
   "type": "commonjs",
   "main": "dist/main/index.js",
@@ -12,7 +14,9 @@
     "start": "electron .",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
-    "dist:win": "tsc -p tsconfig.build.json && electron-builder --win --publish never"
+    "dist:win": "tsc -p tsconfig.build.json && electron-builder --win --publish never",
+    "dist:mac": "tsc -p tsconfig.build.json && electron-builder --mac --publish never",
+    "dist:linux": "tsc -p tsconfig.build.json && electron-builder --linux --publish never"
   },
   "devDependencies": {
     "@metacode/shared": "workspace:*",

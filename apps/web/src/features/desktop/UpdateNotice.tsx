@@ -51,6 +51,22 @@ export function UpdateNotice() {
 
   // 닫은 뒤에 더 새 버전을 받으면 다시 띄운다.
   if (!ready || dismissed === ready.version) return null;
+  // 스스로 설치할 수 없는 앱(서명하지 않은 macOS, deb로 설치한 Linux)은 설치 파일 받는 곳을 연다.
+  if (ready.manual) {
+    return (
+      <Notice onClose={() => setDismissed(ready.version)}>
+        <span>새 버전({ready.version})이 나왔습니다. 설치 파일을 받아 설치해 주세요.</span>
+        <a
+          className="button button--primary"
+          href={DESKTOP_DOWNLOAD_URL}
+          target="_blank"
+          rel="noreferrer"
+        >
+          새 버전 받기
+        </a>
+      </Notice>
+    );
+  }
   return (
     <Notice onClose={() => setDismissed(ready.version)}>
       <span>새 버전({ready.version})이 준비됐습니다. 다시 시작하면 적용됩니다.</span>

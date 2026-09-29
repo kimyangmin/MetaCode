@@ -9,11 +9,11 @@ class FakeUpdater extends EventEmitter implements UpdaterLike {
   quitAndInstall = vi.fn();
 }
 
-function setup() {
+function setup(manual = false) {
   const updater = new FakeUpdater();
   const onReady = vi.fn();
   const log = vi.fn();
-  const updates = new AutoUpdate(updater, { onReady, log });
+  const updates = new AutoUpdate(updater, { onReady, log, manual });
   return { updater, updates, onReady, log };
 }
 
@@ -26,6 +26,22 @@ describe('AutoUpdate', () => {
     const { updater } = setup();
     expect(updater.autoDownload).toBe(true);
     expect(updater.autoInstallOnAppQuit).toBe(true);
+  });
+
+  it('직접 설치해야 하는 앱은 받지 않고 새 버전이 있다는 것만 알린다', () => {
+    const { updater, updates, onReady } = setup(true);
+    expect(updater.autoDownload).toBe(false);
+    expect(updater.autoInstallOnAppQuit).toBe(false);
+    updater.emit('update-available', { version: '0.5.0' });
+    expect(onReady).toHaveBeenCalledWith({ version: '0.5.0', manual: true });
+    updates.install();
+    expect(updater.quitAndInstall).not.toHaveBeenCalled();
+  });
+
+  it('스스로 설치하는 앱은 새 버전이 있다는 것만으로는 알리지 않는다 (다 받으면 알림)', () => {
+    const { updater, onReady } = setup();
+    updater.emit('update-available', { version: '0.5.0' });
+    expect(onReady).not.toHaveBeenCalled();
   });
 
   it('시작할 때 한 번, 그 뒤로 간격마다 확인한다', () => {

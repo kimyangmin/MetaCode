@@ -263,6 +263,9 @@ function registerScreenShare() {
 function registerAutoUpdate() {
   if (app.isPackaged) {
     updates = new AutoUpdate(autoUpdater, {
+      // 서명하지 않은 macOS 앱과 deb(AppImage가 아닌) Linux 앱은 스스로 설치할 수 없다.
+      manual:
+        process.platform === 'darwin' || (process.platform === 'linux' && !process.env.APPIMAGE),
       onReady: (info) => mainWindow?.webContents.send(IPC.updateReady, info),
       log: (message) => console.log(`[update] ${message}`),
     });
