@@ -14,6 +14,7 @@ import {
   useMeRequired,
   useMembers,
 } from './features/communities/hooks';
+import { FriendsPanel } from './features/friends/FriendsPanel';
 import { DmSidebar } from './features/dms/DmSidebar';
 import { PlazaPanel } from './features/metaverse/PlazaPanel';
 import { CallButton } from './features/voice/CallButton';
@@ -146,9 +147,8 @@ export function DmPage() {
           )}
         />
       ) : (
-        <section className="chat chat--empty">
-          <p>왼쪽에서 대화를 고르거나, 커뮤니티 멤버를 눌러 대화를 시작해 보세요.</p>
-        </section>
+        // 대화를 고르지 않았으면 친구 화면 (온라인 친구, 받은 요청, 친구 추가)
+        <FriendsPanel />
       )}
     </>
   );

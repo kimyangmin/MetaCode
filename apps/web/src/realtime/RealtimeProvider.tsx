@@ -17,6 +17,7 @@ import {
 } from '../api/queries';
 import { API_URL } from '../config';
 import { getDesktopBridge } from '../platform';
+import { friendsKey } from '../features/friends/api';
 import { usePresenceStore } from '../stores/presence';
 import { useProfileStore } from '../stores/profile';
 import { useTypingStore } from '../stores/typing';
@@ -126,6 +127,10 @@ export function RealtimeProvider({ meId, children }: { meId: string; children: R
     socket.on(SocketEvent.CommunityUpdated, ({ communityId }) => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.communities });
       void queryClient.invalidateQueries({ queryKey: queryKeys.members(communityId) });
+    });
+    // 친구 요청·수락·거절·끊기: 친구 목록을 다시 받는다.
+    socket.on(SocketEvent.FriendUpdated, () => {
+      void queryClient.invalidateQueries({ queryKey: friendsKey });
     });
     socket.on(SocketEvent.PresenceChanged, ({ userId, online }) => {
       usePresenceStore.getState().set(userId, online);
