@@ -6,6 +6,7 @@ import { inviteToOpenInApp, stayInBrowser } from './features/desktop/inviteLink'
 import { getDesktopBridge, isAndroidApp, loadAndroid } from './platform';
 import { LiveUpdateNotice } from './features/app/LiveUpdateNotice';
 import { LoginScreen } from './features/auth/LoginScreen';
+import { TitleBar } from './features/desktop/TitleBar';
 import { UpdateNotice } from './features/desktop/UpdateNotice';
 import { loginErrorMessage, meQueryKey, takeLoginError, useMe } from './features/auth/auth';
 import { rememberPendingInvite } from './pages';
@@ -81,49 +82,59 @@ function Screen() {
     };
   }, [router, queryClient]);
 
-  if (openInApp) {
-    return (
-      <OpenInApp
-        code={openInApp}
-        onContinue={() => {
-          stayInBrowser(openInApp);
-          setOpenInApp(null);
-        }}
-      />
-    );
-  }
-
-  if (me.isPending) return <main className="center">불러오는 중…</main>;
-  if (me.isError) {
-    return (
-      <main className="center center--column" role="alert">
-        <p>서버에 연결하지 못했습니다.</p>
-        <button
-          type="button"
-          className="button button--primary"
-          onClick={() => void me.refetch()}
-          disabled={me.isFetching}
-        >
-          {me.isFetching ? '연결 중…' : '다시 시도'}
-        </button>
-      </main>
-    );
-  }
-  if (!me.data) {
-    rememberPendingInvite();
-    return <LoginScreen error={loginError} />;
-  }
-
+  // 데스크톱 앱(0.5.0부터)은 OS 제목 표시줄 대신 이것을 그린다. 브라우저에서는 아무것도 그리지 않는다.
   return (
-    <RealtimeProvider key={me.data.id} meId={me.data.id}>
-      <VoiceProvider meId={me.data.id}>
-        <RouterProvider router={router} />
-        <ScreenViewer />
-        <SettingsDialog />
-        <AssetEditors />
-      </VoiceProvider>
-    </RealtimeProvider>
+    <>
+      <TitleBar router={router} loggedIn={loggedIn} />
+      {renderScreen()}
+    </>
   );
+
+  function renderScreen() {
+    if (openInApp) {
+      return (
+        <OpenInApp
+          code={openInApp}
+          onContinue={() => {
+            stayInBrowser(openInApp);
+            setOpenInApp(null);
+          }}
+        />
+      );
+    }
+
+    if (me.isPending) return <main className="center">불러오는 중…</main>;
+    if (me.isError) {
+      return (
+        <main className="center center--column" role="alert">
+          <p>서버에 연결하지 못했습니다.</p>
+          <button
+            type="button"
+            className="button button--primary"
+            onClick={() => void me.refetch()}
+            disabled={me.isFetching}
+          >
+            {me.isFetching ? '연결 중…' : '다시 시도'}
+          </button>
+        </main>
+      );
+    }
+    if (!me.data) {
+      rememberPendingInvite();
+      return <LoginScreen error={loginError} />;
+    }
+
+    return (
+      <RealtimeProvider key={me.data.id} meId={me.data.id}>
+        <VoiceProvider meId={me.data.id}>
+          <RouterProvider router={router} />
+          <ScreenViewer />
+          <SettingsDialog />
+          <AssetEditors />
+        </VoiceProvider>
+      </RealtimeProvider>
+    );
+  }
 }
 
 /**

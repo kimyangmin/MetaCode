@@ -238,11 +238,22 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
   - 미리 보기 주소(`URL.createObjectURL`)는 여는 쪽이 만들고 닫을 때 지웁니다 (`cropSource`/`releaseCropSource`). 창 안의 effect에서 지우면 StrictMode의 가짜 언마운트 때 지워져 사진이 안 떴습니다.
   - 올린 원본은 적용 뒤 지우므로, 이미 올린 사진의 위치를 나중에 다시 고치지는 못합니다 (다시 올려야 함).
 - **여닫는 애니메이션:** 설정 창은 `ui/useExitTransition.ts`(값이 null이 된 뒤에도 잠깐 남겨 `data-closing`), `Dialog`는 스스로 닫을 때(Esc, 바깥, ✕)만 사라지는 애니메이션 뒤에 `onClose`를 부릅니다 (부모가 직접 내리면 바로 사라짐). 시간은 animationend 대신 setTimeout으로 잽니다 (움직임 줄이기 설정에서는 이벤트가 오지 않음). 멤버 목록은 내리지 않고 `.members-slot`의 폭을 줄입니다 (`inert`).
+- **사용자 정보 팝업:** 연 요소(`anchor`)를 다시 누르면 닫습니다 (`openProfile`이 같은 사람·같은 요소면 닫고, 바깥 누르기 처리는 그 요소를 건너뜀). 여닫을 때 애니메이션(`useExitTransition`).
+- **채널 만들기:** 채널 목록의 "텍스트 채널"·"음성 채널" 머리글 오른쪽 +(관리자). 누른 구역의 종류가 골라진 채로 열립니다. 음성 채널이 없어도 관리자에게는 음성 채널 머리글을 보여 줍니다.
+- **데스크톱 제목 표시줄 (0.5.0):** `apps/desktop/src/main/titlebar.ts`, 웹 `features/desktop/TitleBar.tsx`
+  - 메인 창은 OS 제목 표시줄 없이(`frame: false`, macOS는 `titleBarStyle: 'hidden'`으로 신호등만 남김) 띄우고, Windows·Linux는 메뉴 막대도 없앱니다(`Menu.setApplicationMenu(null)`, 개발 중에는 F12·Ctrl+Shift+I·F5를 되살림).
+  - preload는 창을 만들 때 넘긴 인자(`--metacode-titlebar=custom|native-controls`)가 있을 때만 브리지 `window`(최소화·최대화·닫기·최대화 상태)를 둡니다. 분리한 창은 인자가 없어 OS 제목 표시줄을 씁니다. 웹은 `window`가 있을 때만 제목 표시줄을 그리므로 브라우저와 0.4.x 앱에서는 그리지 않습니다.
+  - 제목 표시줄: 왼쪽 도움말(설정 → 기능), 가운데 지금 커뮤니티 이름 / DM이면 Direct Message(`titleFor`), 오른쪽 최소화·최대화(최대화면 이전 크기 아이콘)·닫기. 빈 곳은 `-webkit-app-region: drag`라 끌어 옮기고 두 번 누르면 OS가 최대화합니다 (그 자리에는 마우스 이벤트가 오지 않음). 높이는 `--titlebar-h`(32px)이고, 화면을 덮는 창(설정, 대화 상자, 도트 에디터 등)은 그 아래부터 덮습니다.
 - **한 번 더 묻기:** `ui/ConfirmDialog.tsx`. Esc를 캡처 단계에서 먼저 받아 `preventDefault()`하므로 아래의 설정 창은 닫히지 않습니다. 사진 위치 조정 창도 같은 방식입니다 (Dialog 안에 Dialog를 겹치면 둘 다 Esc로 닫혀서 쓰지 않음).
 - **단축키:** Ctrl+1(DM), Ctrl+2~9(커뮤니티 1~8번째), Ctrl+0(9번째)은 `layout/navShortcuts.ts` + `AppLayout`. 숫자 줄의 `e.code`(Digit1 등)로 보고, 브라우저의 탭 옮기기보다 먼저 받아 막습니다. 떠 있는 창(`[aria-modal="true"]`)이 있으면 옮기지 않습니다. 광장의 `/`는 입력창에 `data-return-focus="plaza"`를 적어 두고, 보내거나 Esc를 누르면 광장으로 돌아갑니다 (다른 곳으로 포커스가 나가면 지움). 설정 → 기능(`features/settings/FeatureGuide.tsx`)에 단축키와 마크다운을 정리했으니 바꾸면 함께 고칩니다.
+- **분할 화면 내용 유지:** 배치를 바꾸면 `Group`만 새로 그리고, 채팅·광장은 `SplitPanels`가 가진 요소(`createContentHost`)에 포털로 그린 채 새 패널이 그 요소를 옮겨 붙입니다. 예전엔 옮길 때마다 광장(Phaser, WebGL)을 새로 만들어 가끔 그려지지 않았고 쓰던 글도 사라졌습니다. 옮겨 간 배치에서 한쪽을 접어 둔 기억(크기 0)은 지워 두 패널을 모두 보여 줍니다 (`forgetCollapsed`).
+  - Phaser의 `Scale.RESIZE`는 창 크기만 보고 패널 크기가 바뀐 것은 모릅니다. `PlazaView`가 ResizeObserver로 `scale.getParentBounds()` → `refresh()`를 부릅니다 (`resize()`만 부르면 기억한 부모 크기로 되돌아감). 이게 없어서 구분선을 끌거나 패널을 옮기면 캔버스가 예전 크기로 남아 광장 일부가 비어 보였습니다.
+  - 브라우저 패널로 확인할 때: 화면이 그려지지 않으면 ResizeObserver·rAF가 돌지 않으므로 스크린샷으로 그리게 한 뒤 잽니다. 끌어 놓기는 합성 DragEvent로 확인하되 `dragend`는 보내지 않습니다 (화면 좌표가 0이라 창 밖으로 보고 분리 창을 엶).
 - **분할 화면 구분선:** 위아래 배치면 구분선이 `aria-orientation="horizontal"`이 되는데, CSS가 가로 배치(세로 막대)만 있어서 높이가 0이라 잡을 수 없었습니다. 창이 좁아 두 패널의 최소 크기(채팅 300px + 광장 240px)가 함께 들어가지 않을 때도 끌리지 않습니다.
-- **휴대폰 화면 (반응형):** `ui/useMediaQuery.ts`(`PHONE_QUERY` 768px, `NARROW_QUERY` 1000px), `stores/ui.ts`(서랍 상태), `layout/NavButton.tsx`, `SplitView`의 `PhoneSplit`
-  - 1000px 이하: 멤버 목록은 오른쪽 서랍(처음엔 닫힘, 기억하지 않음). 768px 이하: 커뮤니티 막대와 채널 목록은 왼쪽 서랍(머리글 ☰, 다른 곳에 안 읽은 메시지가 있으면 점), 채팅과 광장은 머리글의 "채팅 | 광장"으로 하나씩 (채팅은 숨기기만, 광장은 내림). 패널 옮기기·분리는 없습니다. 서랍은 화면을 옮기거나 바깥(`.app__backdrop`)을 누르면 닫힙니다.
+- **휴대폰 화면 (반응형):** `ui/useMediaQuery.ts`(`PHONE_QUERY` 768px, `NARROW_QUERY` 1000px), `stores/ui.ts`(서랍 상태), `layout/NavButton.tsx`, `layout/drawerSwipe.ts`
+  - 1000px 이하: 멤버 목록은 오른쪽 서랍(처음엔 닫힘, 기억하지 않음, 화면을 옮기면 닫힘). 768px 이하: 커뮤니티 막대와 채널 목록은 왼쪽 서랍(머리글 ☰, 다른 곳에 안 읽은 메시지가 있으면 점). 이 서랍은 커뮤니티·DM을 오가는 동안 열어 두고, 목록에서 채널·대화(`.sidebar a[href]`)를 고르거나 바깥(`.app__backdrop`)을 누르면 닫습니다.
+  - 서랍은 반대쪽으로 밀어 닫습니다 (`useDrawerSwipe`: 처음 10px로 가로·세로를 가르고, 미는 동안 `.app`의 `--drawer-drag`로 손가락을 따라오고, 60px 넘게 밀면 닫음).
+  - 채팅과 광장은 위아래로만 나눕니다 (`SplitPanels`의 `phone`: 세로 고정, 최소 140px, 크기는 `metacode-split-phone`으로 따로 기억, ⇅로 위아래 바꾸기 = `phoneFirst`, 처음엔 광장이 위). 옮기기(⠿)·분리는 없고, 구분선은 손가락으로 잡기 쉽게 두껍습니다. 광장 아래의 방향키·/ 안내는 숨깁니다.
   - 손가락으로 쓰는 기기(`pointer: coarse`)에서는 Enter가 줄 바꾸기이고 보내기 버튼으로 보냅니다.
   - 휴대폰 브라우저와 안드로이드 WebView는 `getDisplayMedia`가 없어 화면 공유 버튼을 숨깁니다 (`canShareScreen`). 보기는 됩니다.
   - 브라우저 패널의 모바일 크기 에뮬레이션에서는 화면이 그려지지 않을 때가 있어(전환 애니메이션이 멈춰 보임) DOM 크기로 확인했습니다.

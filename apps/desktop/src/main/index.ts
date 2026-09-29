@@ -2,6 +2,7 @@ import path from 'node:path';
 import {
   BrowserWindow,
   type IpcMainInvokeEvent,
+  Menu,
   app,
   desktopCapturer,
   ipcMain,
@@ -12,6 +13,7 @@ import { autoUpdater } from 'electron-updater';
 import { AuthManager } from './auth';
 import { PROTOCOL, deepLinkRoute, routeFromArgv } from './deeplink';
 import { allowPermission } from './permissions';
+import { TITLEBAR_ARG, titleBarKind, titleBarWindowOptions } from './titlebar';
 import { createTokenStorage } from './token-storage';
 import { AutoUpdate } from './updater';
 import { isPopoutUrl, isScreenPopup } from './windows';
@@ -42,6 +44,11 @@ const IPC = {
   updateReady: 'metacode:update:ready',
   updateInstall: 'metacode:update:install',
   navigate: 'metacode:navigate',
+  windowMinimize: 'metacode:window:minimize',
+  windowToggleMaximize: 'metacode:window:toggle-maximize',
+  windowClose: 'metacode:window:close',
+  windowIsMaximized: 'metacode:window:is-maximized',
+  windowMaximized: 'metacode:window:maximized',
 } as const;
 
 /** 인증이 필요한 첨부 파일 주소 */
@@ -123,9 +130,20 @@ function createMainWindow(): BrowserWindow {
     minWidth: 800,
     minHeight: 600,
     title: 'MetaCode',
-    webPreferences: webPreferences(),
+    // 제목 표시줄은 웹 화면이 그린다 (titlebar.ts). 그리기 전에 흰 화면이 번쩍이지 않게 어두운 바탕.
+    ...titleBarWindowOptions(process.platform),
+    backgroundColor: '#0d1117',
+    webPreferences: {
+      ...webPreferences(),
+      additionalArguments: [`${TITLEBAR_ARG}${titleBarKind(process.platform)}`],
+    },
   });
   guardWindow(win);
+  // 제목 표시줄의 최대화·원래 크기 버튼 모양을 맞춘다 (창 끌기, 두 번 누르기로 바뀐 것도).
+  const sendMaximized = () => win.webContents.send(IPC.windowMaximized, win.isMaximized());
+  win.on('maximize', sendMaximized);
+  win.on('unmaximize', sendMaximized);
+  if (isDev) openDevToolsWithKeys(win);
 
   void win.loadURL(routeUrl(pendingRoute));
   pendingRoute = null;
@@ -167,6 +185,33 @@ function registerProtocol() {
   } else if (process.env.METACODE_REGISTER_PROTOCOL === '1' && process.argv[1]) {
     app.setAsDefaultProtocolClient(PROTOCOL, process.execPath, [path.resolve(process.argv[1])]);
   }
+}
+
+/**
+ * 메뉴 막대를 없애서 개발 중에 쓰던 단축키(개발자 도구, 새로 고침)도 없어지므로 개발 중에만 되살린다.
+ */
+function openDevToolsWithKeys(win: BrowserWindow) {
+  win.webContents.on('before-input-event', (_event, input) => {
+    if (input.type !== 'keyDown') return;
+    const devTools = input.key === 'F12' || (input.control && input.shift && input.key === 'I');
+    if (devTools) win.webContents.toggleDevTools();
+    else if (input.key === 'F5') win.webContents.reload();
+  });
+}
+
+/** 제목 표시줄의 창 조작. 부른 창에만 한다 */
+function registerWindowControls() {
+  const windowOf = (event: IpcMainInvokeEvent) =>
+    fromApp(event) ? BrowserWindow.fromWebContents(event.sender) : null;
+  ipcMain.handle(IPC.windowMinimize, (event) => windowOf(event)?.minimize());
+  ipcMain.handle(IPC.windowToggleMaximize, (event) => {
+    const win = windowOf(event);
+    if (!win) return;
+    if (win.isMaximized()) win.unmaximize();
+    else win.maximize();
+  });
+  ipcMain.handle(IPC.windowClose, (event) => windowOf(event)?.close());
+  ipcMain.handle(IPC.windowIsMaximized, (event) => windowOf(event)?.isMaximized() ?? false);
 }
 
 /** 앱 화면에서 온 호출만 받는다. */
@@ -323,6 +368,10 @@ function main() {
       log: (message) => console.log(`[auth] ${message}`),
     });
     registerIpc(auth);
+    registerWindowControls();
+    // Windows·Linux는 메뉴 막대(File, Edit, View…)를 없앤다. macOS는 화면 위 메뉴에 복사·붙여넣기
+    // 같은 편집 단축키가 달려 있어서 그대로 둔다.
+    if (process.platform !== 'darwin') Menu.setApplicationMenu(null);
     restrictPermissions();
     registerScreenShare();
     registerAutoUpdate();
