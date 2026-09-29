@@ -11,14 +11,25 @@ interface Destination {
   place: string;
 }
 
-/** 메시지 전달: 볼 수 있는 텍스트 채널과 DM 중에서 고른다. 첨부도 함께 전달된다 */
-export function ForwardDialog({ message, onClose }: { message: MessageDto; onClose(): void }) {
+/**
+ * 메시지 전달: 볼 수 있는 텍스트 채널과 DM(다른 커뮤니티 포함) 중에서 고른다. 첨부도 함께 전달된다.
+ * 여러 개(채팅 영역 잡기)면 오래된 것부터 차례로 보낸다.
+ */
+export function ForwardDialog({
+  messages,
+  onClose,
+}: {
+  /** 오래된 것부터 */
+  messages: MessageDto[];
+  onClose(): void;
+}) {
+  const channelId = messages[0]!.channelId;
   const { socket } = useRealtime();
   const me = useMeRequired();
   const communities = useCommunities();
   const dms = useDms();
   const [query, setQuery] = useState('');
-  const [sending, setSending] = useState<string | null>(null);
+  const [sending, setSending] = useState<{ id: string; done: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const destinations = useMemo<Destination[]>(() => {
@@ -32,8 +43,8 @@ export function ForwardDialog({ message, onClose }: { message: MessageDto; onClo
       label: `@ ${dmTitle(dm, me.id)}`,
       place: '다이렉트 메시지',
     }));
-    return [...channels, ...direct].filter((d) => d.id !== message.channelId);
-  }, [communities.data, dms.data, me.id, message.channelId]);
+    return [...channels, ...direct].filter((d) => d.id !== channelId);
+  }, [communities.data, dms.data, me.id, channelId]);
 
   const q = query.trim().toLowerCase();
   const shown = q
@@ -42,25 +53,37 @@ export function ForwardDialog({ message, onClose }: { message: MessageDto; onClo
 
   const send = async (destination: Destination) => {
     if (!socket) return;
-    setSending(destination.id);
     setError(null);
-    const ack = await socket
-      .timeout(10_000)
-      .emitWithAck(SocketEvent.MessageForward, {
-        messageId: message.id,
-        channelId: destination.id,
-      })
-      .catch(() => ({ ok: false as const, error: '메시지를 전달하지 못했습니다.' }));
+    for (const [i, message] of messages.entries()) {
+      setSending({ id: destination.id, done: i });
+      const ack = await socket
+        .timeout(10_000)
+        .emitWithAck(SocketEvent.MessageForward, {
+          messageId: message.id,
+          channelId: destination.id,
+        })
+        .catch(() => ({ ok: false as const, error: '메시지를 전달하지 못했습니다.' }));
+      if (!ack.ok) {
+        setSending(null);
+        setError(i > 0 ? `${i}개를 보낸 뒤 멈췄습니다. ${ack.error}` : ack.error);
+        return;
+      }
+    }
     setSending(null);
-    if (ack.ok) onClose();
-    else setError(ack.error);
+    onClose();
   };
 
+  const first = messages[0]!;
+
   return (
-    <Dialog title="메시지 전달" onClose={onClose}>
+    <Dialog
+      title={messages.length > 1 ? `메시지 ${messages.length}개 전달` : '메시지 전달'}
+      onClose={onClose}
+    >
       <div className="form">
         <blockquote className="forward-preview">
-          {message.content || `📎 파일 ${message.attachments.length}개`}
+          {first.content || `📎 파일 ${first.attachments.length}개`}
+          {messages.length > 1 && <small> 외 {messages.length - 1}개</small>}
         </blockquote>
         <input
           value={query}
@@ -79,7 +102,11 @@ export function ForwardDialog({ message, onClose }: { message: MessageDto; onClo
               >
                 <span>{d.label}</span>
                 <small>{d.place}</small>
-                {sending === d.id && <em>보내는 중…</em>}
+                {sending?.id === d.id && (
+                  <em>
+                    보내는 중…{messages.length > 1 && ` (${sending.done + 1}/${messages.length})`}
+                  </em>
+                )}
               </button>
             </li>
           ))}

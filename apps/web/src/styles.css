@@ -508,6 +508,65 @@ a.button {
   min-height: 0;
 }
 
+/* 채팅 영역 잡기 (Ctrl+Shift) */
+.selection-bar {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  z-index: 4;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 4px 10px;
+  width: max-content;
+  max-width: calc(100% - 24px);
+  padding: 6px 10px;
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  background: var(--bg-sidebar);
+  box-shadow: 0 4px 14px rgb(0 0 0 / 0.3);
+  font-size: 0.8rem;
+  transform: translateX(-50%);
+}
+
+.selection-bar > * {
+  white-space: nowrap;
+}
+
+.selection-bar kbd {
+  padding: 0 5px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-input);
+  font: inherit;
+  font-weight: 700;
+}
+
+.message-list[data-selecting='true'] .message {
+  cursor: pointer;
+  user-select: none;
+}
+
+.message[data-selected='true'],
+.message[data-selected='true']:hover {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.message-list__toast {
+  position: absolute;
+  bottom: 12px;
+  left: 50%;
+  z-index: 4;
+  margin: 0;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: var(--bg-active);
+  font-size: 0.85rem;
+  transform: translateX(-50%);
+}
+
 /* 위로 많이 올라가 있을 때 맨 아래(최신)로 돌아가는 버튼 */
 .jump-to-bottom {
   position: absolute;

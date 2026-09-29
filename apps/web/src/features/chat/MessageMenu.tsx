@@ -1,5 +1,6 @@
 import type { MessageDto } from '@metacode/shared';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { copyText } from '../../ui/clipboard';
 
 export interface MenuTarget {
   message: MessageDto;
@@ -69,7 +70,7 @@ export function MessageMenu({
     action();
     onClose();
   };
-  const copy = (text: string) => void navigator.clipboard.writeText(text).catch(() => {});
+  const copy = (text: string) => void copyText(text).catch(() => {});
 
   return (
     <div ref={ref} className="menu context-menu" role="menu" style={position}>

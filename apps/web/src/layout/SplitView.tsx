@@ -1,4 +1,4 @@
-import { type DragEvent, type ReactNode, useRef, useState } from 'react';
+import { type DragEvent, type ReactNode, useEffect, useRef, useState } from 'react';
 import {
   type LayoutStorage,
   Group,
@@ -9,6 +9,7 @@ import {
   usePanelRef,
 } from 'react-resizable-panels';
 import { useLayoutStore } from '../stores/layout';
+import { PANEL_FOCUS_EVENT, ownsFocus, panelFocusTarget } from './panelFocus';
 import {
   type Arrangement,
   type Edge,
@@ -173,6 +174,40 @@ function SplitPanels({
     }
   };
 
+  // 패널에 포커스 주기: 접혀 있으면 펼치고, 그려질 때까지 몇 프레임 기다린다 (광장은 펼칠 때 새로 뜬다).
+  const focusPanel = (key: PanelKey) => {
+    const host = hostRef.current;
+    if (!host) return;
+    if (!open[key]) toggle(key);
+    let tries = 0;
+    const attempt = () => {
+      const target = panelFocusTarget(host, key);
+      if (target) target.focus({ preventScroll: true });
+      else if (tries++ < 90) requestAnimationFrame(attempt);
+    };
+    attempt();
+  };
+
+  // Shift+Tab: 광장 ↔ 채팅 입력창. 광장의 /는 PlazaView가 requestPanelFocus('chat')로 알린다.
+  useEffect(() => {
+    const host = hostRef.current;
+    if (!host) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Tab' || !e.shiftKey || e.ctrlKey || e.altKey || e.metaKey) return;
+      if (!ownsFocus(host, document.activeElement)) return;
+      e.preventDefault();
+      const inPlaza = !!document.activeElement?.closest('[data-panel="plaza"]');
+      focusPanel(inPlaza ? 'chat' : 'plaza');
+    };
+    const onRequest = (e: Event) => focusPanel((e as CustomEvent<PanelKey>).detail);
+    window.addEventListener('keydown', onKey, true);
+    window.addEventListener(PANEL_FOCUS_EVENT, onRequest);
+    return () => {
+      window.removeEventListener('keydown', onKey, true);
+      window.removeEventListener(PANEL_FOCUS_EVENT, onRequest);
+    };
+  });
+
   const toggles = (
     <div className="view-toggles" role="group" aria-label="보기">
       {(['chat', 'plaza'] as const).map((key) => (
@@ -221,12 +256,14 @@ function SplitPanels({
     >
       {key === 'chat' ? (
         // 닫힌 채팅은 입력 중이던 글을 잃지 않도록 그대로 둔다.
-        <div className="split__content" inert={!open.chat}>
+        <div className="split__content" data-panel="chat" inert={!open.chat}>
           {render.chat(slots('chat'))}
         </div>
       ) : (
         // 닫힌 광장은 내려서 서버 구독과 그리기를 멈춘다.
-        <div className="split__content">{open.plaza && render.plaza(slots('plaza'))}</div>
+        <div className="split__content" data-panel="plaza">
+          {open.plaza && render.plaza(slots('plaza'))}
+        </div>
       )}
     </Panel>
   );
