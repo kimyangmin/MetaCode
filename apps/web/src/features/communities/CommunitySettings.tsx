@@ -71,7 +71,7 @@ export function CommunitySettings({
   // 여기서 연 도트 에디터·맵 에디터는 설정을 닫으면 함께 닫는다.
   useEffect(() => closeAssetEditors, []);
   return (
-    <Dialog title="커뮤니티 설정" onClose={onClose} className="dialog--wide">
+    <Dialog title="커뮤니티 설정" onClose={onClose} className="dialog--wide dialog--settings">
       <div className="settings">
         <div className="settings__tabs" role="tablist">
           {TABS.map((t) => (

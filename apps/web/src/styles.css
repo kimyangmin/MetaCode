@@ -5204,14 +5204,10 @@ a {
   display: none;
 }
 
-.split--phone {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-}
-
-.split--phone > .split__content {
-  flex: 1;
+/* 패널 안에 옮겨 붙이는 내용 자리 (SplitPanels: 배치를 바꿔도 채팅·광장을 새로 만들지 않음) */
+.split__mount {
+  height: 100%;
+  min-width: 0;
   min-height: 0;
 }
 
@@ -5259,6 +5255,11 @@ a {
     transform: none;
   }
 
+  .app[data-dragging='members'] .members-slot {
+    transform: translateX(var(--drawer-drag, 0px));
+    transition: none;
+  }
+
   .members-slot > .members,
   .members-slot[data-open='false'] > .members {
     width: 100%;
@@ -5303,6 +5304,42 @@ a {
 
   .app[data-nav-open='true'] .sidebar {
     box-shadow: 8px 0 24px rgb(0 0 0 / 0.25);
+  }
+
+  /* 서랍을 반대쪽으로 미는 동안은 손가락을 따라온다 (layout/drawerSwipe.ts) */
+  .app[data-dragging='nav'] .rail,
+  .app[data-dragging='nav'] .sidebar {
+    transform: translateX(var(--drawer-drag, 0px));
+    transition: none;
+  }
+
+  /* 휴대폰은 채팅과 광장을 위아래로만 나눈다. 손가락으로 잡기 쉽게 구분선을 두껍게 */
+  .split__separator[aria-orientation='horizontal'] {
+    height: 16px;
+    margin: -8px 0;
+    background: linear-gradient(to bottom, transparent 7px, var(--border) 7px 9px, transparent 9px);
+  }
+
+  .split__separator[aria-orientation='horizontal']::after {
+    content: '';
+    position: absolute;
+    top: 5px;
+    left: 50%;
+    width: 36px;
+    height: 6px;
+    border-radius: 3px;
+    background: var(--muted);
+    opacity: 0.6;
+    transform: translateX(-50%);
+  }
+
+  .split__separator {
+    position: relative;
+  }
+
+  .panel-handle__swap {
+    width: 28px;
+    height: 28px;
   }
 
   .invite {
@@ -5355,3 +5392,85 @@ a {
     transition: none;
   }
 }
+
+/* 휴대폰·손가락 기기에는 방향키·/ 안내가 맞지 않으므로 광장 아래 안내를 숨긴다 */
+@media (max-width: 768px), (pointer: coarse) {
+  .plaza__hint {
+    display: none;
+  }
+}
+
+/* 채널 목록 구역 머리글 + 채널 만들기 (관리자) */
+.sidebar__section-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 8px 4px 4px 8px;
+}
+
+.sidebar__section-row .sidebar__section {
+  margin: 0;
+}
+
+.sidebar__add {
+  width: 20px;
+  height: 20px;
+  color: var(--muted);
+}
+
+.sidebar__add:hover {
+  color: var(--fg);
+}
+
+.sidebar__add .lucide {
+  width: 16px;
+  height: 16px;
+}
+
+/* 커뮤니티 설정: 더 넓고 높게 (역할·멤버·에셋 목록이 한눈에 들어오게) */
+.dialog.dialog--settings {
+  width: min(1080px, 100%);
+  height: min(820px, calc(100dvh - 32px));
+  display: flex;
+  flex-direction: column;
+}
+
+.dialog--settings > .settings {
+  flex: 1;
+  min-height: 0;
+  align-content: start;
+  overflow-y: auto;
+}
+
+/* 사용자 정보 팝업 여닫기 */
+@keyframes popup-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.96);
+  }
+}
+
+@keyframes popup-out {
+  to {
+    opacity: 0;
+    transform: translateY(4px) scale(0.96);
+  }
+}
+
+.profile-popup {
+  transform-origin: top left;
+  animation: popup-in 0.14s cubic-bezier(0.2, 0.9, 0.3, 1.15);
+}
+
+.profile-popup[data-closing] {
+  animation: popup-out 0.12s ease-in forwards;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .profile-popup,
+  .profile-popup[data-closing] {
+    animation-duration: 1ms;
+  }
+}
+

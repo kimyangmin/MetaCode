@@ -37,7 +37,9 @@ export const useUiStore = create<UiState>((set, get) => ({
   },
   membersDrawerOpen: false,
   navOpen: false,
-  setMembersDrawer: (membersDrawerOpen) => set({ membersDrawerOpen, navOpen: false }),
-  setNavOpen: (navOpen) => set({ navOpen, membersDrawerOpen: false }),
+  // 한쪽 서랍을 열면 다른 쪽은 닫는다.
+  setMembersDrawer: (membersDrawerOpen) =>
+    set(membersDrawerOpen ? { membersDrawerOpen, navOpen: false } : { membersDrawerOpen }),
+  setNavOpen: (navOpen) => set(navOpen ? { navOpen, membersDrawerOpen: false } : { navOpen }),
   closeDrawers: () => set({ navOpen: false, membersDrawerOpen: false }),
 }));

@@ -3,9 +3,10 @@ import { useQuery } from '@tanstack/react-query';
 import type { CSSProperties } from 'react';
 import { apiFetch } from '../../api/client';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { useProfileStore } from '../../stores/profile';
+import { type ProfileTarget, useProfileStore } from '../../stores/profile';
 import { useIsOnline } from '../../stores/presence';
 import { Avatar } from '../../ui/Avatar';
+import { useExitTransition } from '../../ui/useExitTransition';
 import { displayName } from '../../ui/format';
 import { FriendButton } from '../friends/FriendButton';
 import { useCommunities, useMeRequired, useMembers, useOpenDm } from './hooks';
@@ -13,6 +14,8 @@ import { memberColor } from './roles';
 
 const ROLE_LABEL = { OWNER: '소유자', ADMIN: '관리자', MEMBER: '' } as const;
 const MARGIN = 8;
+/** 사라지는 애니메이션 길이 (styles.css의 popup-out과 같게) */
+const CLOSE_MS = 120;
 
 /**
  * 사용자 정보 팝업: 아바타, 닉네임, 사용자 ID, 온라인 여부, 자기소개, (커뮤니티 화면이면) 역할, 메시지 보내기.
@@ -21,6 +24,8 @@ const MARGIN = 8;
 export function ProfilePopup() {
   const target = useProfileStore((s) => s.target);
   const close = useProfileStore((s) => s.close);
+  // 닫을 때는 잠깐 남겨 사라지는 애니메이션을 보여 준다.
+  const { shown, closing } = useExitTransition(target, CLOSE_MS);
   const ref = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState<CSSProperties>({ visibility: 'hidden' });
 
@@ -38,7 +43,10 @@ export function ProfilePopup() {
     if (!target) return;
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && close();
     const onDown = (e: MouseEvent) => {
-      if (!ref.current?.contains(e.target as Node)) close();
+      const clicked = e.target as Node;
+      // 연 요소를 다시 누르는 것은 그 요소의 onClick(openProfile)이 닫는다.
+      if (ref.current?.contains(clicked) || target.anchor?.contains(clicked)) return;
+      close();
     };
     window.addEventListener('keydown', onKey);
     // 연 클릭이 바로 닫지 않도록 다음 틱부터 듣는다.
@@ -50,22 +58,22 @@ export function ProfilePopup() {
     };
   }, [target, close]);
 
-  if (!target) return null;
+  if (!shown) return null;
   return (
     <div
       ref={ref}
       className="profile-popup"
       role="dialog"
-      aria-label={`${displayName(target.user)} 정보`}
+      aria-label={`${displayName(shown.user)} 정보`}
+      data-closing={closing || undefined}
       style={position}
     >
-      <ProfileBody key={`${target.user.id}-${target.communityId}`} />
+      <ProfileBody key={`${shown.user.id}-${shown.communityId}`} target={shown} />
     </div>
   );
 }
 
-function ProfileBody() {
-  const target = useProfileStore((s) => s.target)!;
+function ProfileBody({ target }: { target: ProfileTarget }) {
   const close = useProfileStore((s) => s.close);
   const { user, communityId } = target;
   const me = useMeRequired();

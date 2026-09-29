@@ -1,4 +1,5 @@
 import { type DragEvent, type ReactNode, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   type LayoutStorage,
   Group,
@@ -25,7 +26,7 @@ import {
   isOutsideWindow,
   otherPanel,
 } from './arrangement';
-import { GripVertical, SquareArrowOutUpRight, X } from 'lucide-react';
+import { ArrowUpDown, GripVertical, SquareArrowOutUpRight, X } from 'lucide-react';
 import { useIsPhone } from '../ui/useMediaQuery';
 import { isAndroidApp } from '../platform';
 import { NavButton } from './NavButton';
@@ -53,6 +54,23 @@ const layoutStorage: LayoutStorage = {
   },
 };
 
+/** 배치마다 크기를 따로 기억하는 이름 (react-resizable-panels가 저장소 키에 쓴다) */
+const groupIdOf = (layout: 'horizontal' | 'vertical' | 'phone') => `metacode-split-${layout}`;
+
+/**
+ * 패널을 옮기면 두 패널을 모두 보여 준다. 옮겨 간 배치에서 예전에 한쪽을 접어 두었으면(크기 0)
+ * 그 기억을 지운다. 그대로 두면 광장을 옮겼는데 광장이 접힌 채로 나타나 사라진 것처럼 보였다.
+ */
+function forgetCollapsed(groupId: string): void {
+  const key = `react-resizable-panels:${groupId}`;
+  try {
+    const saved = JSON.parse(localStorage.getItem(key) ?? 'null') as Record<string, number> | null;
+    if (saved && Object.values(saved).some((size) => size <= 0)) localStorage.removeItem(key);
+  } catch {
+    // 저장소를 못 쓰면 기억한 것도 없다.
+  }
+}
+
 /** 패널 머리글에 넣을 것: 보기 전환 버튼(이 패널이 맡지 않으면 null), 옮기기·분리 손잡이 */
 export interface PanelSlots {
   actions: ReactNode;
@@ -70,17 +88,16 @@ interface SplitViewProps {
  * 분할 화면: 지금 보는 채널의 채팅 모드와 그 광장.
  * - 가운데 선을 끌어 크기를 바꾸고, 머리글의 버튼으로 패널을 켜고 끈다.
  * - 머리글의 ⠿를 끌어 영역의 가장자리(상하좌우)에 놓으면 그쪽으로 옮기고, 창 밖에 놓으면(또는 ⧉) 새 창으로 분리한다.
+ * - 휴대폰 화면은 위아래로만 나누고, ⇅로 위아래를 바꾼다 (옮기기·분리 없음).
  * - 크기, 켜짐, 배치는 기억한다. 분리한 창을 닫으면 메인 창으로 돌아온다.
  */
 export function SplitView({ chat, plaza, popoutPaths }: SplitViewProps) {
   const arrangement = useLayoutStore((s) => s.arrangement);
+  const phoneFirst = useLayoutStore((s) => s.phoneFirst);
   const detached = useLayoutStore((s) => s.detached);
   const [notice, setNotice] = useState<string | null>(null);
   const phone = useIsPhone();
   const render = { chat, plaza };
-
-  // 휴대폰 화면은 나란히 놓을 자리가 없으므로 하나씩 바꿔 보여 준다 (옮기기·분리 없음).
-  if (phone) return <PhoneSplit render={render} />;
 
   const detach = (key: PanelKey, at?: { x: number; y: number }) => {
     const ok = useLayoutStore.getState().detach(key, popoutPaths[key], at);
@@ -91,7 +108,7 @@ export function SplitView({ chat, plaza, popoutPaths }: SplitViewProps) {
 
   // 한쪽을 분리했으면 메인 창에는 다른 쪽만 보여 준다 (마지막 패널은 분리하지 않는다).
   const alone: PanelKey | null = detached.chat ? 'plaza' : detached.plaza ? 'chat' : null;
-  if (alone) {
+  if (alone && !phone) {
     return (
       <div className="split split--single">
         {render[alone]({ actions: <ReattachButton panel={otherPanel(alone)} />, handle: null })}
@@ -102,9 +119,8 @@ export function SplitView({ chat, plaza, popoutPaths }: SplitViewProps) {
   return (
     <>
       <SplitPanels
-        // 배치가 바뀌면 패널 순서와 방향이 달라지므로 새로 그린다.
-        key={`${arrangement.orientation}-${arrangement.first}`}
-        arrangement={arrangement}
+        arrangement={phone ? { orientation: 'vertical', first: phoneFirst } : arrangement}
+        phone={phone}
         render={render}
         onDetach={detach}
       />
@@ -125,30 +141,60 @@ export function SplitView({ chat, plaza, popoutPaths }: SplitViewProps) {
   );
 }
 
+/** 패널 내용을 담는 곳. 배치가 바뀌어도 같은 요소를 새 패널로 옮겨 붙인다 (SplitPanels 설명) */
+function createContentHost(key: PanelKey): HTMLDivElement {
+  const host = document.createElement('div');
+  host.className = 'split__content';
+  host.dataset.panel = key;
+  return host;
+}
+
+/**
+ * 두 패널과 구분선. 배치(방향, 앞 패널)가 바뀌면 Group만 새로 그리고, 채팅과 광장은 그대로 둔다:
+ * 내용은 이 컴포넌트가 가진 요소(contentHosts)에 포털로 그리고, 새 패널이 그 요소를 옮겨 붙인다.
+ * 예전에는 배치를 바꿀 때마다 광장(Phaser 게임, WebGL)을 새로 만들어서, 앞의 WebGL을 브라우저가
+ * 늦게 풀면 새 광장이 가끔 그려지지 않았고 쓰던 글·캐릭터 자리도 다시 시작했다.
+ */
 function SplitPanels({
   arrangement,
+  phone,
   render,
   onDetach,
 }: {
   arrangement: Arrangement;
+  phone: boolean;
   render: Record<PanelKey, (slots: PanelSlots) => ReactNode>;
   onDetach(key: PanelKey, at?: { x: number; y: number }): void;
 }) {
   const { orientation, first } = arrangement;
   const second = otherPanel(first);
+  const groupId = groupIdOf(phone ? 'phone' : orientation);
   const { defaultLayout, onLayoutChanged } = useDefaultLayout({
-    id: `metacode-split-${orientation}`,
+    id: groupId,
     storage: layoutStorage,
   });
   const groupRef = useGroupRef();
   const chatRef = usePanelRef();
   const plazaRef = usePanelRef();
   const refs = { chat: chatRef, plaza: plazaRef };
-  const [open, setOpen] = useState<Record<PanelKey, boolean>>({
-    chat: defaultLayout?.chat !== 0,
-    plaza: defaultLayout?.plaza !== 0,
-  });
+  const [contentHosts] = useState(() => ({
+    chat: createContentHost('chat'),
+    plaza: createContentHost('plaza'),
+  }));
+  // 켜짐은 배치마다 기억한 크기를 따르므로, 배치가 바뀌면 그 배치의 기억으로 다시 정한다.
+  const groupKey = `${groupId}-${first}`;
+  const openOf = () => ({ chat: defaultLayout?.chat !== 0, plaza: defaultLayout?.plaza !== 0 });
+  const [openState, setOpenState] = useState(() => ({ key: groupKey, open: openOf() }));
+  if (openState.key !== groupKey) setOpenState({ key: groupKey, open: openOf() });
+  const open = openState.key === groupKey ? openState.open : openOf();
+  const setOpen = (update: (current: Record<PanelKey, boolean>) => Record<PanelKey, boolean>) =>
+    setOpenState((state) => ({ ...state, open: update(state.open) }));
   const hostRef = useRef<HTMLDivElement>(null);
+
+  // 닫힌 채팅은 입력 중이던 글을 잃지 않도록 그대로 두고 누를 수 없게만 한다.
+  useEffect(() => {
+    contentHosts.chat.toggleAttribute('inert', !open.chat);
+  }, [contentHosts, open.chat]);
   // 끌고 있는 패널. 드래그를 시작할 때 화면을 바꾸지 않도록 상태가 아니라 ref에 둔다 (onDragStart 설명).
   const dragged = useRef<PanelKey | null>(null);
   const [drop, setDrop] = useState<{ panel: PanelKey; edge: Edge } | null>(null);
@@ -170,8 +216,16 @@ function SplitPanels({
     const panel = dragged.current;
     if (!panel || !e.dataTransfer.types.includes(PANEL_TYPE)) return;
     e.preventDefault();
-    useLayoutStore.getState().setArrangement(arrangementFor(panel, edgeOf(e)));
+    const next = arrangementFor(panel, edgeOf(e));
+    forgetCollapsed(groupIdOf(next.orientation));
+    useLayoutStore.getState().setArrangement(next);
     setDrop(null);
+  };
+
+  // 휴대폰: 위아래 바꾸기
+  const swap = () => {
+    forgetCollapsed(groupIdOf('phone'));
+    useLayoutStore.getState().setPhoneFirst(second);
   };
 
   const track = (key: PanelKey) => (size: { asPercentage: number }) =>
@@ -252,7 +306,20 @@ function SplitPanels({
   const togglesOwner: PanelKey = open[first] ? first : second;
   const slots = (key: PanelKey): PanelSlots => ({
     actions: togglesOwner === key ? toggles : null,
-    handle: (
+    handle: phone ? (
+      <span className="panel-handle">
+        <NavButton />
+        <button
+          type="button"
+          className="icon-button panel-handle__swap"
+          onClick={swap}
+          aria-label="채팅과 광장 위아래 바꾸기"
+          title="위아래 바꾸기"
+        >
+          <ArrowUpDown aria-hidden />
+        </button>
+      </span>
+    ) : (
       <PanelHandle
         panel={key}
         onDragChange={(panel) => {
@@ -271,21 +338,17 @@ function SplitPanels({
       className="split__panel"
       panelRef={refs[key]}
       collapsible
-      minSize={key === 'chat' ? 300 : 240}
+      // 휴대폰은 세로가 짧아 둘 다 보이도록 최소 크기를 줄인다.
+      minSize={phone ? 140 : key === 'chat' ? 300 : 240}
       defaultSize={key === 'chat' ? '55' : '45'}
       onResize={track(key)}
     >
-      {key === 'chat' ? (
-        // 닫힌 채팅은 입력 중이던 글을 잃지 않도록 그대로 둔다.
-        <div className="split__content" data-panel="chat" inert={!open.chat}>
-          {render.chat(slots('chat'))}
-        </div>
-      ) : (
-        // 닫힌 광장은 내려서 서버 구독과 그리기를 멈춘다.
-        <div className="split__content" data-panel="plaza">
-          {open.plaza && render.plaza(slots('plaza'))}
-        </div>
-      )}
+      <div
+        className="split__mount"
+        ref={(el) => {
+          if (el && contentHosts[key].parentElement !== el) el.appendChild(contentHosts[key]);
+        }}
+      />
     </Panel>
   );
 
@@ -300,9 +363,11 @@ function SplitPanels({
       onDrop={onDrop}
     >
       <Group
+        // 배치가 바뀌면 패널 순서와 방향이 달라지므로 Group만 새로 그린다 (내용은 옮겨 붙임).
+        key={groupKey}
         className="split"
         orientation={orientation}
-        id={`metacode-split-${orientation}`}
+        id={groupId}
         groupRef={groupRef}
         defaultLayout={defaultLayout}
         onLayoutChanged={onLayoutChanged}
@@ -311,6 +376,9 @@ function SplitPanels({
         <Separator className="split__separator" />
         {panel(second)}
       </Group>
+      {createPortal(render.chat(slots('chat')), contentHosts.chat)}
+      {/* 닫힌 광장은 내려서 서버 구독과 그리기를 멈춘다. */}
+      {open.plaza && createPortal(render.plaza(slots('plaza')), contentHosts.plaza)}
       {drop && (
         <div className="split-drop__preview" data-edge={drop.edge}>
           {LABEL[drop.panel]}
@@ -394,68 +462,5 @@ function ReattachButton({ panel }: { panel: PanelKey }) {
     >
       {LABEL[panel]} 돌려놓기
     </button>
-  );
-}
-
-/**
- * 휴대폰 화면: 채팅과 광장을 머리글의 버튼으로 바꿔 가며 하나씩 보여 준다.
- * 채팅은 쓰던 글이 남도록 숨기기만 하고, 광장은 보지 않을 때 내려서 그리기와 구독을 멈춘다.
- * /(광장 → 입력창)와 보낸 뒤 돌아가기 같은 포커스 요청도 보이는 패널을 바꿔 처리한다.
- */
-function PhoneSplit({ render }: { render: Record<PanelKey, (slots: PanelSlots) => ReactNode> }) {
-  const [active, setActive] = useState<PanelKey>('chat');
-  const hostRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const onRequest = (e: Event) => {
-      const { panel, returnTo } = (e as CustomEvent<PanelFocusRequest>).detail;
-      setActive(panel);
-      let tries = 0;
-      const attempt = () => {
-        const target = hostRef.current && panelFocusTarget(hostRef.current, panel);
-        if (target) {
-          target.focus({ preventScroll: true });
-          if (returnTo) target.setAttribute(RETURN_FOCUS_ATTR, returnTo);
-        } else if (tries++ < 90) requestAnimationFrame(attempt);
-      };
-      requestAnimationFrame(attempt);
-    };
-    window.addEventListener(PANEL_FOCUS_EVENT, onRequest);
-    return () => window.removeEventListener(PANEL_FOCUS_EVENT, onRequest);
-  }, []);
-
-  const toggles = (
-    <div className="view-toggles" role="group" aria-label="보기">
-      {(['chat', 'plaza'] as const).map((key) => (
-        <button
-          key={key}
-          type="button"
-          className="view-toggles__button"
-          aria-pressed={active === key}
-          onClick={() => setActive(key)}
-        >
-          {LABEL[key]}
-        </button>
-      ))}
-    </div>
-  );
-  const slots: PanelSlots = { actions: toggles, handle: <NavButton /> };
-
-  return (
-    <div ref={hostRef} className="split split--phone">
-      <div
-        className="split__content"
-        data-panel="chat"
-        hidden={active !== 'chat'}
-        inert={active !== 'chat'}
-      >
-        {render.chat(slots)}
-      </div>
-      {active === 'plaza' && (
-        <div className="split__content" data-panel="plaza">
-          {render.plaza(slots)}
-        </div>
-      )}
-    </div>
   );
 }

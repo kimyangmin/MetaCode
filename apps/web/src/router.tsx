@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { type MouseEvent, useEffect, useRef } from 'react';
 import {
   Navigate,
   Outlet,
@@ -12,6 +12,7 @@ import { useCommunities } from './features/communities/hooks';
 import { ProfilePopup } from './features/communities/ProfilePopup';
 import { PopoutChat, PopoutPlaza } from './layout/Popout';
 import { shortcutTarget } from './layout/navShortcuts';
+import { useDrawerSwipe } from './layout/drawerSwipe';
 import { CommunityPage, DmPage, HomeRedirect, InvitePage, takePendingInvite } from './pages';
 import { isDesktop } from './platform';
 import { useUiStore } from './stores/ui';
@@ -45,13 +46,25 @@ function AppLayout() {
     return () => window.removeEventListener('keydown', onKey);
   }, [communities, location.pathname, navigate]);
 
-  // 휴대폰 화면: 다른 화면으로 옮기면 목록 서랍을 닫는다.
+  // 좁은 화면의 서랍. 멤버 목록은 다른 화면으로 옮기면 닫는다. 커뮤니티·채널 목록은 커뮤니티나 DM을
+  // 오가는 동안 열어 두고, 목록에서 채널·대화를 고르면 닫는다 (onNavClick).
   const navOpen = useUiStore((s) => s.navOpen);
   const membersOpen = useUiStore((s) => s.membersDrawerOpen);
-  useEffect(() => useUiStore.getState().closeDrawers(), [location.pathname]);
+  useEffect(() => useUiStore.getState().setMembersDrawer(false), [location.pathname]);
+  const appRef = useRef<HTMLDivElement>(null);
+  useDrawerSwipe(appRef);
+  const onNavClick = (e: MouseEvent) => {
+    if ((e.target as Element).closest('.sidebar a[href]')) useUiStore.getState().setNavOpen(false);
+  };
 
   return (
-    <div className="app" data-nav-open={navOpen} data-members-open={membersOpen}>
+    <div
+      ref={appRef}
+      className="app"
+      data-nav-open={navOpen}
+      data-members-open={membersOpen}
+      onClick={onNavClick}
+    >
       <CommunityRail />
       <Outlet />
       {/* 좁은 화면에서 서랍(목록, 멤버)을 열면 나머지를 어둡게 덮고, 누르면 닫는다 */}

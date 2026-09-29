@@ -5,7 +5,15 @@ import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
   {
-    ignores: ['**/dist/**', '**/out/**', '**/coverage/**', '**/.turbo/**', '**/generated/**'],
+    ignores: [
+      '**/dist/**',
+      '**/out/**',
+      '**/coverage/**',
+      '**/.turbo/**',
+      '**/generated/**',
+      // 안드로이드 네이티브 프로젝트 (Gradle 빌드 결과, cap sync가 넣는 파일)
+      'apps/android/android/**',
+    ],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,
