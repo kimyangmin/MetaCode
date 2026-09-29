@@ -165,29 +165,51 @@ describe('색 바꾸기', () => {
 });
 
 describe('발 아래 빈 줄 정리', () => {
-  it('모든 프레임에 공통으로 빈 줄만큼 내리고, 프레임끼리의 높이 차이는 남긴다', () => {
+  it('애니메이션마다 공통으로 빈 줄만큼 내리고, 한 애니메이션 안의 높이 차이는 남긴다', () => {
     const doc = new PixelDocument(newDoc('character', '캐릭터'));
     const { width, height } = doc.doc;
+    const idle = { animation: 0, frame: 0 };
+    const walk = (frame: number) => ({ animation: 4, frame });
     doc.begin();
-    // idle-down: 발이 아래에서 3줄 위, walk-down 첫 프레임: 4줄 위 (들썩임)
-    doc.paint({ animation: 0, frame: 0 }, 5, height - 4, 1);
-    doc.paint({ animation: 4, frame: 0 }, 5, height - 5, 1);
-    expect(doc.trimBelowFeet()).toBe(3);
-    expect(doc.pick({ animation: 0, frame: 0 }, 5, height - 1)).toBe(1);
-    expect(doc.pick({ animation: 4, frame: 0 }, 5, height - 2)).toBe(1);
+    // 대기: 발이 아래에서 3줄 위. 걷기: 한 프레임은 바닥에 닿고 다른 프레임은 1줄 위(들썩임).
+    doc.paint(idle, 5, height - 4, 1);
+    doc.paint(walk(0), 5, height - 1, 1);
+    doc.paint(walk(1), 5, height - 2, 1);
+    // 걷기의 바닥에 닿은 프레임이 대기의 정리를 막지 않는다 (예전 버그).
+    expect(doc.trimBelowFeet()).toEqual({ animations: 1, rows: 3 });
+    expect(doc.pick(idle, 5, height - 1)).toBe(1);
+    expect(doc.pick(walk(0), 5, height - 1)).toBe(1);
+    expect(doc.pick(walk(1), 5, height - 2)).toBe(1);
     expect(doc.doc.width).toBe(width);
     // 이미 정리했으면 아무것도 하지 않고, 되돌리기 한 번에 돌아간다.
-    expect(doc.trimBelowFeet()).toBe(0);
+    expect(doc.trimBelowFeet()).toEqual({ animations: 0, rows: 0 });
     doc.undo();
-    expect(doc.pick({ animation: 0, frame: 0 }, 5, height - 4)).toBe(1);
+    expect(doc.pick(idle, 5, height - 4)).toBe(1);
+  });
+
+  it('내장 캐릭터를 복제하면 대기·첨부 모션의 빈 줄을 정리하고 걷기의 들썩임은 남긴다', () => {
+    const doc = new PixelDocument(fromManifest(builtinAsset('builtin:char-short')!));
+    const trimmed = doc.trimBelowFeet();
+    expect(trimmed.animations).toBeGreaterThan(0);
+    expect(trimmed.rows).toBe(1);
+    const walkDown = doc.doc.animations.find((a) => a.name === 'walk-down')!;
+    const { width, height } = doc.doc;
+    const empties = walkDown.frames.map((pixels) => {
+      for (let y = height - 1; y >= 0; y--) {
+        for (let x = 0; x < width; x++) if (pixels[y * width + x]) return height - 1 - y;
+      }
+      return height;
+    });
+    expect(Math.min(...empties)).toBe(0);
+    expect(Math.max(...empties)).toBe(1);
   });
 
   it('캐릭터가 아니거나 그림이 없으면 하지 않는다', () => {
-    expect(new PixelDocument(newDoc('character', '빈')).trimBelowFeet()).toBe(0);
+    expect(new PixelDocument(newDoc('character', '빈')).trimBelowFeet().animations).toBe(0);
     const tile = new PixelDocument(newDoc('tile', '타일'));
     tile.begin();
     tile.paint(at, 0, 0, 1);
-    expect(tile.trimBelowFeet()).toBe(0);
+    expect(tile.trimBelowFeet().animations).toBe(0);
   });
 });
 
