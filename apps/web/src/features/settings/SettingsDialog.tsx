@@ -9,6 +9,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import {
   type ChangeEvent,
   type FormEvent,
+  type ReactNode,
   Suspense,
   lazy,
   useEffect,
@@ -29,17 +30,21 @@ import {
   NoiseSuppressionToggle,
   OutputVolumeSlider,
 } from '../voice/devices';
+import { CircleUserRound, LogOut, Mic, Palette, Pencil, PersonStanding, X } from 'lucide-react';
 
-const SECTIONS: { group: string; items: { id: SettingsSection; label: string }[] }[] = [
+const SECTIONS: {
+  group: string;
+  items: { id: SettingsSection; label: string; icon: ReactNode }[];
+}[] = [
   {
     group: '사용자 설정',
     items: [
-      { id: 'account', label: '내 계정' },
-      { id: 'character', label: '캐릭터' },
-      { id: 'assets', label: '에셋' },
+      { id: 'account', label: '내 계정', icon: <CircleUserRound aria-hidden /> },
+      { id: 'character', label: '캐릭터', icon: <PersonStanding aria-hidden /> },
+      { id: 'assets', label: '에셋', icon: <Palette aria-hidden /> },
     ],
   },
-  { group: '앱 설정', items: [{ id: 'voice', label: '음성' }] },
+  { group: '앱 설정', items: [{ id: 'voice', label: '음성', icon: <Mic aria-hidden /> }] },
 ];
 const TITLE: Record<SettingsSection, string> = {
   account: '내 계정',
@@ -96,11 +101,13 @@ function SettingsWindow({ section }: { section: SettingsSection }) {
       <div className="settings-window" role="dialog" aria-modal="true" aria-label="설정">
         <nav className="settings-nav" aria-label="설정 항목">
           <div className="settings-nav__me">
-            <Avatar user={me} size={40} />
+            <Avatar user={me} size={44} />
             <div>
               <strong>{displayName(me)}</strong>
+              <span className="settings-nav__username">@{me.username}</span>
               <button type="button" onClick={() => open('account')}>
-                프로필 편집 ✎
+                <Pencil aria-hidden />
+                프로필 편집
               </button>
             </div>
           </div>
@@ -114,12 +121,14 @@ function SettingsWindow({ section }: { section: SettingsSection }) {
                   aria-current={section === item.id ? 'page' : undefined}
                   onClick={() => open(item.id)}
                 >
+                  {item.icon}
                   {item.label}
                 </button>
               ))}
             </div>
           ))}
           <button type="button" className="settings-nav__logout" onClick={() => void onLogout()}>
+            <LogOut aria-hidden />
             로그아웃
           </button>
         </nav>
@@ -132,7 +141,7 @@ function SettingsWindow({ section }: { section: SettingsSection }) {
               aria-label="설정 닫기"
               title="닫기 (Esc)"
             >
-              ×
+              <X aria-hidden />
             </button>
           </header>
           <div className="settings-content__body">
@@ -352,7 +361,7 @@ function VoiceSettings() {
       <OutputVolumeSlider />
       <p className="form__hint">
         통화 중이면 바로 바뀌고, 다음 통화에도 이 설정을 씁니다. 마이크·헤드셋 버튼을 우클릭하거나
-        옆의 ˄를 눌러도 바꿀 수 있습니다.
+        옆의 위쪽 화살표를 눌러도 바꿀 수 있습니다.
       </p>
     </div>
   );

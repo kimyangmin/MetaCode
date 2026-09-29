@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useLiveUpdate } from './liveUpdate';
+import { X } from 'lucide-react';
 
 /**
  * 새로 배포된 웹이 있는데 바로 새로 불러올 수 없을 때(통화 중, 쓰던 글이나 편집 중인 에셋이 있음) 띄운다.
@@ -21,7 +22,7 @@ export function LiveUpdateNotice() {
         onClick={() => setDismissed(true)}
         aria-label="닫기"
       >
-        ×
+        <X aria-hidden />
       </button>
     </div>
   );

@@ -19,9 +19,9 @@ import { displayName } from '../../ui/format';
 import { useVoiceStore } from '../voice/store';
 import { requestPanelFocus } from '../../layout/panelFocus';
 import { markdownToPlain } from '../../ui/markdownParser';
-import { EMOTE_DURATION_MS, bubbleDurationMs, bubbleText, emoteText } from './bubbles';
+import { EMOTE_DURATION_MS, bubbleDurationMs, bubbleText, emoteLabel } from './bubbles';
 import { PlazaScene } from './PlazaScene';
-import { plazaVoiceStates } from './plazaVoice';
+import { type VoiceLabel, plazaVoiceStates } from './plazaVoice';
 
 const ARROW_KEYS = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
 
@@ -34,7 +34,7 @@ export interface PlazaViewProps {
    */
   channelLabels: ReadonlyMap<string, string | null>;
   /** 이 광장에 속한 통화 채널과 캐릭터에 보일 이름 (음성 채널 '🔊 lounge', DM '📞 통화 중') */
-  voiceLabels: ReadonlyMap<string, string>;
+  voiceLabels: ReadonlyMap<string, VoiceLabel>;
 }
 
 /**
@@ -171,10 +171,8 @@ export default function PlazaView({ plazaId, me, channelLabels, voiceLabels }: P
       if (!labels.has(message.channelId)) return;
       const kind = messagePresentation(message);
       // 말풍선은 마크다운 기호를 빼고 보여 준다 (스포일러는 가림).
-      const text =
-        kind === 'bubble'
-          ? bubbleText(markdownToPlain(message.content))
-          : emoteText(message.attachments);
+      const emote = kind === 'bubble' ? null : emoteLabel(message.attachments);
+      const text = emote ? emote.text : bubbleText(markdownToPlain(message.content));
       if (!text) return;
       const duration = kind === 'bubble' ? bubbleDurationMs(text) : EMOTE_DURATION_MS;
       scene.say(message.author.id, {
@@ -182,6 +180,7 @@ export default function PlazaView({ plazaId, me, channelLabels, voiceLabels }: P
         label: labels.get(message.channelId) ?? null,
         text,
         kind,
+        icon: emote?.icon,
         expiresAt: performance.now() + duration,
       });
     };
@@ -227,7 +226,7 @@ export default function PlazaView({ plazaId, me, channelLabels, voiceLabels }: P
   // 통화 상태 → 캐릭터 위 음성 채널 표시와 말하는 중 고리
   const calls = useVoiceStore((s) => s.calls);
   const myCallId = useVoiceStore((s) => s.session?.channelId ?? null);
-  const voiceKey = [...voiceLabels].join();
+  const voiceKey = JSON.stringify([...voiceLabels]);
   useEffect(() => {
     // voiceLabels는 렌더마다 새로 만들어지므로 내용(voiceKey)이 바뀔 때만 다시 계산한다.
     scene?.setVoice(plazaVoiceStates(calls, voiceLabelsRef.current, myCallId));

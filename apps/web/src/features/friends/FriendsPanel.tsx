@@ -7,6 +7,7 @@ import { Avatar } from '../../ui/Avatar';
 import { displayName } from '../../ui/format';
 import { useOpenDm } from '../communities/hooks';
 import { acceptFriend, removeFriend, sendFriendRequest, useFriends } from './api';
+import { MessageCircle, UserMinus, Users } from 'lucide-react';
 
 type Tab = 'online' | 'all' | 'pending' | 'add';
 
@@ -43,7 +44,9 @@ export function FriendsPanel() {
   return (
     <section className="chat friends" aria-label="친구">
       <header className="chat__header friends__header">
-        <h2>👥 친구</h2>
+        <h2 className="inline-icon">
+          <Users aria-hidden /> 친구
+        </h2>
         <div className="friends__tabs" role="tablist">
           {tabs.map((t) => (
             <button
@@ -139,7 +142,7 @@ function FriendRow({ friend }: { friend: FriendDto }) {
           aria-label={`${displayName(user)}에게 메시지 보내기`}
           onClick={() => void openDm([user.id])}
         >
-          💬
+          <MessageCircle aria-hidden />
         </button>
         <button
           type="button"
@@ -152,7 +155,7 @@ function FriendRow({ friend }: { friend: FriendDto }) {
             }
           }}
         >
-          ✕
+          <UserMinus aria-hidden />
         </button>
       </span>
     </li>

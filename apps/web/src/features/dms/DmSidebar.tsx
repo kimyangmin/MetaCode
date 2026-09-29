@@ -10,6 +10,7 @@ import { UserPanel } from '../auth/UserPanel';
 import { useDms, useMeRequired, useOpenDm } from '../communities/hooks';
 import { useFriends } from '../friends/api';
 import { useCall } from '../voice/store';
+import { Users, Volume2, X } from 'lucide-react';
 
 /** DM 화면 왼쪽: 대화 목록과 새 대화 */
 export function DmSidebar({ activeId }: { activeId?: string }) {
@@ -34,7 +35,7 @@ export function DmSidebar({ activeId }: { activeId?: string }) {
       </header>
       <nav className="sidebar__list" aria-label="대화">
         <NavLink to="/dm" end className="sidebar__item sidebar__item--friends">
-          <span aria-hidden>👥</span>
+          <Users aria-hidden />
           <span className="sidebar__label">친구</span>
           {incoming > 0 && (
             <span className="friends__badge" aria-label={`받은 친구 요청 ${incoming}개`}>
@@ -69,8 +70,8 @@ function DmLink({ dm, meId, active }: { dm: DmSummary; meId: string; active: boo
       {first && <Avatar user={first} size={28} showStatus={dm.type === 'DM'} />}
       <span className="sidebar__label">{dmTitle(dm, meId)}</span>
       {call && (
-        <span className="sidebar__live" role="img" aria-label={`통화 중 ${call.members.length}명`}>
-          🔊
+        <span className="sidebar__live" title={`통화 중 ${call.members.length}명`}>
+          <Volume2 role="img" aria-label={`통화 중 ${call.members.length}명`} />
         </span>
       )}
       {dm.type === 'GROUP_DM' && <span className="sidebar__count">{dm.participants.length}</span>}
@@ -133,8 +134,13 @@ function NewDmDialog({ onClose }: { onClose(): void }) {
         {selected.length > 0 && (
           <div className="chips">
             {selected.map((u) => (
-              <button key={u.id} className="chip" onClick={() => toggle(u)}>
-                {displayName(u)} ×
+              <button
+                key={u.id}
+                className="chip"
+                onClick={() => toggle(u)}
+                aria-label={`${displayName(u)} 빼기`}
+              >
+                {displayName(u)} <X aria-hidden />
               </button>
             ))}
           </div>

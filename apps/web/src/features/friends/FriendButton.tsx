@@ -3,6 +3,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { ApiError } from '../../api/client';
 import { acceptFriend, friendStatusOf, removeFriend, sendFriendRequest, useFriends } from './api';
+import { UserCheck } from 'lucide-react';
 
 /** 사용자 정보 팝업의 친구 버튼: 친구 추가 / 요청 취소 / 요청 수락 / 친구 끊기 */
 export function FriendButton({ user }: { user: UserProfile }) {
@@ -69,7 +70,7 @@ export function FriendButton({ user }: { user: UserProfile }) {
             }
           }}
         >
-          ✓ 친구
+          <UserCheck aria-hidden /> 친구
         </button>
       )}
       {error && <p className="form__error">{error}</p>}

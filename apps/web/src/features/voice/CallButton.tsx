@@ -4,6 +4,7 @@ import { useCall, useVoiceStore } from './store';
 import { useSharePreview } from './SharePreview';
 import { LiveButton } from './VoiceMembers';
 import { useVoice } from './VoiceProvider';
+import { Phone } from 'lucide-react';
 
 /** DM 머리글의 통화 버튼. 진행 중인 통화가 있으면 참여자와 함께 "참여"로 보인다 */
 export function CallButton({ channelId }: { channelId: string }) {
@@ -60,7 +61,7 @@ function CallToggle({ channelId }: { channelId: string }) {
       title={members.length > 0 ? '진행 중인 통화에 참여' : '통화 시작'}
     >
       <MemberStack members={members} />
-      📞 {members.length > 0 ? `통화 참여 (${members.length})` : '통화'}
+      <Phone aria-hidden /> {members.length > 0 ? `통화 참여 (${members.length})` : '통화'}
     </button>
   );
 }

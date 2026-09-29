@@ -4,6 +4,7 @@ import { useSettingsStore } from '../../stores/settings';
 import { Avatar } from '../../ui/Avatar';
 import { displayName } from '../../ui/format';
 import { VoicePanel } from '../voice/VoicePanel';
+import { Settings } from 'lucide-react';
 
 const STATUS_LABEL: Record<RealtimeStatus, string> = {
   connected: '온라인',
@@ -32,7 +33,7 @@ export function UserPanel({ me }: { me: UserProfile }) {
           title="설정"
           aria-label="설정"
         >
-          ⚙
+          <Settings aria-hidden />
         </button>
       </footer>
     </>

@@ -227,6 +227,11 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
   - 맵 에디터: 바닥 칠하기, 장식 칠하기, 바닥 채우기, 오브젝트 놓기(누른 칸 = 그림의 왼쪽 아래), 지우기(앞에 그려지는 오브젝트부터, 없으면 장식), 스폰 영역(끌어서), 막힌 칸 보기, 크기(12~64, 왼쪽 위 기준), 되돌리기. 팔레트는 내장 타일·오브젝트 + 커뮤니티 에셋(★). 열 때마다 맵을 새로 받습니다 (예전에 받아 둔 맵으로 시작해 다른 사람이 고친 것을 덮어쓰지 않게, 실제로 겪은 문제). 저장할 때 쓰지 않는 타일은 목록에서 뺍니다.
 - **프로필 사진 불러오기 실패:** `ui/Avatar.tsx`는 사진을 못 불러오면(연결이 불안정할 때) 깨진 그림 대신 이름 첫 글자를 보여 주고, 2초·5초·15초·60초 뒤와 `online` 이벤트 때 주소에 `retry=N`을 붙여 다시 불러옵니다 (같은 주소면 `<img>`가 다시 요청하지 않음).
 - **웹 새 배포 자동 반영:** 빌드마다 `__BUILD_ID__`를 앱에 넣고 같은 값을 `version.json`으로 내보냅니다 (`vite.config.ts`). 앱(`features/app/liveUpdate.ts`)은 1분마다와 창이 다시 보일 때 `version.json`을 보고, 바뀌었으면 잃을 것이 없을 때(통화 중이 아님, 에셋·맵 에디터를 열지 않음, 입력칸에 쓰던 글이 없음) `location.reload()`합니다. 기다리는 동안은 "새 버전" 안내를 띄웁니다. Caddy는 `/assets/*` 밖(index.html, version.json)에 `Cache-Control: no-cache`를 붙여, 예전처럼 데스크톱 앱이 캐시된 옛 index.html을 여는 일을 막습니다. 개발 서버에서는 동작하지 않습니다.
+- **아이콘과 화면 톤:** `ui/icons.tsx`, `styles.css`
+  - 아이콘은 이모지 대신 lucide(`lucide-react`)를 씁니다. 색은 currentColor, 크기는 `.lucide`가 글자 크기(1.15em)에 맞추고 자리마다 CSS로 조정합니다. 아이콘만 있는 버튼에는 `aria-label`을 붙입니다. lucide에 없는 것(분수 광장 `Fountain`)은 같은 규칙(24격자, 2px 선)으로 `createLucideIcon`으로 그립니다. React 밖(광장 DOM 덮개 `PlazaScene`)은 `lucide`(vanilla)의 `createElement`를 씁니다.
+  - lucide의 `File`, `Map`, `Link`, `Image`는 DOM 타입·전역과 이름이 겹치므로 `File as FileIcon`처럼 바꿔 가져옵니다.
+  - 로그인 화면과 설정 창은 MetaCode 팔레트(`--mc-*`: 밤하늘 #1B1E30, 잉크 #262B44, 모닥불 #FDBE53, 분수 #2FA8E0, 잔디 #84C669, 새벽돌 #E9EDF5)를 씁니다. 전역 `:root` 토큰은 그대로 두고, `.settings-overlay` 안에서만 전역 토큰(`--bg`, `--accent` 등)을 이 팔레트로 다시 정의해 안에 들어가는 컴포넌트가 따라오게 합니다. 제목 글꼴은 Galmuri11 Bold(`galmuri` 패키지, OFL)로 24/36px 같은 정수 크기에만 씁니다.
+  - 밝은 accent(모닥불색)에서는 브라우저 기본 range의 빈 쪽 막대가 검게 칠해져서, 설정 창의 슬라이더는 직접 그립니다 (채운 길이는 `--fill`).
 - **Windows에서 파일 수정:** Windows PowerShell 5.1의 `Get-Content`/`Set-Content`는 UTF-8 한글을 깨뜨립니다. 파일 수정은 편집 도구나 bash를 씁니다.
 
 ## 확정된 결정

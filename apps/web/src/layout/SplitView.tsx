@@ -19,6 +19,7 @@ import {
   isOutsideWindow,
   otherPanel,
 } from './arrangement';
+import { GripVertical, SquareArrowOutUpRight, X } from 'lucide-react';
 
 /** 패널을 끌 때 다른 드래그(파일, 목록 순서)와 구분하는 데이터 형식 */
 const PANEL_TYPE = 'application/x-metacode-panel';
@@ -70,7 +71,9 @@ export function SplitView({ chat, plaza, popoutPaths }: SplitViewProps) {
 
   const detach = (key: PanelKey, at?: { x: number; y: number }) => {
     const ok = useLayoutStore.getState().detach(key, popoutPaths[key], at);
-    setNotice(ok ? null : '브라우저가 새 창을 막았습니다. ⧉ 버튼을 눌러 다시 시도해 주세요.');
+    setNotice(
+      ok ? null : '브라우저가 새 창을 막았습니다. 새 창으로 분리 버튼을 눌러 다시 시도해 주세요.',
+    );
   };
 
   // 한쪽을 분리했으면 메인 창에는 다른 쪽만 보여 준다 (마지막 패널은 분리하지 않는다).
@@ -101,7 +104,7 @@ export function SplitView({ chat, plaza, popoutPaths }: SplitViewProps) {
             onClick={() => setNotice(null)}
             aria-label="닫기"
           >
-            ×
+            <X aria-hidden />
           </button>
         </p>
       )}
@@ -345,7 +348,7 @@ function PanelHandle({
         onDragStart={onDragStart}
         onDragEnd={onDragEnd}
       >
-        ⠿
+        <GripVertical aria-hidden />
       </span>
       {onDetach && (
         <button
@@ -355,7 +358,7 @@ function PanelHandle({
           aria-label={`${LABEL[panel]} 새 창으로 분리`}
           title="새 창으로 분리"
         >
-          ⧉
+          <SquareArrowOutUpRight aria-hidden />
         </button>
       )}
     </span>

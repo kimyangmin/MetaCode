@@ -4,6 +4,7 @@ import { useRealtime } from '../../realtime/RealtimeProvider';
 import { Dialog } from '../../ui/Dialog';
 import { dmTitle } from '../../ui/format';
 import { useCommunities, useDms, useMeRequired } from '../communities/hooks';
+import { FileCount } from '../../ui/icons';
 
 interface Destination {
   id: string;
@@ -82,7 +83,7 @@ export function ForwardDialog({
     >
       <div className="form">
         <blockquote className="forward-preview">
-          {first.content || `📎 파일 ${first.attachments.length}개`}
+          {first.content || <FileCount count={first.attachments.length} />}
           {messages.length > 1 && <small> 외 {messages.length - 1}개</small>}
         </blockquote>
         <input

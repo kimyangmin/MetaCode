@@ -5,6 +5,7 @@ import { useNavigate } from 'react-router';
 import { ApiError, apiFetch } from '../../api/client';
 import { jsonBody, queryKeys } from '../../api/queries';
 import { Dialog } from '../../ui/Dialog';
+import { Hash, Lock, Volume2 } from 'lucide-react';
 
 /**
  * 비공개 채널 설정 칸: 켜면 소유자, 관리자, 고른 역할을 가진 멤버만 채널을 보고 읽고 쓴다
@@ -35,7 +36,7 @@ export function ChannelAccessFields({
           checked={isPrivate}
           onChange={(e) => onChange({ isPrivate: e.target.checked, roleIds })}
         />
-        🔒 비공개 채널
+        <Lock aria-hidden /> 비공개 채널
       </label>
       {isPrivate && (
         <>
@@ -132,7 +133,7 @@ export function ChannelSettings({
         <label>
           채널 이름
           <div className="input-prefix">
-            <span>{channel.type === 'VOICE' ? '🔊' : '#'}</span>
+            <span aria-hidden>{channel.type === 'VOICE' ? <Volume2 /> : <Hash />}</span>
             <input value={name} onChange={(e) => setName(e.target.value)} maxLength={30} required />
           </div>
         </label>

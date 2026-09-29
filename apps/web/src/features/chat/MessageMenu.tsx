@@ -1,6 +1,7 @@
 import type { MessageDto } from '@metacode/shared';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { copyText } from '../../ui/clipboard';
+import { Copy, Forward, Link as LinkIcon, Pencil, Reply, Trash2 } from 'lucide-react';
 
 export interface MenuTarget {
   message: MessageDto;
@@ -75,24 +76,24 @@ export function MessageMenu({
   return (
     <div ref={ref} className="menu context-menu" role="menu" style={position}>
       <button role="menuitem" onClick={run(() => onReply(target.message))}>
-        ↩ 답장
+        <Reply aria-hidden /> 답장
       </button>
       <button role="menuitem" onClick={run(() => onForward(target.message))}>
-        ↪ 전달
+        <Forward aria-hidden /> 전달
       </button>
       {target.message.content && (
         <button role="menuitem" onClick={run(() => copy(target.message.content))}>
-          📋 텍스트 복사
+          <Copy aria-hidden /> 텍스트 복사
         </button>
       )}
       {target.link && (
         <button role="menuitem" onClick={run(() => copy(target.link!))}>
-          🔗 링크 복사
+          <LinkIcon aria-hidden /> 링크 복사
         </button>
       )}
       {mine && (
         <button role="menuitem" onClick={run(() => onEdit(target.message))}>
-          ✏️ 수정
+          <Pencil aria-hidden /> 수정
         </button>
       )}
       {mine && (
@@ -101,7 +102,7 @@ export function MessageMenu({
           className="menu__danger"
           onClick={run(() => onDelete(target.message))}
         >
-          🗑️ 삭제
+          <Trash2 aria-hidden /> 삭제
         </button>
       )}
     </div>

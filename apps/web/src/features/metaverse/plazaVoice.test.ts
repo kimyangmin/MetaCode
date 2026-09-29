@@ -1,6 +1,8 @@
 import type { VoiceCall } from '@metacode/shared';
 import { describe, expect, it } from 'vitest';
-import { plazaVoiceStates } from './plazaVoice';
+import { type VoiceLabel, plazaVoiceStates } from './plazaVoice';
+
+const lounge: VoiceLabel = { kind: 'channel', name: 'lounge' };
 
 const call = (channelId: string, userId: string, speaking = false, sharing = false): VoiceCall => ({
   channelId,
@@ -19,15 +21,18 @@ const call = (channelId: string, userId: string, speaking = false, sharing = fal
 describe('plazaVoiceStates', () => {
   it('이 광장의 통화 참여자에게 채널 이름과 말하는 중을 붙인다', () => {
     const calls = { lounge: call('lounge', 'a', true), other: call('other', 'b') };
-    const states = plazaVoiceStates(calls, new Map([['lounge', '🔊 lounge']]), 'lounge');
-    expect([...states]).toEqual([['a', { label: '🔊 lounge', speaking: true, muted: false }]]);
+    const states = plazaVoiceStates(calls, new Map([['lounge', lounge]]), 'lounge');
+    expect([...states]).toEqual([
+      ['a', { label: lounge, sharing: false, speaking: true, muted: false }],
+    ]);
   });
 
   it('내가 그 통화에 없으면 채널 이름만 보이고 말하는 중은 보이지 않는다', () => {
     const calls = { lounge: call('lounge', 'a', true) };
-    const labels = new Map([['lounge', '🔊 lounge']]);
+    const labels = new Map([['lounge', lounge]]);
     expect(plazaVoiceStates(calls, labels, null).get('a')).toEqual({
-      label: '🔊 lounge',
+      label: lounge,
+      sharing: false,
       speaking: false,
       muted: false,
     });
@@ -37,9 +42,9 @@ describe('plazaVoiceStates', () => {
   it('화면을 공유 중이면 이름표에 표시한다', () => {
     const states = plazaVoiceStates(
       { lounge: call('lounge', 'a', false, true) },
-      new Map([['lounge', '🔊 lounge']]),
+      new Map([['lounge', lounge]]),
       null,
     );
-    expect(states.get('a')?.label).toBe('🔊 lounge 🖥️');
+    expect(states.get('a')?.sharing).toBe(true);
   });
 });

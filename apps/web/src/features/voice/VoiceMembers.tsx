@@ -5,6 +5,7 @@ import { displayName } from '../../ui/format';
 import { useSharePreview } from './SharePreview';
 import { useVoiceStore } from './store';
 import { useVoice } from './VoiceProvider';
+import { HeadphoneOff, MicOff } from 'lucide-react';
 
 /**
  * 통화 참여자 목록 (채팅 모드). 말하는 사람은 테두리로 강조하고, 음소거·헤드셋 끔을 표시한다.
@@ -80,15 +81,15 @@ export function LiveButton({ channelId, member }: { channelId: string; member: V
 export function MemberFlags({ member }: { member: Pick<VoiceMember, 'muted' | 'deafened'> }) {
   if (member.deafened) {
     return (
-      <span className="voice-flag" role="img" aria-label="헤드셋 끔" title="헤드셋 끔">
-        🔕
+      <span className="voice-flag" title="헤드셋 끔">
+        <HeadphoneOff role="img" aria-label="헤드셋 끔" />
       </span>
     );
   }
   if (member.muted) {
     return (
-      <span className="voice-flag" role="img" aria-label="마이크 음소거" title="마이크 음소거">
-        🔇
+      <span className="voice-flag" title="마이크 음소거">
+        <MicOff role="img" aria-label="마이크 음소거" />
       </span>
     );
   }

@@ -7,6 +7,8 @@ import { useCommunities, useDms, useMeRequired, useMembers } from '../features/c
 import { PlazaPanel } from '../features/metaverse/PlazaPanel';
 import { textChannelLabels, voiceChannelLabels } from '../pages';
 import { dmTitle } from '../ui/format';
+import { Flame } from 'lucide-react';
+import { Fountain } from '../ui/icons';
 
 /**
  * 분리한 창: 채팅 또는 광장 하나만 창 가득 보여 준다.
@@ -106,7 +108,7 @@ export function PopoutPlaza() {
         <PlazaPanel
           plazaId={`community:${community.id}`}
           title={`${community.name} 광장`}
-          icon="⛲"
+          icon={<Fountain />}
           me={me}
           channelLabels={textChannelLabels(community)}
           voiceLabels={voiceChannelLabels(community)}
@@ -121,10 +123,10 @@ export function PopoutPlaza() {
         <PlazaPanel
           plazaId={`dm:${dm.id}`}
           title={`모닥불 캠프 · ${dmTitle(dm, me.id)}`}
-          icon="🔥"
+          icon={<Flame />}
           me={me}
           channelLabels={new Map([[dm.id, null]])}
-          voiceLabels={new Map([[dm.id, '📞 통화 중']])}
+          voiceLabels={new Map([[dm.id, { kind: 'call' as const, name: '통화 중' }]])}
           actions={backButton}
         />
       </PopoutShell>
