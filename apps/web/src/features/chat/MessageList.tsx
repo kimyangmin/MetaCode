@@ -31,6 +31,8 @@ import {
   stepMessage,
   transcript,
 } from './messageSelection';
+import { ArrowDown, Forward, Reply, X } from 'lucide-react';
+import { FileCount } from '../../ui/icons';
 
 /** 같은 사람이 이 시간 안에 이어서 보낸 메시지는 이름/아바타 없이 붙여 보여준다. */
 const GROUP_WINDOW_MS = 5 * 60 * 1000;
@@ -283,7 +285,7 @@ export function MessageList(props: MessageListProps) {
             <div className="message__gutter" />
             <div className="message__body">
               <p className="message__content">
-                {p.content || `📎 파일 ${p.attachmentIds.length}개`}
+                {p.content || <FileCount count={p.attachmentIds.length} />}
               </p>
               {p.status === 'failed' && (
                 <button className="message__retry" onClick={() => props.onRetry(p.clientId)}>
@@ -333,8 +335,13 @@ export function MessageList(props: MessageListProps) {
         {actionError && (
           <p className="message-list__error" role="alert">
             {actionError}
-            <button type="button" className="icon-button" onClick={() => setActionError(null)}>
-              ×
+            <button
+              type="button"
+              className="icon-button"
+              onClick={() => setActionError(null)}
+              aria-label="알림 닫기"
+            >
+              <X aria-hidden />
             </button>
           </p>
         )}
@@ -357,7 +364,8 @@ export function MessageList(props: MessageListProps) {
       )}
       {away && (
         <button type="button" className="jump-to-bottom" onClick={jumpToBottom}>
-          {newCount > 0 ? `새 메시지 ${newCount}개 · 맨 아래로 ↓` : '맨 아래로 ↓'}
+          {newCount > 0 ? `새 메시지 ${newCount}개 · 맨 아래로` : '맨 아래로'}
+          <ArrowDown aria-hidden />
         </button>
       )}
     </div>
@@ -455,7 +463,11 @@ function MessageItem({
             <time dateTime={message.createdAt}>{formatTime(message.createdAt)}</time>
           </header>
         )}
-        {message.forwarded && <p className="message__forwarded">↪ 전달된 메시지</p>}
+        {message.forwarded && (
+          <p className="message__forwarded">
+            <Forward aria-hidden /> 전달된 메시지
+          </p>
+        )}
         {editing ? (
           <MessageEditor message={message} onDone={onEditDone} />
         ) : (
@@ -557,14 +569,16 @@ function ReplyPreview({ reply }: { reply: NonNullable<MessageDto['replyTo']> }) 
   };
   return (
     <button type="button" className="message__reply" onClick={jump} title="원래 메시지로 가기">
-      <span aria-hidden>↩</span>
+      <Reply aria-hidden />
       <strong>{displayName(reply.author)}</strong>
       <span className="message__reply-text">
-        {reply.content
-          ? markdownToPlain(reply.content)
-          : reply.attachmentCount > 0
-            ? `📎 파일 ${reply.attachmentCount}개`
-            : ''}
+        {reply.content ? (
+          markdownToPlain(reply.content)
+        ) : reply.attachmentCount > 0 ? (
+          <FileCount count={reply.attachmentCount} />
+        ) : (
+          ''
+        )}
       </span>
     </button>
   );

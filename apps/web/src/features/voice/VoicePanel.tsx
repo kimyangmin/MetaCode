@@ -12,6 +12,19 @@ import { useChannelLabel } from './hooks';
 import { ScreenPicker } from './ScreenPicker';
 import { useCall, useVoiceStore } from './store';
 import { useVoice } from './VoiceProvider';
+import {
+  ChevronUp,
+  HeadphoneOff,
+  Headphones,
+  Mic,
+  MicOff,
+  MonitorUp,
+  Phone,
+  PhoneOff,
+  Radar,
+  Volume2,
+  X,
+} from 'lucide-react';
 
 const STATUS_LABEL = {
   connecting: '연결 중…',
@@ -23,7 +36,7 @@ type MenuKind = 'mic' | 'headset';
 
 /**
  * 사이드바 아래: 지금 통화, 나가기, 마이크·헤드셋·화면 공유 버튼.
- * 마이크·헤드셋 버튼을 우클릭하거나 옆의 ˄를 누르면 팝업이 뜬다
+ * 마이크·헤드셋 버튼을 우클릭하거나 옆의 위쪽 화살표를 누르면 팝업이 뜬다
  * (마이크: 입력 장치와 증폭, 헤드셋: 출력 장치와 음량, 근접 음성).
  */
 export function VoicePanel({ meId }: { meId: string }) {
@@ -67,7 +80,8 @@ export function VoicePanel({ meId }: { meId: string }) {
               </strong>
               {label && (
                 <span className="voice-panel__channel" title={`${label.name} · ${label.place}`}>
-                  {label.kind === 'voice' ? '🔊' : '📞'} {label.name} · {label.place}
+                  {label.kind === 'voice' ? <Volume2 aria-hidden /> : <Phone aria-hidden />}{' '}
+                  {label.name} · {label.place}
                 </span>
               )}
             </div>
@@ -78,12 +92,12 @@ export function VoicePanel({ meId }: { meId: string }) {
               aria-label="통화 나가기"
               title="통화 나가기"
             >
-              ✕
+              <PhoneOff aria-hidden />
             </button>
           </div>
           {session.listenOnly && (
             <p className="voice-panel__notice">
-              마이크를 쓸 수 없어 듣기만 하고 있습니다. 🎙️를 누르면 다시 시도합니다.
+              마이크를 쓸 수 없어 듣기만 하고 있습니다. 마이크 버튼을 누르면 다시 시도합니다.
             </p>
           )}
           {playbackBlocked && (
@@ -109,7 +123,7 @@ export function VoicePanel({ meId }: { meId: string }) {
                     : '마이크 음소거 (우클릭: 마이크 설정)'
                 }
               >
-                {micOff ? '🔇' : '🎙️'}
+                {micOff ? <MicOff aria-hidden /> : <Mic aria-hidden />}
                 <span>마이크</span>
               </button>
               <MenuCaret kind="mic" open={menu === 'mic'} onToggle={toggleMenu} />
@@ -127,7 +141,7 @@ export function VoicePanel({ meId }: { meId: string }) {
                     : '헤드셋 끄기, 아무것도 듣지 않음 (우클릭: 헤드셋 설정)'
                 }
               >
-                {deafened ? '🔕' : '🎧'}
+                {deafened ? <HeadphoneOff aria-hidden /> : <Headphones aria-hidden />}
                 <span>헤드셋</span>
               </button>
               <MenuCaret kind="headset" open={menu === 'headset'} onToggle={toggleMenu} />
@@ -140,7 +154,8 @@ export function VoicePanel({ meId }: { meId: string }) {
               onClick={toggleScreen}
               title={sharing ? '화면 공유 중지' : '화면 공유'}
             >
-              🖥️<span>화면</span>
+              <MonitorUp aria-hidden />
+              <span>화면</span>
             </button>
             {menu && (
               <VoiceMenu
@@ -163,7 +178,7 @@ export function VoicePanel({ meId }: { meId: string }) {
             onClick={() => useVoiceStore.getState().patch({ error: null })}
             aria-label="닫기"
           >
-            ×
+            <X aria-hidden />
           </button>
         </p>
       )}
@@ -182,7 +197,7 @@ export function VoicePanel({ meId }: { meId: string }) {
 
 const MENU_LABEL = { mic: '마이크 설정', headset: '헤드셋 설정' } as const;
 
-/** 마이크·헤드셋 옆의 ˄: 누르면 그 설정 팝업을 열고 닫는다 */
+/** 마이크·헤드셋 옆의 위쪽 화살표: 누르면 그 설정 팝업을 열고 닫는다 */
 function MenuCaret({
   kind,
   open,
@@ -203,9 +218,7 @@ function MenuCaret({
       onMouseDown={(e) => e.stopPropagation()}
       onClick={() => onToggle(kind)}
     >
-      <svg viewBox="0 0 10 6" width="10" height="6" aria-hidden="true">
-        <path d="M1 5l4-4 4 4" fill="none" stroke="currentColor" strokeWidth="1.5" />
-      </svg>
+      <ChevronUp aria-hidden />
     </button>
   );
 }
@@ -264,7 +277,9 @@ function VoiceMenu({
               onChange={(e) => onProximity(e.target.checked)}
             />
             <span>
-              <strong>📍 근접 음성</strong>
+              <strong className="inline-icon">
+                <Radar aria-hidden /> 근접 음성
+              </strong>
               <small>
                 켜면 광장에서 가까운 사람끼리만 들립니다. 통화 참여자 누구나 바꿀 수 있습니다.
               </small>

@@ -1,3 +1,58 @@
+/*
+ * Galmuri11 (OFL, 한글 도트 글꼴): 로그인 워드마크와 설정 창 제목에만 쓴다. 12px 격자라 12·24·36px로만
+ * 쓰면 도트가 흐리지 않다. 쓰는 화면에서만 받는다 (font-display: swap).
+ */
+@font-face {
+  font-family: 'Galmuri11';
+  font-weight: 700;
+  font-display: swap;
+  src: url('../node_modules/galmuri/dist/Galmuri11-Bold.woff2') format('woff2');
+}
+
+/*
+ * 로그인 화면과 설정 창 전용 색 (앱 전체의 :root 토큰은 건드리지 않는다).
+ * 내장 도트 에셋 팔레트(Kenney Tiny Town)에서 가져왔다: 밤하늘·잉크(외곽선)·모닥불·분수·잔디·새벽돌.
+ */
+.login,
+.settings-overlay {
+  --mc-night: #1b1e30;
+  --mc-ink: #262b44;
+  --mc-ember: #fdbe53;
+  --mc-ember-edge: #c98a2a;
+  --mc-fountain: #2fa8e0;
+  --mc-moss: #84c669;
+  --mc-stone: #e9edf5;
+
+  /* 라이트: 새벽돌 바탕, 잉크 글자 */
+  --mc-bg: var(--mc-stone);
+  --mc-surface: #ffffff;
+  --mc-nav: #f3f5fa;
+  --mc-text: var(--mc-ink);
+  --mc-muted: #5a6988;
+  --mc-line: #d5dbe8;
+  --mc-hover: #e7ebf3;
+  --mc-selected: #fff1d6;
+  --mc-link: #0b7fb8;
+  --mc-danger: #c93a2e;
+}
+
+@media (prefers-color-scheme: dark) {
+  .login,
+  .settings-overlay {
+    /* 다크: 밤하늘 바탕. 무채색 검정이 아니라 남색 */
+    --mc-bg: var(--mc-night);
+    --mc-surface: #22263b;
+    --mc-nav: #1b1e30;
+    --mc-text: #e8ebf4;
+    --mc-muted: #8b9bb4;
+    --mc-line: #343a5a;
+    --mc-hover: #2a2f49;
+    --mc-selected: #3a3326;
+    --mc-link: var(--mc-fountain);
+    --mc-danger: #f0776c;
+  }
+}
+
 :root {
   color-scheme: light dark;
   font-family:
@@ -81,6 +136,28 @@ h3 {
 }
 
 /* ── 공용 ─────────────────────────────── */
+
+/*
+ * 아이콘 (lucide). 글자 크기를 따라 커지고 색은 currentColor라 라이트·다크 모드를 그대로 따른다.
+ * 크기가 따로 필요한 곳(아이콘 버튼 등)만 아래에서 고정한다.
+ */
+.lucide {
+  flex-shrink: 0;
+  width: 1.15em;
+  height: 1.15em;
+  vertical-align: -0.2em;
+}
+
+/* 아이콘 + 글자를 한 줄로 (예: 클립 아이콘 + "파일 2개") */
+.inline-icon {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35em;
+}
+
+.inline-icon .lucide {
+  vertical-align: 0;
+}
 
 .button {
   padding: 8px 16px;
@@ -166,14 +243,88 @@ h3 {
 
 /* ── 로그인 ───────────────────────────── */
 
+/*
+ * 로그인 (초대 링크의 "앱에서 여는 중" 화면도 같은 모양): 장식 없이 왼쪽 정렬 한 줄기.
+ * 워드마크는 도트 글꼴, 누를 것은 모닥불색 버튼 하나. 아래 테두리가 게임 버튼처럼 눌린다.
+ */
 .login {
   display: grid;
-  place-content: center;
-  justify-items: center;
-  gap: 12px;
+  align-content: center;
+  justify-items: start;
   min-height: 100vh;
-  padding: 16px;
-  text-align: center;
+  padding: 16px clamp(24px, 12vw, 200px) 12vh;
+  background: var(--mc-bg);
+  color: var(--mc-text);
+}
+
+.login > * {
+  max-width: 440px;
+}
+
+.login h1 {
+  margin: 0 0 12px;
+  font-family: 'Galmuri11', system-ui, sans-serif;
+  font-size: 36px;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: 0;
+}
+
+.login .button {
+  min-height: 44px;
+  padding: 10px 22px;
+  border-radius: 10px;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.login .button--primary {
+  border: 0;
+  background: var(--mc-ember);
+  color: var(--mc-ink);
+  box-shadow: 0 3px 0 var(--mc-ember-edge);
+  transition:
+    transform 80ms ease-out,
+    box-shadow 80ms ease-out;
+}
+
+.login .button--primary:hover:not(:disabled) {
+  filter: brightness(1.04);
+}
+
+.login .button--primary:active:not(:disabled) {
+  transform: translateY(2px);
+  box-shadow: 0 1px 0 var(--mc-ember-edge);
+}
+
+.login .button--primary:disabled {
+  opacity: 0.6;
+}
+
+.login .button:focus-visible {
+  outline: 2px solid var(--mc-fountain);
+  outline-offset: 3px;
+}
+
+.login .button:not(.button--primary) {
+  margin-top: 10px;
+  border-color: var(--mc-line);
+  color: var(--mc-text);
+}
+
+.login .form__hint {
+  margin: 16px 0 0;
+  color: var(--mc-muted);
+}
+
+.login .form__hint a {
+  color: var(--mc-link);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .login .button--primary {
+    transition: none;
+  }
 }
 
 /* 링크로 만든 버튼 (앱에서 열기 등) */
@@ -182,13 +333,19 @@ a.button {
 }
 
 .login__tagline {
-  margin: 0 0 12px;
-  color: var(--muted);
+  margin: 0 0 32px;
+  color: var(--mc-muted);
+  font-size: 17px;
+  line-height: 1.5;
 }
 
+/* 로그인 실패: 무엇이 잘못됐는지 한 줄, 왼쪽 선으로만 구분 */
 .login__error {
-  margin: 0;
-  color: var(--danger);
+  margin: 0 0 20px;
+  padding: 8px 12px;
+  border-left: 3px solid var(--mc-danger);
+  color: var(--mc-danger);
+  font-size: 14px;
 }
 
 /* ── 전체 레이아웃: 커뮤니티 막대 | 사이드바 | 채팅 | 멤버 ── */
@@ -440,8 +597,14 @@ a.button {
 }
 
 .user-panel__status::before {
-  content: '●';
-  margin-right: 4px;
+  content: '';
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 5px;
+  border-radius: 50%;
+  background: currentColor;
+  vertical-align: 1px;
 }
 
 .user-panel__status[data-status='connected'] {
@@ -2697,7 +2860,14 @@ a {
 }
 
 .profile-popup__status::before {
-  content: '● ';
+  content: '';
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 5px;
+  border-radius: 50%;
+  background: currentColor;
+  vertical-align: 1px;
 }
 
 .profile-popup__status[data-online='true']::before {
@@ -4200,4 +4370,457 @@ a {
   margin: 0;
   opacity: 0;
   cursor: ew-resize;
+}
+
+/* ── 아이콘 크기 맞춤 (이모지 자리를 lucide로 바꾸면서) ── */
+
+.icon-button .lucide,
+.pixel-editor__tool .lucide {
+  width: 18px;
+  height: 18px;
+}
+
+.voice-toggle .lucide {
+  width: 20px;
+  height: 20px;
+  justify-self: center;
+}
+
+.voice-caret .lucide {
+  width: 14px;
+  height: 14px;
+}
+
+.file-card__icon .lucide,
+.draft__icon .lucide {
+  width: 1em;
+  height: 1em;
+}
+
+.draft__icon {
+  display: grid;
+  place-items: center;
+  font-size: 22px;
+}
+
+.sidebar__hash,
+.chat__prefix,
+.sidebar__lock,
+.sidebar__live,
+.voice-flag,
+.drag-handle,
+.panel-handle__grip,
+.map-editor__badge,
+.pixel-editor .mark {
+  display: inline-grid;
+  place-items: center;
+}
+
+.panel-handle__grip .lucide,
+.drag-handle .lucide {
+  width: 16px;
+  height: 16px;
+}
+
+.map-editor__badge .lucide {
+  width: 12px;
+  height: 12px;
+  fill: currentColor;
+}
+
+.message__reply .lucide,
+.message__forwarded .lucide,
+.jump-to-bottom .lucide {
+  align-self: center;
+}
+
+.message__forwarded,
+.jump-to-bottom,
+.chip,
+.menu button,
+.call-button,
+.voice-panel__channel {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.menu button {
+  display: flex;
+  width: 100%;
+}
+
+.menu button .lucide {
+  width: 16px;
+  height: 16px;
+  color: var(--muted);
+}
+
+.menu__danger .lucide {
+  color: inherit;
+}
+
+.chip .lucide {
+  width: 14px;
+  height: 14px;
+}
+
+.input-prefix > span {
+  display: inline-grid;
+  place-items: center;
+}
+
+/* 광장 캐릭터 위 통화 표시·첨부 표시 (Phaser 위 DOM) */
+.plaza-actor__voice:not([hidden]),
+.plaza-bubble--emote .plaza-bubble__text {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.plaza-actor__voice .lucide {
+  width: 11px;
+  height: 11px;
+}
+
+/*
+ * ── 설정 창 다시 디자인 ──
+ * 이 창 안에서만 앱 공용 토큰(--bg, --accent 등)을 로그인·설정 전용 팔레트(--mc-*)로 바꿔 끼운다.
+ * 그래서 안에 들어가는 공용 부품(장치 고르기, 슬라이더, 버튼)도 같은 톤이 되고, 바깥 화면은 그대로다.
+ */
+.settings-overlay {
+  --bg: var(--mc-surface);
+  --bg-sidebar: var(--mc-nav);
+  --bg-hover: var(--mc-hover);
+  --bg-active: var(--mc-selected);
+  --bg-input: var(--mc-nav);
+  --fg: var(--mc-text);
+  --muted: var(--mc-muted);
+  --border: var(--mc-line);
+  --accent: var(--mc-ember);
+  --accent-fg: var(--mc-ink);
+  --danger: var(--mc-danger);
+
+  background: rgb(15 17 30 / 0.62);
+  color: var(--mc-text);
+}
+
+.settings-overlay .settings-window {
+  grid-template-columns: 248px minmax(0, 1fr);
+  width: min(980px, 92vw);
+  height: min(740px, 88vh);
+  border: 1px solid var(--mc-line);
+  border-radius: 14px;
+  background: var(--mc-surface);
+  box-shadow: 0 24px 64px rgb(10 12 24 / 0.45);
+}
+
+/* 왼쪽 목록 */
+.settings-overlay .settings-nav {
+  gap: 2px;
+  padding: 20px 12px 16px;
+  border-right: 1px solid var(--mc-line);
+  background: var(--mc-nav);
+}
+
+.settings-overlay .settings-nav__me {
+  gap: 12px;
+  padding: 0 8px 16px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--mc-line);
+}
+
+.settings-overlay .settings-nav__me > div {
+  gap: 1px;
+}
+
+.settings-overlay .settings-nav__me strong {
+  font-size: 15px;
+}
+
+.settings-nav__username {
+  overflow: hidden;
+  color: var(--mc-muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-overlay .settings-nav__me button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 4px;
+  color: var(--mc-link);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.settings-overlay .settings-nav__me button:hover {
+  color: var(--mc-text);
+}
+
+.settings-overlay .settings-nav__me button .lucide {
+  width: 12px;
+  height: 12px;
+}
+
+.settings-overlay .settings-nav__group {
+  gap: 2px;
+  margin: 0;
+}
+
+.settings-overlay .settings-nav__group p {
+  margin: 18px 10px 6px;
+  color: var(--mc-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.settings-overlay .settings-nav__group button,
+.settings-overlay .settings-nav__logout {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 36px;
+  padding: 0 10px 0 12px;
+  border-radius: 8px;
+  color: var(--mc-muted);
+  font-size: 14px;
+}
+
+.settings-overlay .settings-nav__group button .lucide,
+.settings-overlay .settings-nav__logout .lucide {
+  width: 18px;
+  height: 18px;
+}
+
+.settings-overlay .settings-nav__group button:hover {
+  background: var(--mc-hover);
+  color: var(--mc-text);
+}
+
+.settings-overlay .settings-nav__group button[aria-current='page'] {
+  background: var(--mc-selected);
+  color: var(--mc-text);
+  font-weight: 700;
+}
+
+/* 지금 항목 표시: 모닥불색 막대. 오른쪽 모서리를 2px씩 깎아 도트 계단처럼 보이게 한다 */
+.settings-overlay .settings-nav__group button[aria-current='page']::before {
+  content: '';
+  position: absolute;
+  top: 8px;
+  bottom: 8px;
+  left: 0;
+  width: 4px;
+  background: var(--mc-ember);
+  clip-path: polygon(
+    0 0,
+    2px 0,
+    2px 2px,
+    4px 2px,
+    4px calc(100% - 2px),
+    2px calc(100% - 2px),
+    2px 100%,
+    0 100%
+  );
+}
+
+.settings-overlay .settings-nav__group button:focus-visible,
+.settings-overlay .settings-nav__logout:focus-visible,
+.settings-overlay .settings-nav__me button:focus-visible {
+  outline: 2px solid var(--mc-fountain);
+  outline-offset: -2px;
+}
+
+.settings-overlay .settings-nav .settings-nav__logout {
+  margin-top: auto;
+  color: var(--mc-danger);
+}
+
+.settings-overlay .settings-nav .settings-nav__logout:hover {
+  background: color-mix(in srgb, var(--mc-danger) 12%, transparent);
+}
+
+/* 오른쪽 내용 */
+.settings-overlay .settings-content__header {
+  padding: 28px 32px 8px;
+  border-bottom: 0;
+}
+
+.settings-overlay .settings-content__header h2 {
+  font-family: 'Galmuri11', system-ui, sans-serif;
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.settings-overlay .settings-content__body {
+  padding: 16px 32px 40px;
+}
+
+.settings-overlay .settings-form {
+  gap: 22px;
+  max-width: 600px;
+}
+
+/* 묶음 제목: 대문자·작은 회색 대신, 위에 선을 긋고 보통 글씨로 */
+.settings-overlay .settings-form__title {
+  margin: 10px 0 -6px;
+  padding-top: 22px;
+  border-top: 1px solid var(--mc-line);
+  color: var(--mc-text);
+  font-size: 15px;
+  font-weight: 700;
+  text-transform: none;
+}
+
+.settings-overlay .settings-form__title:first-child {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+
+.settings-overlay .settings-field__label,
+.settings-overlay .voice-field__label {
+  color: var(--mc-text);
+  font-size: 13px;
+}
+
+.settings-overlay .settings-field input,
+.settings-overlay .settings-field textarea,
+.settings-overlay .voice-field select,
+.settings-overlay .settings-id code {
+  padding: 10px 12px;
+  border: 1px solid var(--mc-line);
+  border-radius: 8px;
+  background: var(--mc-nav);
+  color: var(--mc-text);
+}
+
+.settings-overlay .settings-field input:focus-visible,
+.settings-overlay .settings-field textarea:focus-visible,
+.settings-overlay .voice-field select:focus-visible {
+  border-color: var(--mc-ember);
+  outline: 3px solid color-mix(in srgb, var(--mc-ember) 30%, transparent);
+  outline-offset: 0;
+}
+
+.settings-overlay .button {
+  border-radius: 8px;
+  border-color: var(--mc-line);
+}
+
+.settings-overlay .button--primary {
+  border-color: transparent;
+  font-weight: 700;
+  box-shadow: 0 2px 0 var(--mc-ember-edge);
+}
+
+.settings-overlay .button--primary:disabled {
+  box-shadow: none;
+}
+
+.settings-overlay .form__hint {
+  color: var(--mc-muted);
+}
+
+.settings-overlay .form__ok {
+  color: color-mix(in srgb, var(--mc-moss) 70%, var(--mc-text));
+}
+
+/* 슬라이더: 기본 모양은 밝은 accent(모닥불색)면 빈 쪽 막대를 검게 칠해서 직접 그린다 */
+.settings-overlay input[type='range']:not(.sensitivity-meter__slider) {
+  height: 20px;
+  background: transparent;
+  appearance: none;
+  cursor: pointer;
+}
+
+.settings-overlay
+  input[type='range']:not(.sensitivity-meter__slider)::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 3px;
+  background: linear-gradient(
+    to right,
+    var(--mc-ember) var(--fill, 0%),
+    var(--mc-line) var(--fill, 0%)
+  );
+}
+
+.settings-overlay input[type='range']:not(.sensitivity-meter__slider)::-moz-range-track {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--mc-line);
+}
+
+.settings-overlay input[type='range']:not(.sensitivity-meter__slider)::-moz-range-progress {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--mc-ember);
+}
+
+.settings-overlay input[type='range']:not(.sensitivity-meter__slider)::-webkit-slider-thumb {
+  width: 16px;
+  height: 16px;
+  margin-top: -5px;
+  border: 2px solid var(--mc-surface);
+  border-radius: 50%;
+  background: var(--mc-ember);
+  box-shadow: 0 1px 0 1px var(--mc-ember-edge);
+  appearance: none;
+}
+
+.settings-overlay input[type='range']:not(.sensitivity-meter__slider)::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--mc-surface);
+  border-radius: 50%;
+  background: var(--mc-ember);
+  box-shadow: 0 1px 0 1px var(--mc-ember-edge);
+}
+
+.settings-overlay input[type='range']:not(.sensitivity-meter__slider):focus-visible {
+  outline: none;
+}
+
+.settings-overlay
+  input[type='range']:not(.sensitivity-meter__slider):focus-visible::-webkit-slider-thumb {
+  outline: 3px solid color-mix(in srgb, var(--mc-ember) 40%, transparent);
+}
+
+.settings-overlay input[type='range']:not(.sensitivity-meter__slider):disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+@media (max-width: 640px) {
+  .settings-overlay .settings-window {
+    grid-template-columns: 1fr;
+    width: 100vw;
+    height: 100dvh;
+    max-width: none;
+    max-height: none;
+    border-radius: 0;
+  }
+
+  .settings-overlay .settings-nav {
+    padding: 8px;
+    border-right: 0;
+    border-bottom: 1px solid var(--mc-line);
+  }
+
+  .settings-overlay .settings-nav__group button[aria-current='page']::before {
+    display: none;
+  }
+
+  .settings-overlay .settings-content__header {
+    padding: 20px 16px 4px;
+  }
+
+  .settings-overlay .settings-content__body {
+    padding: 12px 16px 32px;
+  }
 }

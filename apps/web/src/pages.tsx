@@ -21,6 +21,9 @@ import { CallButton } from './features/voice/CallButton';
 import { SplitView } from './layout/SplitView';
 import { useUiStore } from './stores/ui';
 import { dmTitle } from './ui/format';
+import { Flame, Users } from 'lucide-react';
+import { Fountain } from './ui/icons';
+import type { VoiceLabel } from './features/metaverse/plazaVoice';
 
 /** 첫 화면: 첫 커뮤니티로, 없으면 DM으로 */
 export function HomeRedirect() {
@@ -80,7 +83,7 @@ export function CommunityPage() {
           <PlazaPanel
             plazaId={`community:${community.id}`}
             title={`${community.name} 광장`}
-            icon="⛲"
+            icon={<Fountain />}
             me={me}
             channelLabels={textChannelLabels(community)}
             voiceLabels={voiceChannelLabels(community)}
@@ -137,10 +140,10 @@ export function DmPage() {
             <PlazaPanel
               plazaId={`dm:${dm.id}`}
               title="모닥불 캠프"
-              icon="🔥"
+              icon={<Flame />}
               me={me}
               channelLabels={new Map([[dm.id, null]])}
-              voiceLabels={new Map([[dm.id, '📞 통화 중']])}
+              voiceLabels={new Map([[dm.id, { kind: 'call' as const, name: '통화 중' }]])}
               handle={handle}
               actions={actions}
             />
@@ -235,7 +238,7 @@ function MembersToggle() {
       title={hidden ? '멤버 목록 보이기' : '멤버 목록 숨기기'}
       aria-label={hidden ? '멤버 목록 보이기' : '멤버 목록 숨기기'}
     >
-      👥
+      <Users aria-hidden />
     </button>
   );
 }
@@ -247,10 +250,12 @@ export function textChannelLabels(community: CommunitySummary): Map<string, stri
   );
 }
 
-/** 광장 캐릭터 위에 참여 중인 음성 채널을 보여 준다 */
-export function voiceChannelLabels(community: CommunitySummary): Map<string, string> {
+/** 광장 캐릭터 위에 참여 중인 음성 채널을 보여 준다 (스피커 아이콘 + 채널 이름) */
+export function voiceChannelLabels(community: CommunitySummary): Map<string, VoiceLabel> {
   return new Map(
-    community.channels.filter((c) => c.type === 'VOICE').map((c) => [c.id, `🔊 ${c.name}`]),
+    community.channels
+      .filter((c) => c.type === 'VOICE')
+      .map((c) => [c.id, { kind: 'channel' as const, name: c.name ?? '' }]),
   );
 }
 

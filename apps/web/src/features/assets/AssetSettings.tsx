@@ -15,6 +15,7 @@ import { AssetPreview } from './AssetPreview';
 import { deleteAsset, useCommunityAssets, useMyAssets } from './api';
 import { fromManifest, newDoc } from './editorModel';
 import { useAssetEditorStore, useMapEditorStore } from './editorStore';
+import { Map as MapIcon, X } from 'lucide-react';
 
 /**
  * 설정 → 에셋: 내 캐릭터 목록. 새로 그리거나 내장 캐릭터를 복제해서 도트 에디터로 연다.
@@ -26,8 +27,8 @@ export function AssetSettings() {
     <div className="settings-form asset-settings">
       <MyCharacters onPick={() => setPicking(true)} />
       <p className="form__hint">
-        커뮤니티 광장에 쓸 타일·오브젝트와 광장 맵은 커뮤니티 메뉴(⋯) → 커뮤니티 설정 → 광장에서
-        만듭니다 (소유자·관리자).
+        커뮤니티 광장에 쓸 타일·오브젝트와 광장 맵은 커뮤니티 이름 옆 메뉴의 커뮤니티 설정 →
+        광장에서 만듭니다 (소유자·관리자).
       </p>
       {picking && (
         <BuiltinPicker
@@ -141,7 +142,7 @@ function CommunityAssets({ community, onPick }: { community: CommunitySummary; o
           className="button"
           onClick={() => useMapEditorStore.getState().open(community.id, community.name)}
         >
-          🗺️ 광장 맵 편집
+          <MapIcon aria-hidden /> 광장 맵 편집
         </button>
       </div>
     </section>
@@ -238,7 +239,7 @@ function BuiltinPicker({
         <header className="dialog__header">
           <h2>내장 에셋에서 시작</h2>
           <button type="button" className="icon-button" onClick={onClose} aria-label="닫기">
-            ×
+            <X aria-hidden />
           </button>
         </header>
         {kinds.length > 1 && (

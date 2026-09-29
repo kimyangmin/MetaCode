@@ -16,9 +16,20 @@ import {
   buildCollision,
 } from '@metacode/shared';
 import { builtinAsset } from '@metacode/shared/builtin-assets';
+import {
+  type IconNode,
+  Image as ImageIcon,
+  MicOff,
+  MonitorUp,
+  Paperclip,
+  Phone,
+  Volume2,
+  createElement as createIcon,
+} from 'lucide';
 import Phaser from 'phaser';
 import { drawShadow, drawSpeakingRing, drawTargetMarker } from './art';
 import { type Bubble, activeBubbles, pushBubble } from './bubbles';
+import type { VoiceLabel } from './plazaVoice';
 import { zoomFor } from './camera';
 import {
   type CharacterLook,
@@ -41,9 +52,24 @@ export interface MoveState extends Position {
 
 /** 통화 중인 캐릭터에 보일 것: 참여 중인 음성 채널, 말하는 중, 음소거 */
 export interface ActorVoice {
-  label: string;
+  label: VoiceLabel;
+  /** 화면을 공유 중 */
+  sharing: boolean;
   speaking: boolean;
   muted: boolean;
+}
+
+/**
+ * 캐릭터 위 DOM 층(이름표, 통화 표시, 첨부 표시)에 넣을 아이콘. React 밖이라 lucide 기본판으로 만든다.
+ * 크기와 색은 styles.css의 `.lucide`(글자 크기, currentColor)를 따른다.
+ */
+function icon(node: IconNode, label?: string): SVGElement {
+  const svg = createIcon(node, { class: 'lucide', 'aria-hidden': label ? 'false' : 'true' });
+  if (label) {
+    svg.setAttribute('role', 'img');
+    svg.setAttribute('aria-label', label);
+  }
+  return svg;
 }
 
 export interface PlazaSceneOptions {
@@ -251,7 +277,23 @@ export class PlazaScene extends Phaser.Scene {
     const state = this.voice.get(actor.user.id);
     const speaking = !!state?.speaking && !state.muted;
     actor.dom.voice.hidden = !state;
-    actor.dom.voice.textContent = state ? `${state.label}${state.muted ? ' 🔇' : ''}` : '';
+    // 내용이 바뀔 때만 다시 만든다 (말하는 중만 바뀌면 그대로 둔다).
+    const key = state
+      ? `${state.label.kind}|${state.label.name}|${state.sharing}|${state.muted}`
+      : '';
+    if (actor.dom.voice.dataset.key !== key) {
+      actor.dom.voice.dataset.key = key;
+      actor.dom.voice.replaceChildren(
+        ...(state
+          ? [
+              icon(state.label.kind === 'channel' ? Volume2 : Phone),
+              document.createTextNode(state.label.name),
+              ...(state.sharing ? [icon(MonitorUp, '화면 공유 중')] : []),
+              ...(state.muted ? [icon(MicOff, '마이크 꺼짐')] : []),
+            ]
+          : []),
+      );
+    }
     actor.dom.root.classList.toggle('plaza-actor--speaking', speaking);
     actor.ring.setVisible(speaking);
   }
@@ -546,7 +588,8 @@ export class PlazaScene extends Phaser.Scene {
         }
         const text = document.createElement('span');
         text.className = 'plaza-bubble__text';
-        text.textContent = b.text;
+        if (b.icon) text.append(icon(b.icon === 'image' ? ImageIcon : Paperclip));
+        text.append(b.text);
         item.append(text);
         return item;
       }),

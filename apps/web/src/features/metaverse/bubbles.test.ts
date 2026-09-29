@@ -6,7 +6,7 @@ import {
   activeBubbles,
   bubbleDurationMs,
   bubbleText,
-  emoteText,
+  emoteLabel,
   pushBubble,
 } from './bubbles';
 
@@ -58,9 +58,12 @@ describe('pushBubble', () => {
   });
 });
 
-describe('emoteText', () => {
+describe('emoteLabel', () => {
   it('사진만 올렸는지, 파일이 섞였는지 알려 준다', () => {
-    expect(emoteText([{ kind: 'image' }, { kind: 'image' }])).toBe('🖼️ 2');
-    expect(emoteText([{ kind: 'image' }, { kind: 'file' }])).toBe('📎 2');
+    expect(emoteLabel([{ kind: 'image' }, { kind: 'image' }])).toEqual({
+      icon: 'image',
+      text: '2',
+    });
+    expect(emoteLabel([{ kind: 'image' }, { kind: 'file' }])).toEqual({ icon: 'file', text: '2' });
   });
 });

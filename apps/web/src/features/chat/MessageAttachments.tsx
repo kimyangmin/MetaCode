@@ -1,6 +1,7 @@
 import type { AttachmentDto } from '@metacode/shared';
 import { useEffect, useState } from 'react';
 import { attachmentUrl, downloadAttachment, formatBytes } from './uploads';
+import { Download, File as FileIcon } from 'lucide-react';
 
 /** 채팅에 보이는 이미지의 최대 크기 (썸네일은 480px로 만들어 두었다) */
 const IMAGE_BOX = { width: 320, height: 240 };
@@ -66,7 +67,7 @@ export function MessageAttachments({ attachments }: { attachments: AttachmentDto
       {files.map((file) => (
         <div key={file.id} className="file-card">
           <span className="file-card__icon" aria-hidden>
-            📄
+            <FileIcon />
           </span>
           <span className="file-card__info">
             <span className="file-card__name">{file.fileName}</span>
@@ -78,7 +79,7 @@ export function MessageAttachments({ attachments }: { attachments: AttachmentDto
             aria-label={`${file.fileName} 내려받기`}
             title="내려받기"
           >
-            ⤓
+            <Download aria-hidden />
           </button>
         </div>
       ))}

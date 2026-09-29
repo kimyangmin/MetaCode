@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { type CSSProperties, useEffect, useRef, useState } from 'react';
 import {
   LEVEL_MAX_DB,
   LEVEL_MIN_DB,
@@ -128,6 +128,8 @@ function LevelSlider({
         max={max * 100}
         step={5}
         value={percent}
+        // 채운 쪽 길이 (설정 창의 슬라이더가 막대를 직접 그린다)
+        style={{ '--fill': `${(percent / (max * 100)) * 100}%` } as CSSProperties}
         onChange={(e) => onChange(Number(e.target.value) / 100)}
       />
     </label>

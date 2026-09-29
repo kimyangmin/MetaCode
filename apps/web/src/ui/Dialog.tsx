@@ -1,4 +1,5 @@
 import { type ReactNode, useEffect, useRef } from 'react';
+import { X } from 'lucide-react';
 
 interface DialogProps {
   title: string;
@@ -48,8 +49,8 @@ export function Dialog({ title, onClose, children, className }: DialogProps) {
       >
         <header className="dialog__header">
           <h2>{title}</h2>
-          <button className="icon-button" onClick={onClose} aria-label="닫기">
-            ×
+          <button className="icon-button" onClick={onClose} aria-label="닫기" title="닫기 (Esc)">
+            <X aria-hidden />
           </button>
         </header>
         {children}

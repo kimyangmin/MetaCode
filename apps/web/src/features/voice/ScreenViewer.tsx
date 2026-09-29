@@ -20,6 +20,14 @@ import {
 import { useVoiceStore } from './store';
 import { type FullscreenMode, useFullscreen } from './useFullscreen';
 import { useVoice } from './VoiceProvider';
+import {
+  Expand,
+  Maximize2,
+  Minimize2,
+  PictureInPicture2,
+  SquareArrowOutUpRight,
+  X,
+} from 'lucide-react';
 
 const EDGES: Edge[] = ['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw'];
 
@@ -27,7 +35,7 @@ const viewport = () => ({ width: window.innerWidth, height: window.innerHeight }
 
 /**
  * 화면 공유 보기. 목록의 LIVE를 누르면 화면 위에 떠 있는 창으로 띄운다.
- * 머리글을 끌면 옮기고, 가장자리를 끌면 크기를 바꾸고(위치와 크기는 기억), ⧉를 누르면 별도 창으로 뗀다.
+ * 머리글을 끌면 옮기고, 가장자리를 끌면 크기를 바꾸고(위치와 크기는 기억), 분리 버튼을 누르면 별도 창으로 뗀다.
  * 영상은 보고 있는 동안에만 받는다 (닫으면 구독을 끊는다). 소리는 따로 <audio>로 나온다.
  */
 export function ScreenViewer() {
@@ -237,7 +245,7 @@ function ViewerHeader({
           aria-label={maximized ? '원래 크기로' : '크게 보기'}
           title={maximized ? '원래 크기로' : '크게 보기 (머리글을 두 번 눌러도 됨)'}
         >
-          {maximized ? '🗗' : '🗖'}
+          {maximized ? <Minimize2 aria-hidden /> : <Maximize2 aria-hidden />}
         </button>
       )}
       {onPopOut && (
@@ -248,7 +256,7 @@ function ViewerHeader({
           aria-label="새 창으로 분리"
           title="새 창으로 분리"
         >
-          ⧉
+          <SquareArrowOutUpRight aria-hidden />
         </button>
       )}
       {onPopIn && (
@@ -259,7 +267,7 @@ function ViewerHeader({
           aria-label="앱 안으로 되돌리기"
           title="앱 안으로 되돌리기"
         >
-          ⧈
+          <PictureInPicture2 aria-hidden />
         </button>
       )}
       <button
@@ -270,7 +278,7 @@ function ViewerHeader({
         aria-label="전체 화면"
         title="전체 화면 (영상을 두 번 눌러도 됨)"
       >
-        ⛶
+        <Expand aria-hidden />
       </button>
       <button
         type="button"
@@ -279,7 +287,7 @@ function ViewerHeader({
         aria-label="닫기"
         title="닫기"
       >
-        ✕
+        <X aria-hidden />
       </button>
     </header>
   );

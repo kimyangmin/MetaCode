@@ -50,24 +50,32 @@ import {
   shiftPixels,
   stamp,
 } from './selection';
+import {
+  Check,
+  Eraser,
+  FlipHorizontal2,
+  Ghost,
+  Lasso,
+  PaintBucket,
+  Pencil,
+  Pipette,
+  Redo2,
+  Scissors,
+  Undo2,
+  X,
+  ZoomIn,
+  ZoomOut,
+} from 'lucide-react';
 
 type Tool = 'pen' | 'eraser' | 'fill' | 'picker' | 'lasso' | 'crop';
 
-/** 올가미 아이콘 (이모지 ➰는 어두운 배경에서 거의 안 보여서 직접 그린다) */
-const LASSO_ICON = (
-  <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" aria-hidden>
-    <ellipse cx="10" cy="8" rx="7" ry="5" strokeWidth="1.6" strokeDasharray="3 2" />
-    <path d="M6 12.5c-1 2 0 4 2 4.5" strokeWidth="1.6" strokeLinecap="round" />
-  </svg>
-);
-
 const TOOLS: { id: Tool; label: string; icon: ReactNode; key: string }[] = [
-  { id: 'pen', label: '연필', icon: '✏️', key: 'b' },
-  { id: 'eraser', label: '지우개', icon: '🧽', key: 'e' },
-  { id: 'fill', label: '채우기', icon: '🪣', key: 'g' },
-  { id: 'picker', label: '스포이트', icon: '💧', key: 'i' },
-  { id: 'lasso', label: '올가미 (고른 곳을 끌어 옮기기)', icon: LASSO_ICON, key: 'l' },
-  { id: 'crop', label: '자르기', icon: '✂️', key: 'c' },
+  { id: 'pen', label: '연필', icon: <Pencil aria-hidden />, key: 'b' },
+  { id: 'eraser', label: '지우개', icon: <Eraser aria-hidden />, key: 'e' },
+  { id: 'fill', label: '채우기', icon: <PaintBucket aria-hidden />, key: 'g' },
+  { id: 'picker', label: '스포이트', icon: <Pipette aria-hidden />, key: 'i' },
+  { id: 'lasso', label: '올가미 (고른 곳을 끌어 옮기기)', icon: <Lasso aria-hidden />, key: 'l' },
+  { id: 'crop', label: '자르기', icon: <Scissors aria-hidden />, key: 'c' },
 ];
 
 /**
@@ -700,6 +708,7 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
               type="button"
               className="pixel-editor__tool"
               aria-pressed={tool === t.id}
+              aria-label={t.label}
               title={`${t.label} (${t.key.toUpperCase()})`}
               onClick={() => setTool(t.id)}
             >
@@ -712,18 +721,20 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
             className="pixel-editor__tool"
             aria-pressed={mirror}
             title="좌우 대칭 (M)"
+            aria-label="좌우 대칭"
             onClick={() => setMirror((v) => !v)}
           >
-            ↔
+            <FlipHorizontal2 aria-hidden />
           </button>
           <button
             type="button"
             className="pixel-editor__tool"
             aria-pressed={onion}
             title="앞 프레임 겹쳐 보기 (O)"
+            aria-label="앞 프레임 겹쳐 보기"
             onClick={() => setOnion((v) => !v)}
           >
-            👻
+            <Ghost aria-hidden />
           </button>
           <hr />
           <button
@@ -731,35 +742,39 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
             className="pixel-editor__tool"
             disabled={!editor.canUndo}
             title="되돌리기 (Ctrl+Z)"
+            aria-label="되돌리기"
             onClick={() => editor.undo()}
           >
-            ↶
+            <Undo2 aria-hidden />
           </button>
           <button
             type="button"
             className="pixel-editor__tool"
             disabled={!editor.canRedo}
             title="다시 하기 (Ctrl+Shift+Z)"
+            aria-label="다시 하기"
             onClick={() => editor.redo()}
           >
-            ↷
+            <Redo2 aria-hidden />
           </button>
           <hr />
           <button
             type="button"
             className="pixel-editor__tool"
             title="크게"
+            aria-label="크게"
             onClick={() => setZoom((z) => Math.min(40, z + 2))}
           >
-            ＋
+            <ZoomIn aria-hidden />
           </button>
           <button
             type="button"
             className="pixel-editor__tool"
             title="작게"
+            aria-label="작게"
             onClick={() => setZoom((z) => Math.max(2, z - 2))}
           >
-            －
+            <ZoomOut aria-hidden />
           </button>
         </aside>
 
@@ -1012,7 +1027,11 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
                       <span
                         className={missingNames.has(a.name) ? 'mark mark--todo' : 'mark mark--done'}
                       >
-                        {missingNames.has(a.name) ? '✗' : '✓'}
+                        {missingNames.has(a.name) ? (
+                          <X role="img" aria-label="덜 그림" />
+                        ) : (
+                          <Check role="img" aria-label="다 그림" />
+                        )}
                       </span>
                     )}
                     {ANIMATION_LABEL.get(a.name) ?? (a.name === 'default' ? '기본' : a.name)}

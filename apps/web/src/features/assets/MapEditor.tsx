@@ -14,6 +14,7 @@ import { BUILTIN_ASSETS } from '@metacode/shared/builtin-assets';
 import { useQuery } from '@tanstack/react-query';
 import {
   type PointerEvent as ReactPointerEvent,
+  type ReactNode,
   useCallback,
   useEffect,
   useMemo,
@@ -26,19 +27,33 @@ import { AssetPreview } from './AssetPreview';
 import { useCommunityAssets } from './api';
 import { MapDocument, type TileLayer, fromDefinition, tileSize, toDefinition } from './mapModel';
 import { framePixels } from './render';
+import {
+  Brush,
+  Eraser,
+  Flag,
+  Flower2,
+  Grid2x2X,
+  PaintBucket,
+  Redo2,
+  Star,
+  TreePine,
+  Undo2,
+  ZoomIn,
+  ZoomOut,
+} from 'lucide-react';
 
 type Tool = 'ground' | 'overlay' | 'fill' | 'object' | 'erase' | 'spawn';
 
 /** 팔레트 미리보기 크기 (가장 긴 변, px) */
 const PALETTE_BOX = 32;
 
-const TOOLS: { id: Tool; label: string; icon: string }[] = [
-  { id: 'ground', label: '바닥 칠하기', icon: '🟩' },
-  { id: 'overlay', label: '장식 칠하기 (바닥 위에 겹침)', icon: '🌼' },
-  { id: 'fill', label: '바닥 채우기', icon: '🪣' },
-  { id: 'object', label: '오브젝트 놓기', icon: '🌳' },
-  { id: 'erase', label: '지우기 (오브젝트, 장식)', icon: '🧽' },
-  { id: 'spawn', label: '스폰 영역 (끌어서)', icon: '🚩' },
+const TOOLS: { id: Tool; label: string; icon: ReactNode }[] = [
+  { id: 'ground', label: '바닥 칠하기', icon: <Brush aria-hidden /> },
+  { id: 'overlay', label: '장식 칠하기 (바닥 위에 겹침)', icon: <Flower2 aria-hidden /> },
+  { id: 'fill', label: '바닥 채우기', icon: <PaintBucket aria-hidden /> },
+  { id: 'object', label: '오브젝트 놓기', icon: <TreePine aria-hidden /> },
+  { id: 'erase', label: '지우기 (오브젝트, 장식)', icon: <Eraser aria-hidden /> },
+  { id: 'spawn', label: '스폰 영역 (끌어서)', icon: <Flag aria-hidden /> },
 ];
 
 interface Entry {
@@ -434,6 +449,7 @@ function MapEditorBody({
               type="button"
               className="pixel-editor__tool"
               aria-pressed={tool === t.id}
+              aria-label={t.label}
               title={t.label}
               onClick={() => {
                 setTool(t.id);
@@ -450,9 +466,10 @@ function MapEditorBody({
             className="pixel-editor__tool"
             aria-pressed={showBlocked}
             title="막힌 칸 보기"
+            aria-label="막힌 칸 보기"
             onClick={() => setShowBlocked((v) => !v)}
           >
-            ⛔
+            <Grid2x2X aria-hidden />
           </button>
           <hr />
           <button
@@ -460,35 +477,39 @@ function MapEditorBody({
             className="pixel-editor__tool"
             disabled={!editor.canUndo}
             title="되돌리기 (Ctrl+Z)"
+            aria-label="되돌리기"
             onClick={() => editor.undo()}
           >
-            ↶
+            <Undo2 aria-hidden />
           </button>
           <button
             type="button"
             className="pixel-editor__tool"
             disabled={!editor.canRedo}
             title="다시 하기 (Ctrl+Shift+Z)"
+            aria-label="다시 하기"
             onClick={() => editor.redo()}
           >
-            ↷
+            <Redo2 aria-hidden />
           </button>
           <hr />
           <button
             type="button"
             className="pixel-editor__tool"
             title="크게"
+            aria-label="크게"
             onClick={() => setZoom((z) => Math.min(4, z + 1))}
           >
-            ＋
+            <ZoomIn aria-hidden />
           </button>
           <button
             type="button"
             className="pixel-editor__tool"
             title="작게"
+            aria-label="작게"
             onClick={() => setZoom((z) => Math.max(1, z - 1))}
           >
-            －
+            <ZoomOut aria-hidden />
           </button>
         </aside>
 
@@ -549,7 +570,11 @@ function MapEditorBody({
                   }}
                 >
                   <AssetPreview manifest={entry.manifest} box={PALETTE_BOX} animate={false} />
-                  {entry.community && <span className="map-editor__badge">★</span>}
+                  {entry.community && (
+                    <span className="map-editor__badge" title="이 커뮤니티의 에셋">
+                      <Star aria-label="커뮤니티 에셋" role="img" />
+                    </span>
+                  )}
                 </button>
               </li>
             ))}
