@@ -96,7 +96,10 @@ export class MicChain {
     this.sink.gain.value = 0;
     gate.connect(this.amplifier).connect(this.destination);
     this.amplifier.connect(this.sink).connect(context.destination);
-    this.gate.port.postMessage({ sensitivity: settings.sensitivity });
+    this.gate.port.postMessage({
+      sensitivity: settings.sensitivity,
+      voiceOnly: settings.noiseSuppression,
+    });
   }
 
   /** AudioWorklet을 쓸 수 없으면 실패한다 */
@@ -143,6 +146,8 @@ export class MicChain {
   async setNoiseSuppression(on: boolean): Promise<void> {
     if (this.settings.noiseSuppression === on) return;
     this.settings.noiseSuppression = on;
+    // 잡음 제거를 켜면 문턱도 목소리만 통과시킨다 (숨소리·씹는 소리는 RNNoise가 남기므로).
+    this.gate.port.postMessage({ voiceOnly: on });
     await this.wire();
   }
 
