@@ -206,6 +206,27 @@ describe('통화 참여', () => {
     await expectNoEvent(bobSocket, SocketEvent.VoiceUpdated);
   });
 
+  it('통화 중에 닉네임·사진을 바꾸면 이후 알림과 통화 목록에도 새 프로필이 실린다', async () => {
+    const { alice, bob, lounge } = await setup();
+    const aliceSocket = await connect(alice);
+    const bobSocket = await connect(bob);
+    await joinOk(aliceSocket, lounge.id);
+
+    await alice.json('/users/me', {
+      method: 'PATCH',
+      body: JSON.stringify({ nickname: '새 이름' }),
+    });
+
+    // 예전에는 들어올 때의 프로필을 들고 있다가 말하는 중 알림마다 옛 이름·사진을 다시 보냈다.
+    const updated = nextEvent(bobSocket, SocketEvent.VoiceUpdated);
+    aliceSocket.emit(SocketEvent.VoiceUpdate, { muted: false, deafened: false, speaking: true });
+    expect((await updated).member.user).toMatchObject({ id: alice.me.id, displayName: '새 이름' });
+
+    const calls = await sync(bobSocket);
+    const member = calls.find((c) => c.channelId === lounge.id)?.members[0];
+    expect(member?.user.displayName).toBe('새 이름');
+  });
+
   it('나가면 알리고, 아무도 없으면 통화가 끝난다', async () => {
     const { alice, bob, lounge } = await setup();
     const aliceSocket = await connect(alice);
