@@ -19,6 +19,7 @@ import { useVoice } from '../voice/VoiceProvider';
 import { ChannelAccessFields, ChannelSettings } from './ChannelSettings';
 import { CommunitySettings } from './CommunitySettings';
 import { useMeRequired } from './hooks';
+import { Ellipsis, Hash, Lock, Settings, Volume2 } from 'lucide-react';
 
 type Modal = 'invite' | 'channel' | 'settings' | { edit: ChannelSummary } | null;
 
@@ -85,7 +86,7 @@ export function CommunitySidebar({
           aria-label="커뮤니티 메뉴"
           onClick={() => setMenuOpen((v) => !v)}
         >
-          ⋯
+          <Ellipsis aria-hidden />
         </button>
         {menuOpen && (
           <div className="menu" role="menu" onMouseLeave={() => setMenuOpen(false)}>
@@ -180,7 +181,9 @@ function ChannelLink({
         // 링크 자체가 끌리면 순서 바꾸기 대신 주소가 끌린다.
         draggable={false}
       >
-        <span className="sidebar__hash">#</span>
+        <span className="sidebar__hash" aria-hidden>
+          <Hash />
+        </span>
         <span className="sidebar__label">{channel.name}</span>
         {channel.private && <PrivateMark />}
       </NavLink>
@@ -191,8 +194,8 @@ function ChannelLink({
 
 function PrivateMark() {
   return (
-    <span className="sidebar__lock" role="img" aria-label="비공개" title="비공개 채널">
-      🔒
+    <span className="sidebar__lock" title="비공개 채널">
+      <Lock role="img" aria-label="비공개" />
     </span>
   );
 }
@@ -206,7 +209,7 @@ function EditButton({ name, onClick }: { name: string; onClick(): void }) {
       aria-label={`${name} 채널 설정`}
       title="채널 설정"
     >
-      ⚙
+      <Settings aria-hidden />
     </button>
   );
 }
@@ -237,7 +240,7 @@ function VoiceChannelItem({
           title={joined ? '통화 중' : '눌러서 통화에 들어가기'}
         >
           <span className="sidebar__hash" aria-hidden>
-            🔊
+            <Volume2 />
           </span>
           <span className="sidebar__label">{channel.name}</span>
           {channel.private && <PrivateMark />}
@@ -344,7 +347,9 @@ function CreateChannelDialog({
               checked={type === 'TEXT'}
               onChange={() => setType('TEXT')}
             />
-            <span># 텍스트</span>
+            <span className="inline-icon">
+              <Hash aria-hidden /> 텍스트
+            </span>
             <small>메시지, 파일, 대화 기록</small>
           </label>
           <label>
@@ -354,14 +359,16 @@ function CreateChannelDialog({
               checked={type === 'VOICE'}
               onChange={() => setType('VOICE')}
             />
-            <span>🔊 음성</span>
+            <span className="inline-icon">
+              <Volume2 aria-hidden /> 음성
+            </span>
             <small>누르면 바로 들어가는 통화</small>
           </label>
         </fieldset>
         <label>
           채널 이름
           <div className="input-prefix">
-            <span>{type === 'TEXT' ? '#' : '🔊'}</span>
+            <span aria-hidden>{type === 'TEXT' ? <Hash /> : <Volume2 />}</span>
             <input value={name} onChange={(e) => setName(e.target.value)} maxLength={30} required />
           </div>
         </label>

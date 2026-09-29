@@ -28,6 +28,7 @@ import { displayName, initials } from '../../ui/format';
 import { useDragSort } from '../../ui/useDragSort';
 import { closeAssetEditors } from '../assets/AssetEditors';
 import { useMeRequired, useMembers } from './hooks';
+import { GripVertical, X } from 'lucide-react';
 
 const DEFAULT_COLOR = '#3f8fdb';
 
@@ -380,8 +381,9 @@ function RolesTab({ community }: { community: CommunitySummary }) {
   return (
     <div className="form">
       <p className="form__hint">
-        ⠿를 끌어 순서를 바꿀 수 있습니다. 역할을 만들어 멤버에게 주면, 비공개 채널을 그 역할을 가진
-        멤버에게만 보여 줄 수 있습니다. 이름 색은 가진 역할 중 가장 위 역할의 색을 따릅니다.
+        왼쪽 손잡이를 끌어 순서를 바꿀 수 있습니다. 역할을 만들어 멤버에게 주면, 비공개 채널을 그
+        역할을 가진 멤버에게만 보여 줄 수 있습니다. 이름 색은 가진 역할 중 가장 위 역할의 색을
+        따릅니다.
       </p>
       {community.roles.length === 0 && <p className="settings__empty">아직 역할이 없습니다.</p>}
       <ul className="role-list">
@@ -461,7 +463,7 @@ function RoleRow({
   return (
     <li className="role-list__item" {...sortProps}>
       <span className="drag-handle" aria-hidden title="끌어서 순서 바꾸기">
-        ⠿
+        <GripVertical />
       </span>
       <input
         type="color"
@@ -489,7 +491,7 @@ function RoleRow({
         aria-label={`${role.name} 지우기`}
         title="지우기"
       >
-        ×
+        <X aria-hidden />
       </button>
     </li>
   );

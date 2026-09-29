@@ -6,8 +6,8 @@ const PlazaView = lazy(() => import('./PlazaView'));
 
 interface PlazaPanelProps extends PlazaViewProps {
   title: string;
-  /** 머리글 앞 아이콘 (분수 광장 ⛲, 모닥불 캠프 🔥) */
-  icon: string;
+  /** 머리글 앞 아이콘 (분수 광장, 모닥불 캠프) */
+  icon: ReactNode;
   /** 머리글 오른쪽 (보기 전환 버튼) */
   actions?: ReactNode;
   /** 머리글 왼쪽의 옮기기·분리 손잡이 */

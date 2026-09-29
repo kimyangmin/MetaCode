@@ -9,6 +9,8 @@ import {
   useState,
 } from 'react';
 import { type AttachmentDraft, formatBytes } from './uploads';
+import { File as FileIcon, Paperclip, Reply, SendHorizontal, X } from 'lucide-react';
+import { FileCount } from '../../ui/icons';
 
 const MAX_HEIGHT_PX = 200;
 
@@ -118,10 +120,10 @@ export function Composer(props: ComposerProps) {
       {props.replyTo && (
         <div className="composer__reply">
           <span>
-            ↩ <strong>{displayName(props.replyTo.author)}</strong>님에게 답장
+            <Reply aria-hidden /> <strong>{displayName(props.replyTo.author)}</strong>님에게 답장
           </span>
           <span className="composer__reply-text">
-            {props.replyTo.content || `📎 파일 ${props.replyTo.attachments.length}개`}
+            {props.replyTo.content || <FileCount count={props.replyTo.attachments.length} />}
           </span>
           <button
             type="button"
@@ -130,7 +132,7 @@ export function Composer(props: ComposerProps) {
             aria-label="답장 취소"
             title="답장 취소 (Esc)"
           >
-            ×
+            <X aria-hidden />
           </button>
         </div>
       )}
@@ -147,7 +149,7 @@ export function Composer(props: ComposerProps) {
           aria-label="파일 첨부"
           title="파일 첨부"
         >
-          📎
+          <Paperclip aria-hidden />
         </button>
         <input
           ref={fileInput}
@@ -181,7 +183,7 @@ export function Composer(props: ComposerProps) {
           aria-label="보내기"
           title="보내기 (Enter)"
         >
-          ➤
+          <SendHorizontal aria-hidden />
         </button>
       </div>
     </form>
@@ -203,7 +205,7 @@ function DraftChip({
         <img className="draft__preview" src={draft.previewUrl} alt="" />
       ) : (
         <span className="draft__icon" aria-hidden>
-          📄
+          <FileIcon />
         </span>
       )}
       <span className="draft__info">
@@ -229,7 +231,7 @@ function DraftChip({
         onClick={() => onRemove(draft.localId)}
         aria-label={`${draft.file.name} 빼기`}
       >
-        ×
+        <X aria-hidden />
       </button>
     </li>
   );

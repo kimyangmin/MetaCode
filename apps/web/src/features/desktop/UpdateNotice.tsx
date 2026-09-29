@@ -2,6 +2,7 @@ import type { UpdateReadyInfo } from '@metacode/shared';
 import { type ReactNode, useEffect, useState } from 'react';
 import { DESKTOP_DOWNLOAD_URL } from '../../config';
 import { getDesktopBridge } from '../../platform';
+import { X } from 'lucide-react';
 
 /**
  * 데스크톱 앱 업데이트 안내. 메인 프로세스가 새 버전을 다 받아 두면 "다시 시작"을 띄운다
@@ -92,7 +93,7 @@ function Notice({ children, onClose }: { children: ReactNode; onClose: () => voi
         aria-label="닫기"
         title="닫기"
       >
-        ×
+        <X aria-hidden />
       </button>
     </div>
   );

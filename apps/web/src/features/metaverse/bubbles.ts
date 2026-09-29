@@ -14,6 +14,8 @@ export interface Bubble {
   label: string | null;
   text: string;
   kind: 'bubble' | 'attachment-emote';
+  /** 첨부 표시의 아이콘: 사진만 올렸으면 image, 파일이 섞였으면 file */
+  icon?: 'image' | 'file';
   expiresAt: number;
 }
 
@@ -48,9 +50,14 @@ export function activeBubbles(stack: Bubble[], now: number): Bubble[] {
   return stack.filter((b) => b.expiresAt > now);
 }
 
-/** 첨부 모션과 함께 보이는 작은 표시: 무엇을 몇 개 올렸는지만 */
-export function emoteText(attachments: { kind: 'image' | 'file' }[]): string {
+/** 첨부 모션과 함께 보이는 작은 표시: 무엇을(아이콘) 몇 개(글자) 올렸는지만 */
+export function emoteLabel(attachments: { kind: 'image' | 'file' }[]): {
+  icon: 'image' | 'file';
+  text: string;
+} {
   const images = attachments.filter((a) => a.kind === 'image').length;
-  if (images === attachments.length) return `🖼️ ${images}`;
-  return `📎 ${attachments.length}`;
+  return {
+    icon: images === attachments.length ? 'image' : 'file',
+    text: String(attachments.length),
+  };
 }
