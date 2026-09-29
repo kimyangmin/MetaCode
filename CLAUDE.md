@@ -122,14 +122,17 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
   - 데스크톱 화면 공유: Electron의 getDisplayMedia는 고르는 창이 없어서, 웹이 브리지(`screen.getSources`)로 받은 목록을 보여 주고 고른 것(`screen.select`, 30초 유효)을 메인 프로세스의 `setDisplayMediaRequestHandler`가 넘겨줍니다. 고르지 않은 요청과 앱 화면이 아닌 요청은 거절합니다. 시스템 소리(loopback)는 Windows에서만 됩니다. 데스크톱 0.1.0에는 이 브리지가 없어서 "새 버전 설치" 안내가 뜹니다.
   - 데스크톱: Electron은 권한 처리기가 없으면 모든 권한을 허락하므로, 앱 화면에만 마이크·스피커 선택·클립보드 쓰기를 허락하고 나머지(카메라 포함)는 거절합니다 (`apps/desktop/src/main/permissions.ts`).
   - 로컬에서 두 사람 음성 확인: 브라우저 패널은 마이크를 막으므로, 두 번째 사용자는 `@livekit/rtc-node`로 음을 보내는 스크립트로 확인했습니다. 실제 마이크로 말하는 확인은 사람이 해야 합니다.
-- **데스크톱 설치 파일:** `apps/desktop/electron-builder.yml`, `pnpm --filter @metacode/desktop dist:win` (NSIS, 현재 사용자에 설치, 서명 없음). 배포용은 자동 업데이트 항목의 워크플로가 만듭니다.
+- **데스크톱 설치 파일:** `apps/desktop/electron-builder.yml`, `pnpm --filter @metacode/desktop dist:win` (NSIS, 현재 사용자에 설치, 서명 없음), `dist:mac`(dmg+zip, arm64·x64), `dist:linux`(AppImage+deb, x64). 배포용은 자동 업데이트 항목의 워크플로가 만듭니다.
+  - macOS는 Apple 개발자 서명 없이 임시 서명(`identity: '-'`)만 합니다. Apple Silicon은 서명이 아예 없으면 실행되지 않고, 서명 없이 hardened runtime을 켜면 JIT 권한이 없어 뜨지 않으므로 `hardenedRuntime: false`입니다. 받은 앱을 처음 열 때 "확인되지 않은 개발자" 경고가 뜹니다 (시스템 설정 → 개인정보 보호 및 보안 → 그래도 열기).
+  - deb는 `homepage`(package.json)와 `maintainer`가 있어야 만들어집니다. Linux 실행 파일 이름은 `metacode`, 창과 `.desktop`을 묶으려고 `desktopName`을 둡니다.
   - 설치한 앱은 운영 사이트(`https://metacode.kimyangmin.me`)를 앱 창에서 엽니다 (웹 빌드를 앱에 넣지 않음). 개발 중(`app.isPackaged`가 아님)에는 `localhost:5173`, 둘 다 `METACODE_WEB_URL`/`METACODE_API_URL`로 바꿀 수 있습니다. 앱 안에는 메인 프로세스와 preload만 들어갑니다.
   - 브리지 호출, 권한, 창 이동은 웹 주소와 **같은 출처**인지로 판단합니다 (`isAppUrl`). 다른 사이트로 이동하지 못하고, 외부 링크는 시스템 브라우저로 엽니다.
   - 설치한 앱은 이름(productName)이 MetaCode라 사용자 데이터가 `%APPDATA%\MetaCode`에 따로 생깁니다. 개발용 앱(`@metacode/desktop`)과 로그인, 한 번에 하나만 실행 잠금(`requestSingleInstanceLock`)이 섞이지 않습니다 (처음엔 이름이 같아서 개발용 앱이 켜져 있으면 설치한 앱이 바로 꺼졌음).
 - **데스크톱 자동 업데이트:** `apps/desktop/src/main/updater.ts`(electron-updater), `.github/workflows/desktop-release.yml`, 웹 `features/desktop/UpdateNotice.tsx`
-  - `desktop-v<버전>` 태그를 push하면 Actions의 Windows 러너가 설치 파일 + `.blockmap` + `latest.yml`을 만들어 GitHub Release(Latest)로 올립니다. 태그와 `apps/desktop/package.json` 버전이 다르면 실패합니다. 저장소가 공개라서 앱에 토큰이 필요 없습니다.
+  - `desktop-v<버전>` 태그를 push하면 Actions가 Windows·macOS·Linux 러너에서 각각 설치 파일 + `.blockmap` + `latest*.yml`을 만들고, 모두 끝나면 GitHub Release(Latest) 하나로 올립니다 (한 OS라도 실패하면 올리지 않음). 태그와 `apps/desktop/package.json` 버전이 다르면 실패합니다. 저장소가 공개라서 앱에 토큰이 필요 없습니다.
   - 앱(설치한 것만)은 켤 때와 4시간마다 확인하고, 백그라운드에서 받아 두었다가 앱을 끌 때 설치합니다. 받으면 브리지 `updates`로 웹에 알려 화면 위에 "다시 시작"을 띄웁니다 (`quitAndInstall(true, true)`: 조용히 설치 후 다시 켬).
   - 앱은 저장소의 **Latest Release**를 보므로, 데스크톱이 아닌 Release를 Latest로 올리면 업데이트 확인이 깨집니다.
+  - 스스로 설치하는 것은 Windows와 Linux AppImage뿐입니다. 서명하지 않은 macOS 앱(Squirrel.Mac은 서명을 확인함)과 deb로 설치한 Linux 앱(`APPIMAGE` 환경변수가 없음)은 `manual` 모드로 받지 않고 새 버전이 있다는 것만 알려(`update-available` → `UpdateReadyInfo.manual`) 웹이 "새 버전 받기"를 띄웁니다 (0.4.1부터).
   - 코드 서명을 하지 않아서 받은 설치 파일의 서명은 확인하지 않습니다. 서명을 도입하면 `electron-builder.yml`의 `win.publisherName`을 넣어 확인하게 합니다.
   - 0.2.0 이하 앱에는 `updates` 브리지가 없어서, 웹이 "새 버전 받기"(Releases 링크) 안내를 띄웁니다.
   - 업데이트 캐시 폴더 이름은 패키지 이름에서 나와 `@metacodedesktop-updater`입니다 (`%LOCALAPPDATA%` 아래).
