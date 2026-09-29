@@ -236,7 +236,9 @@ export class VoiceConnection {
   private readonly onReport = (message: GateMessage) => {
     micReports.publish(message);
     if (!this.micOn) return;
-    const changed = this.speech.push(message.level, message.time, message.threshold);
+    // 문턱이 닫혀 있으면(목소리가 아닌 소리 포함) 말하는 중으로 보지 않는다: 초록 테두리 = 실제로 나가는 소리.
+    const level = message.open ? message.level : -100;
+    const changed = this.speech.push(level, message.time, message.threshold);
     if (changed !== null) this.handlers.onSpeaking(changed);
   };
 

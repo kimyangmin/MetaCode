@@ -1,5 +1,7 @@
 import type { VoiceMember } from '@metacode/shared';
+import { useState } from 'react';
 import { Avatar } from '../../ui/Avatar';
+import { ConfirmDialog } from '../../ui/ConfirmDialog';
 import { openProfile } from '../../stores/profile';
 import { displayName } from '../../ui/format';
 import { useSharePreview } from './SharePreview';
@@ -63,18 +65,42 @@ function MemberRow({
   );
 }
 
-/** 화면 공유 보기. 그 통화에 없으면 먼저 들어간다 */
+/**
+ * 화면 공유 보기. 그 통화에 없으면 먼저 들어간다 (마이크는 끈 채로).
+ * 다른 통화에 들어가 있으면 옮길지 먼저 묻는다 (한 사람은 통화 하나에만 있을 수 있다).
+ */
 export function LiveButton({ channelId, member }: { channelId: string; member: VoiceMember }) {
   const voice = useVoice();
+  const otherCall = useVoiceStore((s) =>
+    s.session && s.session.channelId !== channelId ? s.session.channelId : null,
+  );
+  const [confirming, setConfirming] = useState(false);
+  const watch = () => {
+    setConfirming(false);
+    void voice.watch(channelId, member.user.id);
+  };
   return (
-    <button
-      type="button"
-      className="live-badge"
-      onClick={() => void voice.watch(channelId, member.user.id)}
-      title={`${displayName(member.user)}의 화면 보기`}
-    >
-      LIVE
-    </button>
+    <>
+      <button
+        type="button"
+        className="live-badge"
+        onClick={() => (otherCall ? setConfirming(true) : watch())}
+        title={`${displayName(member.user)}의 화면 보기`}
+      >
+        LIVE
+      </button>
+      {confirming && (
+        <ConfirmDialog
+          title="다른 통화로 옮길까요?"
+          confirmLabel="옮기고 보기"
+          onConfirm={watch}
+          onCancel={() => setConfirming(false)}
+        >
+          {displayName(member.user)}님의 화면을 보려면 지금 통화에서 나와 그 통화에 들어가야 합니다.
+          마이크는 꺼진 채로 들어갑니다.
+        </ConfirmDialog>
+      )}
+    </>
   );
 }
 
