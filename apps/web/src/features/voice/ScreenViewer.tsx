@@ -1,5 +1,4 @@
 import {
-  type MouseEvent,
   type PointerEvent as ReactPointerEvent,
   type RefObject,
   useEffect,
@@ -19,6 +18,7 @@ import {
   saveFrame,
 } from './floatingFrame';
 import { useVoiceStore } from './store';
+import { type FullscreenMode, useFullscreen } from './useFullscreen';
 import { useVoice } from './VoiceProvider';
 
 const EDGES: Edge[] = ['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw'];
@@ -54,6 +54,8 @@ function ViewerWindow() {
   // 사용자가 분리한 창을 닫으면 앱 안으로 돌아온다 (보기는 계속).
   const [popup, setPopup] = usePopupWindow(() => {});
   const drag = useRef<{ edge: Edge | 'move'; x: number; y: number; start: Frame } | null>(null);
+  const stageRef = useRef<HTMLDivElement>(null);
+  const fullscreen = useFullscreen(stageRef);
   const name = member ? displayName(member.user) : '참여자';
   const poppedOut = !!popup;
 
@@ -61,7 +63,10 @@ function ViewerWindow() {
   useEffect(() => {
     if (poppedOut) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !document.fullscreenElement) void voice.watch(null, null);
+      // 전체 화면을 끝내는 Esc는 닫지 않는다 (창 채우기는 useFullscreen이 먼저 받아 막는다).
+      if (e.key === 'Escape' && !e.defaultPrevented && !document.fullscreenElement) {
+        void voice.watch(null, null);
+      }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -121,8 +126,23 @@ function ViewerWindow() {
   if (popup) {
     return createPortal(
       <section className="screen-viewer screen-viewer--popout" aria-label={`${name}의 화면`}>
-        <ViewerHeader name={name} stream={stream} onPopIn={() => setPopup(null)} onClose={close} />
-        <ViewerStage stream={stream} ended={ended} />
+        <ViewerHeader
+          name={name}
+          stream={stream}
+          onFullscreen={fullscreen.toggle}
+          onPopIn={() => {
+            fullscreen.exit();
+            setPopup(null);
+          }}
+          onClose={close}
+        />
+        <ViewerStage
+          stageRef={stageRef}
+          stream={stream}
+          ended={ended}
+          fullscreen={fullscreen.mode}
+          onToggleFullscreen={fullscreen.toggle}
+        />
       </section>,
       popup.container,
     );
@@ -143,7 +163,11 @@ function ViewerWindow() {
         stream={stream}
         maximized={maximized}
         onMaximize={() => setMaximized((v) => !v)}
-        onPopOut={popOut}
+        onFullscreen={fullscreen.toggle}
+        onPopOut={() => {
+          fullscreen.exit();
+          popOut();
+        }}
         onClose={close}
         dragProps={{
           onPointerDown: (e: ReactPointerEvent<HTMLElement>) => beginDrag(e, 'move'),
@@ -158,7 +182,13 @@ function ViewerWindow() {
           {notice}
         </p>
       )}
-      <ViewerStage stream={stream} ended={ended} />
+      <ViewerStage
+        stageRef={stageRef}
+        stream={stream}
+        ended={ended}
+        fullscreen={fullscreen.mode}
+        onToggleFullscreen={fullscreen.toggle}
+      />
       {!maximized &&
         EDGES.map((edge) => (
           <span
@@ -179,6 +209,7 @@ function ViewerHeader({
   stream,
   maximized,
   onMaximize,
+  onFullscreen,
   onPopOut,
   onPopIn,
   onClose,
@@ -188,14 +219,12 @@ function ViewerHeader({
   stream: MediaStream | null;
   maximized?: boolean;
   onMaximize?: () => void;
+  onFullscreen: () => void;
   onPopOut?: () => void;
   onPopIn?: () => void;
   onClose: () => void;
   dragProps?: Record<string, unknown>;
 }) {
-  const fullscreen = (e: MouseEvent<HTMLButtonElement>) => {
-    void e.currentTarget.closest('.screen-viewer')?.querySelector('video')?.requestFullscreen();
-  };
   return (
     <header className="screen-viewer__header" {...dragProps}>
       <span className="screen-viewer__live">LIVE</span>
@@ -236,10 +265,10 @@ function ViewerHeader({
       <button
         type="button"
         className="icon-button"
-        onClick={fullscreen}
+        onClick={onFullscreen}
         disabled={!stream}
         aria-label="전체 화면"
-        title="전체 화면"
+        title="전체 화면 (영상을 두 번 눌러도 됨)"
       >
         ⛶
       </button>
@@ -256,15 +285,43 @@ function ViewerHeader({
   );
 }
 
-function ViewerStage({ stream, ended }: { stream: MediaStream | null; ended: boolean }) {
+function ViewerStage({
+  stageRef,
+  stream,
+  ended,
+  fullscreen,
+  onToggleFullscreen,
+}: {
+  stageRef: RefObject<HTMLDivElement | null>;
+  stream: MediaStream | null;
+  ended: boolean;
+  fullscreen: FullscreenMode;
+  onToggleFullscreen: () => void;
+}) {
   const videoRef: RefObject<HTMLVideoElement | null> = useRef(null);
   useEffect(() => {
     if (videoRef.current) videoRef.current.srcObject = stream;
   }, [stream]);
   return (
-    <div className="screen-viewer__stage">
+    <div className="screen-viewer__stage" ref={stageRef} data-fullscreen={fullscreen}>
       {/* 소리는 LiveKit이 따로 붙인 <audio>로 나오므로 영상은 음소거한다. */}
-      <video ref={videoRef} autoPlay playsInline muted hidden={!stream || ended} />
+      <video
+        ref={videoRef}
+        autoPlay
+        playsInline
+        muted
+        hidden={!stream || ended}
+        onDoubleClick={onToggleFullscreen}
+      />
+      {fullscreen !== 'off' && (
+        <button
+          type="button"
+          className="screen-viewer__exit-fullscreen"
+          onClick={onToggleFullscreen}
+        >
+          전체 화면 끝내기 (Esc)
+        </button>
+      )}
       {(ended || !stream) && (
         <p className="screen-viewer__status">
           {ended ? '화면 공유가 끝났습니다.' : '화면을 불러오는 중…'}
