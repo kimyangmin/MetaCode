@@ -9,7 +9,7 @@ export function LoginScreen({ error }: { error: string | null }) {
     try {
       await login();
     } finally {
-      // 웹은 페이지를 떠나고, 데스크톱은 브라우저에서 로그인하는 동안 다시 누를 수 있게 둔다.
+      // 웹은 페이지를 떠나고, 데스크톱·안드로이드는 브라우저에서 로그인하는 동안 다시 누를 수 있게 둔다.
       setPending(false);
     }
   };

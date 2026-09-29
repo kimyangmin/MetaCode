@@ -3,6 +3,7 @@ import { type Arrangement, DEFAULT_ARRANGEMENT, type PanelKey } from '../layout/
 import { isDesktop } from '../platform';
 
 const ARRANGEMENT_KEY = 'metacode:arrangement';
+const PHONE_FIRST_KEY = 'metacode:phone-first';
 /** 분리한 창이 닫혔는지 확인하는 간격 (닫히면 메인 창으로 돌려놓는다) */
 const WATCH_MS = 800;
 
@@ -22,12 +23,23 @@ function readArrangement(): Arrangement {
   return DEFAULT_ARRANGEMENT;
 }
 
+function readPhoneFirst(): PanelKey {
+  try {
+    return localStorage.getItem(PHONE_FIRST_KEY) === 'chat' ? 'chat' : 'plaza';
+  } catch {
+    return 'plaza';
+  }
+}
+
 /** 분리한 창 (한 패널에 하나) */
 const popouts = new Map<PanelKey, Window>();
 
 interface LayoutState {
   /** 채팅과 광장의 배치 (기억한다) */
   arrangement: Arrangement;
+  /** 휴대폰 화면(위아래로만 나눔)에서 위에 오는 패널 (기억한다, 처음엔 광장) */
+  phoneFirst: PanelKey;
+  setPhoneFirst(first: PanelKey): void;
   /** 별도 창으로 분리해서 메인 창에서는 숨긴 패널 */
   detached: Record<PanelKey, boolean>;
   setArrangement(arrangement: Arrangement): void;
@@ -39,7 +51,17 @@ interface LayoutState {
 
 export const useLayoutStore = create<LayoutState>((set, get) => ({
   arrangement: readArrangement(),
+  phoneFirst: readPhoneFirst(),
   detached: { chat: false, plaza: false },
+
+  setPhoneFirst: (phoneFirst) => {
+    try {
+      localStorage.setItem(PHONE_FIRST_KEY, phoneFirst);
+    } catch {
+      // 기억하지 못해도 지금 화면에는 적용된다.
+    }
+    set({ phoneFirst });
+  },
 
   setArrangement: (arrangement) => {
     try {

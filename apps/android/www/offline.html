@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MetaCode</title>
+    <style>
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+      body {
+        display: grid;
+        place-content: center;
+        gap: 16px;
+        padding: 24px;
+        background: #1b1e30;
+        color: #e8ebf4;
+        font-family: system-ui, sans-serif;
+        text-align: center;
+      }
+      h1 {
+        margin: 0;
+        font-size: 24px;
+      }
+      p {
+        margin: 0;
+        color: #8b9bb4;
+      }
+      button {
+        justify-self: center;
+        padding: 10px 20px;
+        border: 0;
+        border-radius: 8px;
+        background: #fdbe53;
+        color: #262b44;
+        font: inherit;
+        font-weight: 700;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>MetaCode</h1>
+    <p>서버에 연결하지 못했습니다. 인터넷 연결을 확인해 주세요.</p>
+    <button type="button" onclick="location.replace('https://metacode.kimyangmin.me/')">
+      다시 시도
+    </button>
+  </body>
+</html>

@@ -21,6 +21,7 @@ import { CallButton } from './features/voice/CallButton';
 import { SplitView } from './layout/SplitView';
 import { useUiStore } from './stores/ui';
 import { dmTitle } from './ui/format';
+import { NARROW_QUERY, useMediaQuery } from './ui/useMediaQuery';
 import { Flame, Users } from 'lucide-react';
 import { Fountain } from './ui/icons';
 import type { VoiceLabel } from './features/metaverse/plazaVoice';
@@ -40,6 +41,10 @@ export function CommunityPage() {
   const community = communities.data?.find((c) => c.id === communityId);
   const members = useMembers(communityId ?? '');
   const membersHidden = useUiStore((s) => s.membersHidden);
+  const membersDrawerOpen = useUiStore((s) => s.membersDrawerOpen);
+  // 좁은 화면에서는 멤버 목록을 자리에 두지 않고 서랍으로 겹쳐 띄운다 (처음엔 닫힘).
+  const narrow = useMediaQuery(NARROW_QUERY);
+  const membersOpen = narrow ? membersDrawerOpen : !membersHidden;
 
   if (!communities.data) return <Loading />;
   // 나갔거나 삭제된 커뮤니티
@@ -99,7 +104,10 @@ export function CommunityPage() {
           />
         )}
       />
-      {!membersHidden && <MemberList communityId={community.id} />}
+      {/* 숨겨도 내리지 않고 폭을 줄여 밀어 넣는다 (여닫는 애니메이션) */}
+      <div className="members-slot" data-open={membersOpen} inert={!membersOpen}>
+        <MemberList communityId={community.id} />
+      </div>
     </>
   );
 }
@@ -225,10 +233,17 @@ export function InvitePage() {
   );
 }
 
-/** 오른쪽 멤버 목록 보이기/숨기기 (기억한다) */
+/** 오른쪽 멤버 목록 보이기/숨기기 (넓은 화면은 기억하고, 좁은 화면은 서랍으로 연다) */
 function MembersToggle() {
-  const hidden = useUiStore((s) => s.membersHidden);
-  const toggle = useUiStore((s) => s.toggleMembers);
+  const narrow = useMediaQuery(NARROW_QUERY);
+  const membersHidden = useUiStore((s) => s.membersHidden);
+  const drawerOpen = useUiStore((s) => s.membersDrawerOpen);
+  const hidden = narrow ? !drawerOpen : membersHidden;
+  const toggle = () => {
+    const ui = useUiStore.getState();
+    if (narrow) ui.setMembersDrawer(!drawerOpen);
+    else ui.toggleMembers();
+  };
   return (
     <button
       type="button"

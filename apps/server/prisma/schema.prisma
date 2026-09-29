@@ -24,6 +24,9 @@ model User {
   bio         String?
   /// 직접 올린 프로필 사진의 저장소 키 (avatars/<userId>/<id>.webp). null이면 GitHub 사진
   avatarKey   String?  @map("avatar_key")
+  /// 움직이는 사진(GIF 등)을 올렸으면 움직이는 WebP의 키 (avatars/<userId>/<id>-animated.webp).
+  /// avatarKey는 첫 장면만 담은 멈춘 사진이다 (채팅 목록 등은 멈춘 사진, 멤버 목록·정보 팝업은 움직이는 사진)
+  avatarAnimatedKey String? @map("avatar_animated_key")
   /// 광장 캐릭터 {asset, colors, version?}. null이면 사용자 ID로 고른 기본 캐릭터
   character   Json?
   createdAt   DateTime @default(now()) @map("created_at")

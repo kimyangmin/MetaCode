@@ -87,7 +87,17 @@ export default function PlazaView({ plazaId, me, channelLabels, voiceLabels }: P
     void created.ready.then(() => {
       if (!cancelled) setScene(created);
     });
+    // Phaser의 RESIZE는 창 크기만 보고 패널 크기가 바뀐 것(구분선 끌기, 패널 옮기기)은 모른다.
+    // 그대로 두면 캔버스가 예전 크기로 남아 광장 일부가 비어 보였다.
+    // (RESIZE 모드는 기억해 둔 부모 크기로 캔버스를 다시 맞추므로, 부모 크기를 먼저 다시 읽게 한다.)
+    const observer = new ResizeObserver(() => {
+      if (!game.isBooted) return;
+      game.scale.getParentBounds();
+      game.scale.refresh();
+    });
+    observer.observe(stageRef.current!);
     return () => {
+      observer.disconnect();
       cancelled = true;
       setScene(null);
       game.destroy(true);
@@ -251,7 +261,8 @@ export default function PlazaView({ plazaId, me, channelLabels, voiceLabels }: P
     ) {
       e.preventDefault();
       scene?.releaseAll();
-      requestPanelFocus('chat');
+      // 메시지를 보내면(또는 Esc) 광장으로 돌아온다.
+      requestPanelFocus('chat', 'plaza');
       return;
     }
     if (!ARROW_KEYS.has(e.key) || e.altKey || e.ctrlKey || e.metaKey) return;

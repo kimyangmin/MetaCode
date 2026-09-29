@@ -418,6 +418,7 @@ function MessageItem({
   /** 잡기 중일 때만: 눌러서 잡기 시작, 끌어서 늘리기 */
   selectProps?: { onMouseDown(e: MouseEvent): void; onMouseEnter(e: MouseEvent): void };
 }) {
+  const [avatarHovered, setAvatarHovered] = useState(false);
   const showProfile = (e: MouseEvent) => openProfile(message.author, e, communityId);
   const onContextMenu = (e: MouseEvent) => {
     // 글을 골라 둔 상태면 브라우저 기본 메뉴(복사 등)를 그대로 쓴다.
@@ -448,9 +449,11 @@ function MessageItem({
             type="button"
             className="message__avatar"
             onClick={showProfile}
+            onMouseEnter={() => setAvatarHovered(true)}
+            onMouseLeave={() => setAvatarHovered(false)}
             aria-label={`${displayName(message.author)} 정보`}
           >
-            <Avatar user={message.author} size={36} />
+            <Avatar user={message.author} size={36} animate={avatarHovered} />
           </button>
         )}
       </div>

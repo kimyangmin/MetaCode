@@ -13,6 +13,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import {
+  type ApplyImageRequest,
   type AvatarUploadRequest,
   type AvatarUploadTicket,
   type ChannelSummary,
@@ -24,6 +25,7 @@ import {
   type InviteInfo,
   type ReorderRequest,
   type UpdateCommunityRequest,
+  applyImageSchema,
   avatarUploadSchema,
   communityImageKindSchema,
   createChannelSchema,
@@ -92,8 +94,9 @@ export class CommunitiesController {
     @CurrentUserId() userId: string,
     @UuidParam('id') id: string,
     @Param('kind', new ZodValidationPipe(communityImageKindSchema)) kind: CommunityImageKind,
+    @Body(new ZodValidationPipe(applyImageSchema)) body: ApplyImageRequest,
   ): Promise<void> {
-    return this.profile.apply(userId, id, kind);
+    return this.profile.apply(userId, id, kind, body?.crop);
   }
 
   @Delete('communities/:id/images/:kind')

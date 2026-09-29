@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { type MouseEvent, useEffect, useRef } from 'react';
 import {
   Navigate,
   Outlet,
@@ -8,10 +8,14 @@ import {
   useNavigate,
 } from 'react-router';
 import { CommunityRail } from './features/communities/CommunityRail';
+import { useCommunities } from './features/communities/hooks';
 import { ProfilePopup } from './features/communities/ProfilePopup';
 import { PopoutChat, PopoutPlaza } from './layout/Popout';
+import { shortcutTarget } from './layout/navShortcuts';
+import { useDrawerSwipe } from './layout/drawerSwipe';
 import { CommunityPage, DmPage, HomeRedirect, InvitePage, takePendingInvite } from './pages';
 import { isDesktop } from './platform';
+import { useUiStore } from './stores/ui';
 
 /** 로그인 후 화면의 뼈대: 왼쪽 커뮤니티 막대 + 선택한 화면 */
 function AppLayout() {
@@ -26,10 +30,49 @@ function AppLayout() {
     }
   }, [location.pathname, navigate]);
 
+  // Ctrl+1은 DM, Ctrl+2~9·0은 왼쪽 목록 순서대로 커뮤니티. 떠 있는 창(설정, 에디터 등)이 있으면 옮기지 않는다.
+  const communities = useCommunities().data;
+  useEffect(() => {
+    const ids = communities?.map((c) => c.id) ?? [];
+    const onKey = (e: KeyboardEvent) => {
+      const target = shortcutTarget(e, ids);
+      if (!target) return;
+      // 브라우저의 탭 옮기기(Ctrl+숫자)보다 먼저 받는다.
+      e.preventDefault();
+      if (document.querySelector('[aria-modal="true"]')) return;
+      if (!location.pathname.startsWith(target)) void navigate(target);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [communities, location.pathname, navigate]);
+
+  // 좁은 화면의 서랍. 멤버 목록은 다른 화면으로 옮기면 닫는다. 커뮤니티·채널 목록은 커뮤니티나 DM을
+  // 오가는 동안 열어 두고, 목록에서 채널·대화를 고르면 닫는다 (onNavClick).
+  const navOpen = useUiStore((s) => s.navOpen);
+  const membersOpen = useUiStore((s) => s.membersDrawerOpen);
+  useEffect(() => useUiStore.getState().setMembersDrawer(false), [location.pathname]);
+  const appRef = useRef<HTMLDivElement>(null);
+  useDrawerSwipe(appRef);
+  const onNavClick = (e: MouseEvent) => {
+    if ((e.target as Element).closest('.sidebar a[href]')) useUiStore.getState().setNavOpen(false);
+  };
+
   return (
-    <div className="app">
+    <div
+      ref={appRef}
+      className="app"
+      data-nav-open={navOpen}
+      data-members-open={membersOpen}
+      onClick={onNavClick}
+    >
       <CommunityRail />
       <Outlet />
+      {/* 좁은 화면에서 서랍(목록, 멤버)을 열면 나머지를 어둡게 덮고, 누르면 닫는다 */}
+      <div
+        className="app__backdrop"
+        aria-hidden
+        onClick={() => useUiStore.getState().closeDrawers()}
+      />
       <ProfilePopup />
     </div>
   );

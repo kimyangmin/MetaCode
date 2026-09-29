@@ -8,6 +8,7 @@ import { displayName } from '../../ui/format';
 import { useOpenDm } from '../communities/hooks';
 import { acceptFriend, removeFriend, sendFriendRequest, useFriends } from './api';
 import { MessageCircle, UserMinus, Users } from 'lucide-react';
+import { NavButton } from '../../layout/NavButton';
 
 type Tab = 'online' | 'all' | 'pending' | 'add';
 
@@ -44,6 +45,7 @@ export function FriendsPanel() {
   return (
     <section className="chat friends" aria-label="친구">
       <header className="chat__header friends__header">
+        <NavButton />
         <h2 className="inline-icon">
           <Users aria-hidden /> 친구
         </h2>

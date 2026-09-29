@@ -98,3 +98,8 @@ export const attachmentQuerySchema = z.object({
 });
 
 export type AttachmentQuery = z.infer<typeof attachmentQuerySchema>;
+
+/** GET /attachments/:id/link: 권한을 확인한 짧게 유효한 저장소 주소 (안드로이드 앱의 받기) */
+export interface AttachmentLink {
+  url: string;
+}

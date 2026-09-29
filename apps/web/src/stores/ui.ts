@@ -14,6 +14,14 @@ interface UiState {
   /** 커뮤니티 화면 오른쪽 멤버 목록을 숨겼는지 (기억한다) */
   membersHidden: boolean;
   toggleMembers(): void;
+  /** 좁은 화면: 멤버 목록 서랍을 열었는지 (기억하지 않는다, 처음엔 닫힘) */
+  membersDrawerOpen: boolean;
+  /** 휴대폰 화면: 커뮤니티·채널 목록 서랍을 열었는지 */
+  navOpen: boolean;
+  setMembersDrawer(open: boolean): void;
+  setNavOpen(open: boolean): void;
+  /** 서랍을 모두 닫는다 (바깥을 누르거나 다른 화면으로 옮길 때) */
+  closeDrawers(): void;
 }
 
 export const useUiStore = create<UiState>((set, get) => ({
@@ -27,4 +35,11 @@ export const useUiStore = create<UiState>((set, get) => ({
     }
     set({ membersHidden: next });
   },
+  membersDrawerOpen: false,
+  navOpen: false,
+  // 한쪽 서랍을 열면 다른 쪽은 닫는다.
+  setMembersDrawer: (membersDrawerOpen) =>
+    set(membersDrawerOpen ? { membersDrawerOpen, navOpen: false } : { membersDrawerOpen }),
+  setNavOpen: (navOpen) => set(navOpen ? { navOpen, membersDrawerOpen: false } : { navOpen }),
+  closeDrawers: () => set({ navOpen: false, membersDrawerOpen: false }),
 }));

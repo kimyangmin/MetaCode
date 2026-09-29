@@ -1,4 +1,5 @@
 import {
+  type AttachmentLink,
   type AttachmentDto,
   DEFAULT_UPLOAD_MAX_SIZE_MB,
   MAX_ATTACHMENTS_PER_MESSAGE,
@@ -10,7 +11,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { apiFetch } from '../../api/client';
 import { jsonBody } from '../../api/queries';
 import { API_URL } from '../../config';
-import { getDesktopBridge } from '../../platform';
+import { getDesktopBridge, isAndroidApp, loadAndroid } from '../../platform';
 
 /** 저장소에 직접 PUT한다. fetch는 업로드 진행률을 알려 주지 않아 XHR을 쓴다. */
 function putFile(
@@ -214,6 +215,16 @@ export function downloadAttachment(attachment: AttachmentDto): void {
   const desktop = getDesktopBridge();
   if (desktop) {
     void desktop.download(url);
+    return;
+  }
+  // 안드로이드 앱의 창은 파일을 받지 못하므로, 권한을 확인한 저장소 주소를 받아 시스템 브라우저로 연다.
+  if (isAndroidApp()) {
+    void (async () => {
+      const link = await apiFetch<AttachmentLink>(
+        `/attachments/${attachment.id}/link?download=1`,
+      ).catch(() => null);
+      if (link) await (await loadAndroid()).openExternal(link.url);
+    })();
     return;
   }
   const link = document.createElement('a');

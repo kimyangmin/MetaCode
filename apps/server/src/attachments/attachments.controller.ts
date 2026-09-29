@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common';
 import {
   type AttachmentDto,
+  type AttachmentLink,
   type AttachmentQuery,
   type CreateUploadRequest,
   type UploadTicket,
@@ -66,5 +67,20 @@ export class AttachmentsController {
     // 캐시하면 로그아웃한 뒤나 다른 계정에서도 같은 주소로 저장소에 갈 수 있다.
     res.set('Cache-Control', 'no-store');
     res.redirect(302, url);
+  }
+
+  /**
+   * 위와 같지만 보내지 않고 주소만 돌려준다 (안드로이드 앱: 받기는 쿠키가 없는 시스템 브라우저가 하므로
+   * 권한 확인을 거친 짧게 유효한 저장소 주소를 넘긴다).
+   */
+  @Get('attachments/:id/link')
+  async link(
+    @CurrentUserId() userId: string,
+    @UuidParam('id') id: string,
+    @Query(new ZodValidationPipe(attachmentQuerySchema)) query: AttachmentQuery,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<AttachmentLink> {
+    res.set('Cache-Control', 'no-store');
+    return { url: await this.attachments.downloadUrl(userId, id, query) };
   }
 }

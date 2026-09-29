@@ -63,6 +63,7 @@ async function upload(
   communityId: string,
   kind: CommunityImageKind,
   body: Uint8Array,
+  crop?: { x: number; y: number; width: number; height: number },
 ): Promise<Response> {
   const res = await user.fetch(
     `/communities/${communityId}/images/${kind}/upload`,
@@ -72,7 +73,10 @@ async function upload(
   const ticket = (await res.json()) as AvatarUploadTicket;
   const put = await fetch(ticket.uploadUrl, { method: 'PUT', headers: ticket.headers, body });
   expect(put.ok).toBe(true);
-  return user.fetch(`/communities/${communityId}/images/${kind}`, { method: 'PUT' });
+  return user.fetch(
+    `/communities/${communityId}/images/${kind}`,
+    crop ? json('PUT', { crop }) : { method: 'PUT' },
+  );
 }
 
 async function summaryOf(user: TestUser, communityId: string) {
@@ -102,6 +106,54 @@ describe('커뮤니티 설정', () => {
 
     const empty = await owner.fetch(`/communities/${community.id}`, json('PATCH', { name: ' ' }));
     expect(empty.status).toBe(400);
+  });
+
+  it('고른 곳(crop)을 종류별 크기로 잘라 쓴다', async () => {
+    const { owner, community } = await setup();
+    // 위 절반 초록, 아래 절반 파랑인 사진에서 아래쪽 16:9를 고른다.
+    const image = await sharp({
+      create: { width: 640, height: 720, channels: 3, background: '#00ff00' },
+    })
+      .composite([
+        {
+          input: { create: { width: 640, height: 360, channels: 3, background: '#0000ff' } },
+          left: 0,
+          top: 360,
+        },
+      ])
+      .png()
+      .toBuffer();
+    const crop = { x: 0, y: 0.5, width: 1, height: 0.5 };
+    expect((await upload(owner, community.id, 'banner', image, crop)).status).toBe(204);
+    const { bannerUrl } = await summaryOf(owner, community.id);
+    const file = await t.fetch(pathOf(bannerUrl!));
+    const { data, info } = await sharp(Buffer.from(await file.arrayBuffer()))
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+    expect([info.width, info.height]).toEqual([960, 540]);
+    const i = (270 * info.width + 480) * info.channels;
+    expect(data[i + 2]).toBeGreaterThan(200);
+    expect(data[i + 1]).toBeLessThan(60);
+  });
+
+  it('움직이는 사진(GIF)은 아이콘·배너에서도 움직인다', async () => {
+    const { owner, community } = await setup();
+    const frames = await Promise.all(
+      ['#ff0000', '#00ff00'].map((color) =>
+        sharp({ create: { width: 320, height: 180, channels: 3, background: color } })
+          .png()
+          .toBuffer(),
+      ),
+    );
+    const gif = await sharp(frames, { join: { animated: true } })
+      .gif({ delay: [100, 100], loop: 0 })
+      .toBuffer();
+    expect((await upload(owner, community.id, 'banner', gif)).status).toBe(204);
+    const { bannerUrl } = await summaryOf(owner, community.id);
+    const file = await t.fetch(pathOf(bannerUrl!));
+    const meta = await sharp(Buffer.from(await file.arrayBuffer()), { animated: true }).metadata();
+    expect(meta.pages).toBe(2);
+    expect([meta.width, meta.pageHeight]).toEqual([960, 540]);
   });
 
   it('아이콘·배너를 종류별 크기로 바꿔 쓰고, 초대 화면에도 아이콘이 보인다', async () => {

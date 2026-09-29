@@ -1,0 +1,21 @@
+{
+  "name": "@metacode/android",
+  "version": "0.1.0",
+  "description": "MetaCode 안드로이드 앱 (Capacitor, 운영 웹을 앱 창에서 연다)",
+  "author": "kimyangmin",
+  "homepage": "https://github.com/kimyangmin/MetaCode",
+  "private": true,
+  "scripts": {
+    "sync": "cap sync android",
+    "open": "cap open android"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.5.2",
+    "@capacitor/app": "^8.1.1",
+    "@capacitor/browser": "^8.0.4",
+    "@capacitor/core": "^8.5.2"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.5.2"
+  }
+}

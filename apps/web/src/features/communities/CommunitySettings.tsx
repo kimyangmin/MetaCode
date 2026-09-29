@@ -6,6 +6,7 @@ import {
   type CommunityMember,
   CommunityRole,
   type CommunitySummary,
+  type ImageCrop,
   type RoleDto,
 } from '@metacode/shared';
 import { useQueryClient } from '@tanstack/react-query';
@@ -24,6 +25,12 @@ import { ApiError, apiFetch } from '../../api/client';
 import { jsonBody, queryKeys } from '../../api/queries';
 import { Avatar } from '../../ui/Avatar';
 import { Dialog } from '../../ui/Dialog';
+import {
+  type CropSource,
+  ImageCropDialog,
+  cropSource,
+  releaseCropSource,
+} from '../../ui/ImageCropDialog';
 import { displayName, initials } from '../../ui/format';
 import { useDragSort } from '../../ui/useDragSort';
 import { closeAssetEditors } from '../assets/AssetEditors';
@@ -64,7 +71,7 @@ export function CommunitySettings({
   // 여기서 연 도트 에디터·맵 에디터는 설정을 닫으면 함께 닫는다.
   useEffect(() => closeAssetEditors, []);
   return (
-    <Dialog title="커뮤니티 설정" onClose={onClose} className="dialog--wide">
+    <Dialog title="커뮤니티 설정" onClose={onClose} className="dialog--wide dialog--settings">
       <div className="settings">
         <div className="settings__tabs" role="tablist">
           {TABS.map((t) => (
@@ -96,8 +103,13 @@ const IMAGE_LABEL: Record<CommunityImageKind, string> = { icon: '아이콘', ban
 /** 목적격 조사까지 붙인 이름 (아이콘을, 배너를) */
 const IMAGE_OBJECT: Record<CommunityImageKind, string> = { icon: '아이콘을', banner: '배너를' };
 
-/** 아이콘·배너 올리기: 저장소에 바로 올리고, 서버가 확인·변환해 적용한다 */
-async function uploadImage(communityId: string, kind: CommunityImageKind, file: File) {
+/** 아이콘·배너 올리기: 저장소에 바로 올리고, 서버가 확인해 고른 곳(crop)을 잘라 적용한다 */
+async function uploadImage(
+  communityId: string,
+  kind: CommunityImageKind,
+  file: File,
+  crop: ImageCrop | undefined,
+) {
   const base = `/communities/${communityId}/images/${kind}`;
   const ticket = await apiFetch<AvatarUploadTicket>(`${base}/upload`, {
     method: 'POST',
@@ -105,7 +117,7 @@ async function uploadImage(communityId: string, kind: CommunityImageKind, file: 
   });
   const put = await fetch(ticket.uploadUrl, { method: 'PUT', headers: ticket.headers, body: file });
   if (!put.ok) throw new Error('이미지를 올리지 못했습니다.');
-  await apiFetch(base, { method: 'PUT' });
+  await apiFetch(base, { method: 'PUT', ...jsonBody({ crop }) });
 }
 
 function GeneralTab({ community }: { community: CommunitySummary }) {
@@ -114,6 +126,14 @@ function GeneralTab({ community }: { community: CommunitySummary }) {
   const [name, setName] = useState(community.name);
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState<string | null>(null);
+  // 고른 이미지: 올리기 전에 보일 곳을 고른다.
+  const [cropping, setCropping] = useState<{ kind: CommunityImageKind; source: CropSource } | null>(
+    null,
+  );
+  const finishCrop = () => {
+    releaseCropSource(cropping?.source ?? null);
+    setCropping(null);
+  };
   const isOwner = community.myRole === CommunityRole.Owner;
 
   const act = async (request: () => Promise<unknown>, fallback: string, ok: string) => {
@@ -140,13 +160,19 @@ function GeneralTab({ community }: { community: CommunitySummary }) {
     );
   };
 
-  const upload = (kind: CommunityImageKind, file: File) => {
+  const pick = (kind: CommunityImageKind, file: File) => {
     if (file.size > AVATAR_MAX_BYTES) {
       void run(() => Promise.reject(new Error()), '8MB 이하의 이미지만 올릴 수 있습니다.');
       return;
     }
+    setSaved(null);
+    setCropping({ kind, source: cropSource(file) });
+  };
+
+  const upload = (kind: CommunityImageKind, file: File, crop: ImageCrop | undefined) => {
+    finishCrop();
     void act(
-      () => uploadImage(community.id, kind, file),
+      () => uploadImage(community.id, kind, file, crop),
       `${IMAGE_OBJECT[kind]} 올리지 못했습니다.`,
       `${IMAGE_OBJECT[kind]} 바꿨습니다.`,
     );
@@ -179,14 +205,14 @@ function GeneralTab({ community }: { community: CommunitySummary }) {
         kind="icon"
         community={community}
         busy={busy}
-        onPick={(file) => upload('icon', file)}
+        onPick={(file) => pick('icon', file)}
         onRemove={() => remove('icon')}
       />
       <ImageField
         kind="banner"
         community={community}
         busy={busy}
-        onPick={(file) => upload('banner', file)}
+        onPick={(file) => pick('banner', file)}
         onRemove={() => remove('banner')}
       />
 
@@ -197,6 +223,19 @@ function GeneralTab({ community }: { community: CommunitySummary }) {
       )}
 
       {isOwner && <DeleteCommunity community={community} />}
+
+      {cropping && (
+        <ImageCropDialog
+          source={cropping.source}
+          title={`${IMAGE_LABEL[cropping.kind]} 위치 조정`}
+          aspect={
+            COMMUNITY_IMAGE_SIZE[cropping.kind].width / COMMUNITY_IMAGE_SIZE[cropping.kind].height
+          }
+          shape={cropping.kind === 'icon' ? 'rounded' : 'rect'}
+          onCancel={finishCrop}
+          onApply={(crop) => upload(cropping.kind, cropping.source.file, crop)}
+        />
+      )}
     </div>
   );
 }
@@ -253,7 +292,7 @@ function ImageField({
             {kind === 'icon'
               ? '왼쪽 커뮤니티 목록과 초대 화면에 보입니다.'
               : '채널 목록 위에 보입니다.'}{' '}
-            {width}×{height}로 가운데를 잘라 씁니다 · 8MB 이하
+            {width}×{height}로 씁니다. 올릴 때 보일 곳을 고릅니다 · 8MB 이하
           </p>
         </div>
         <input

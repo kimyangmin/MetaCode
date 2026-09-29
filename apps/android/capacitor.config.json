@@ -1,0 +1,12 @@
+{
+  "appId": "me.kimyangmin.metacode",
+  "appName": "MetaCode",
+  "webDir": "www",
+  "server": {
+    "url": "https://metacode.kimyangmin.me",
+    "errorPath": "offline.html"
+  },
+  "android": {
+    "appendUserAgent": "MetaCodeAndroid"
+  }
+}
