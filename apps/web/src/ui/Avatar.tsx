@@ -8,6 +8,11 @@ interface AvatarProps {
   size?: number;
   /** 온라인 여부 점을 함께 그린다 */
   showStatus?: boolean;
+  /**
+   * 움직이는 사진(GIF로 올린 사진)이면 움직이게 그린다. 멤버 목록·정보 팝업만 켜고,
+   * 채팅 목록처럼 사진이 많이 모이는 곳은 멈춘 사진(첫 장면)을 쓴다.
+   */
+  animate?: boolean;
 }
 
 /** 불러오지 못한 사진을 다시 시도하는 간격. 마지막 간격을 계속 쓴다 */
@@ -31,10 +36,11 @@ function fallbackColor(id: string): string {
  * 프로필 사진. 연결이 불안정해서 사진을 못 불러오면 깨진 그림 대신 이름 첫 글자를 보여 주고,
  * 잠시 뒤와 네트워크가 돌아왔을 때 다시 불러온다.
  */
-export function Avatar({ user, size = 32, showStatus = false }: AvatarProps) {
-  const [state, setState] = useState({ url: user.avatarUrl, attempt: 0, failed: false });
+export function Avatar({ user, size = 32, showStatus = false, animate = false }: AvatarProps) {
+  const url = (animate && user.avatarAnimatedUrl) || user.avatarUrl;
+  const [state, setState] = useState({ url, attempt: 0, failed: false });
   // 사진 주소가 바뀌면(사진을 바꿈) 처음부터 다시 불러온다.
-  if (state.url !== user.avatarUrl) setState({ url: user.avatarUrl, attempt: 0, failed: false });
+  if (state.url !== url) setState({ url, attempt: 0, failed: false });
 
   useEffect(() => {
     if (!state.failed) return;
@@ -62,7 +68,7 @@ export function Avatar({ user, size = 32, showStatus = false }: AvatarProps) {
       ) : (
         <img
           key={state.attempt}
-          src={retryUrl(user.avatarUrl, state.attempt)}
+          src={retryUrl(url, state.attempt)}
           alt=""
           width={size}
           height={size}

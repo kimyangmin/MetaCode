@@ -1,6 +1,6 @@
 import type { UserDetail } from '@metacode/shared';
 import { useQuery } from '@tanstack/react-query';
-import type { CSSProperties } from 'react';
+import { type CSSProperties, Suspense, lazy } from 'react';
 import { apiFetch } from '../../api/client';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { type ProfileTarget, useProfileStore } from '../../stores/profile';
@@ -13,6 +13,9 @@ import { useCommunities, useMeRequired, useMembers, useOpenDm } from './hooks';
 import { memberColor } from './roles';
 
 const ROLE_LABEL = { OWNER: '소유자', ADMIN: '관리자', MEMBER: '' } as const;
+
+// 캐릭터는 내장 에셋(약 150KB)을 쓰므로 팝업을 처음 열 때 따로 불러온다.
+const ProfileCharacter = lazy(() => import('./ProfileCharacter'));
 const MARGIN = 8;
 /** 사라지는 애니메이션 길이 (styles.css의 popup-out과 같게) */
 const CLOSE_MS = 120;
@@ -95,7 +98,7 @@ function ProfileBody({ target }: { target: ProfileTarget }) {
   return (
     <>
       <div className="profile-popup__head">
-        <Avatar user={user} size={56} />
+        <Avatar user={user} size={56} animate />
         <div className="profile-popup__names">
           <strong style={{ color: color ?? undefined }}>{displayName(user)}</strong>
           <a
@@ -125,6 +128,12 @@ function ProfileBody({ target }: { target: ProfileTarget }) {
           ))}
         </div>
       )}
+      {/* 광장에서 쓰는 캐릭터가 걷는 모습. 불러오는 동안에도 자리를 잡아 팝업 크기가 바뀌지 않게 한다 */}
+      <div className="profile-popup__character" aria-label="캐릭터">
+        <Suspense fallback={null}>
+          <ProfileCharacter user={user} />
+        </Suspense>
+      </div>
       {user.id !== me.id && (
         <div className="profile-popup__actions">
           <button

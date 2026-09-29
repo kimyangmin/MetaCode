@@ -293,7 +293,7 @@ function AccountSettings({ me }: { me: UserDetail }) {
   return (
     <form className="settings-form" onSubmit={save}>
       <div className="settings-profile">
-        <Avatar user={me} size={88} />
+        <Avatar user={me} size={88} animate />
         <div className="settings-profile__actions">
           <button
             type="button"

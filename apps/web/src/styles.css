@@ -5584,3 +5584,33 @@ a {
 :root[data-titlebar] .update-notice {
   top: calc(var(--titlebar-h) + 12px);
 }
+
+/* 사용자 정보 팝업의 캐릭터 무대: 밤하늘 아래 잔디 위를 걷는다 (MetaCode 팔레트의 밤하늘·잔디색, --mc-*는 설정 창 안에서만 정의돼 값을 직접 씀) */
+.profile-popup__character {
+  position: relative;
+  display: grid;
+  place-items: end center;
+  height: 96px;
+  padding-bottom: 10px;
+  border-radius: 8px;
+  background: linear-gradient(to bottom, #1b1e30 0 62%, #84c669 62% 70%, #5f9a4a 70% 100%);
+  overflow: hidden;
+}
+
+/* 발밑 그림자 */
+.profile-popup__character::after {
+  content: '';
+  position: absolute;
+  bottom: 8px;
+  left: 50%;
+  width: 30px;
+  height: 6px;
+  border-radius: 50%;
+  background: rgb(0 0 0 / 0.28);
+  transform: translateX(-50%);
+}
+
+.profile-popup__character canvas {
+  position: relative;
+  z-index: 1;
+}

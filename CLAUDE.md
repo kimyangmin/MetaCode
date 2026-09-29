@@ -238,7 +238,10 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
   - 미리 보기 주소(`URL.createObjectURL`)는 여는 쪽이 만들고 닫을 때 지웁니다 (`cropSource`/`releaseCropSource`). 창 안의 effect에서 지우면 StrictMode의 가짜 언마운트 때 지워져 사진이 안 떴습니다.
   - 올린 원본은 적용 뒤 지우므로, 이미 올린 사진의 위치를 나중에 다시 고치지는 못합니다 (다시 올려야 함).
 - **여닫는 애니메이션:** 설정 창은 `ui/useExitTransition.ts`(값이 null이 된 뒤에도 잠깐 남겨 `data-closing`), `Dialog`는 스스로 닫을 때(Esc, 바깥, ✕)만 사라지는 애니메이션 뒤에 `onClose`를 부릅니다 (부모가 직접 내리면 바로 사라짐). 시간은 animationend 대신 setTimeout으로 잽니다 (움직임 줄이기 설정에서는 이벤트가 오지 않음). 멤버 목록은 내리지 않고 `.members-slot`의 폭을 줄입니다 (`inert`).
-- **사용자 정보 팝업:** 연 요소(`anchor`)를 다시 누르면 닫습니다 (`openProfile`이 같은 사람·같은 요소면 닫고, 바깥 누르기 처리는 그 요소를 건너뜀). 여닫을 때 애니메이션(`useExitTransition`).
+- **사용자 정보 팝업:** 연 요소(`anchor`)를 다시 누르면 닫습니다 (`openProfile`이 같은 사람·같은 요소면 닫고, 바깥 누르기 처리는 그 요소를 건너뜀). 여닫을 때 애니메이션(`useExitTransition`). 역할 아래에 그 사람의 광장 캐릭터(고른 색 그대로)가 걷는 무대가 있습니다 (`ProfileCharacter`, 내장 에셋 때문에 lazy, 직접 그린 캐릭터는 광장과 같은 `['assets','one',id,version]` 캐시).
+- **움직이는 사진(GIF):** 서버(`makeCoverImages`)가 첫 장면만 담은 멈춘 WebP와, 원본이 움직이면 움직이는 WebP(최대 150장면, 압축 폭탄 제한 안에서)를 만듭니다. 크롭은 장면마다 같은 곳을 자릅니다.
+  - 프로필 사진은 둘 다 저장합니다: `avatarKey`(멈춘 사진) + `avatarAnimatedKey`(`<id>-animated.webp`, 없으면 null) → DTO `avatarUrl` / `avatarAnimatedUrl`. 채팅 목록 등 사진이 많이 모이는 곳은 멈춘 사진, 멤버 목록·정보 팝업·설정의 내 사진은 움직이는 사진(`<Avatar animate />`).
+  - 커뮤니티 아이콘·배너는 움직이는 사진이면 그것 하나만 저장해 어디서나 움직입니다.
 - **채널 만들기:** 채널 목록의 "텍스트 채널"·"음성 채널" 머리글 오른쪽 +(관리자). 누른 구역의 종류가 골라진 채로 열립니다. 음성 채널이 없어도 관리자에게는 음성 채널 머리글을 보여 줍니다.
 - **데스크톱 제목 표시줄 (0.5.0):** `apps/desktop/src/main/titlebar.ts`, 웹 `features/desktop/TitleBar.tsx`
   - 메인 창은 OS 제목 표시줄 없이(`frame: false`, macOS는 `titleBarStyle: 'hidden'`으로 신호등만 남김) 띄우고, Windows·Linux는 메뉴 막대도 없앱니다(`Menu.setApplicationMenu(null)`, 개발 중에는 F12·Ctrl+Shift+I·F5를 되살림).
@@ -400,7 +403,7 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
 
 `apps/server/prisma/schema.prisma`가 기준입니다. 바꾸면 여기도 고칩니다.
 
-- `User` (구현됨): githubId, username(사용자 ID), displayName(GitHub 이름), avatarUrl(GitHub 사진), nickname, bio, avatarKey(올린 사진), character(광장 캐릭터 `{asset, colors, version?}`, null이면 기본)
+- `User` (구현됨): githubId, username(사용자 ID), displayName(GitHub 이름), avatarUrl(GitHub 사진), nickname, bio, avatarKey(올린 사진, 멈춘 것), avatarAnimatedKey(GIF로 올렸으면 움직이는 사진), character(광장 캐릭터 `{asset, colors, version?}`, null이면 기본)
 - `RefreshToken` (구현됨): userId, tokenHash, familyId, client, expiresAt, revokedAt
 - `Friendship` (구현됨): requesterId, addresseeId(둘이 기본 키), status(`PENDING` | `ACCEPTED`), createdAt, acceptedAt
 - `Community` (구현됨): name, ownerId, iconKey·bannerKey(올린 아이콘·배너, 없으면 null) / `CommunityMember`: userId, communityId, role(`OWNER` | `ADMIN` | `MEMBER`) / `Invite`: code(8자), expiresAt(7일), uses

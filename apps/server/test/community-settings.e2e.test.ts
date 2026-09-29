@@ -136,6 +136,26 @@ describe('커뮤니티 설정', () => {
     expect(data[i + 1]).toBeLessThan(60);
   });
 
+  it('움직이는 사진(GIF)은 아이콘·배너에서도 움직인다', async () => {
+    const { owner, community } = await setup();
+    const frames = await Promise.all(
+      ['#ff0000', '#00ff00'].map((color) =>
+        sharp({ create: { width: 320, height: 180, channels: 3, background: color } })
+          .png()
+          .toBuffer(),
+      ),
+    );
+    const gif = await sharp(frames, { join: { animated: true } })
+      .gif({ delay: [100, 100], loop: 0 })
+      .toBuffer();
+    expect((await upload(owner, community.id, 'banner', gif)).status).toBe(204);
+    const { bannerUrl } = await summaryOf(owner, community.id);
+    const file = await t.fetch(pathOf(bannerUrl!));
+    const meta = await sharp(Buffer.from(await file.arrayBuffer()), { animated: true }).metadata();
+    expect(meta.pages).toBe(2);
+    expect([meta.width, meta.pageHeight]).toEqual([960, 540]);
+  });
+
   it('아이콘·배너를 종류별 크기로 바꿔 쓰고, 초대 화면에도 아이콘이 보인다', async () => {
     const { owner, member, community, invite } = await setup();
     expect(await summaryOf(owner, community.id)).toMatchObject({ iconUrl: null, bannerUrl: null });

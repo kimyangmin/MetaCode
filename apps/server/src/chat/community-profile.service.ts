@@ -6,7 +6,12 @@ import {
   COMMUNITY_IMAGE_SIZE,
   type CommunityImageKind,
 } from '@metacode/shared';
-import { type CropRatio, SNIFF_BYTES, makeCover, sniffRasterFormat } from '../attachments/image.js';
+import {
+  type CropRatio,
+  SNIFF_BYTES,
+  makeCoverImages,
+  sniffRasterFormat,
+} from '../attachments/image.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { StorageService } from '../storage/storage.service.js';
 import { AccessService } from './access.service.js';
@@ -82,8 +87,10 @@ export class CommunityProfileService {
         throw new BadRequestException('JPEG, PNG, GIF, WebP, AVIF 이미지만 쓸 수 있습니다.');
       }
       const { width, height } = COMMUNITY_IMAGE_SIZE[kind];
-      const image = await makeCover(await this.storage.read(source), width, height, crop);
-      if (!image) throw new BadRequestException('이미지를 읽지 못했습니다.');
+      const images = await makeCoverImages(await this.storage.read(source), width, height, crop);
+      if (!images) throw new BadRequestException('이미지를 읽지 못했습니다.');
+      // 커뮤니티 아이콘·배너는 움직이는 사진(GIF)이면 움직이는 채로 쓴다.
+      const image = images.animated ?? images.still;
       const key = newImageKey(communityId, kind);
       await this.storage.write(key, image, 'image/webp');
       const previous = await this.prisma.community.findUniqueOrThrow({

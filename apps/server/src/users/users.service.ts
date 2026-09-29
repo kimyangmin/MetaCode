@@ -37,7 +37,14 @@ const AVATAR_UPLOAD_TTL_SECONDS = 10 * 60;
 /** 올린 원본을 잠깐 두는 곳 (사용자마다 하나, 적용하면 지운다) */
 const avatarUploadKey = (userId: string) => `avatar-uploads/${userId}`;
 /** 적용한 프로필 사진. 바꿀 때마다 새 이름이라 주소를 오래 캐시해도 된다 */
-const newAvatarKey = (userId: string) => `avatars/${userId}/${randomUUID()}.webp`;
+/** 멈춘 사진과 움직이는 사진(원본이 움직일 때만)의 키. 같은 무작위 ID를 쓴다 */
+const newAvatarKeys = (userId: string) => {
+  const id = randomUUID();
+  return {
+    still: `avatars/${userId}/${id}.webp`,
+    animated: `avatars/${userId}/${id}-animated.webp`,
+  };
+};
 
 /** 프로필 사진 주소의 앞부분 (PUBLIC_SERVER_URL). 서비스가 만들어질 때 설정한다 */
 let publicServerUrl = 'http://localhost:3000';
@@ -117,7 +124,8 @@ export class UsersService {
 
   /**
    * 프로필 사진 올리기 2단계: 올린 원본이 이미지인지 파일 앞부분으로 확인하고, 정사각형 WebP로 만들어 적용한다.
-   * crop이 있으면 사용자가 고른 곳을, 없으면 가운데를 자른다. 원본과 이전 사진은 지운다.
+   * crop이 있으면 사용자가 고른 곳을, 없으면 가운데를 자른다. GIF처럼 움직이는 사진이면 움직이는 WebP도
+   * 따로 만든다 (멈춘 사진은 채팅 목록 등에, 움직이는 사진은 멤버 목록·정보 팝업에). 원본과 이전 사진은 지운다.
    */
   async applyAvatar(userId: string, crop?: CropRatio): Promise<UserDetail> {
     const uploadKey = avatarUploadKey(userId);
@@ -132,10 +140,14 @@ export class UsersService {
       if (!avatar) throw new BadRequestException('이미지를 읽지 못했습니다.');
 
       const previous = await this.find(userId);
-      const avatarKey = newAvatarKey(userId);
-      await this.storage.write(avatarKey, avatar, 'image/webp');
-      const user = await this.prisma.user.update({ where: { id: userId }, data: { avatarKey } });
-      if (previous.avatarKey) await this.storage.remove([previous.avatarKey]);
+      const keys = newAvatarKeys(userId);
+      await this.storage.write(keys.still, avatar.still, 'image/webp');
+      if (avatar.animated) await this.storage.write(keys.animated, avatar.animated, 'image/webp');
+      const user = await this.prisma.user.update({
+        where: { id: userId },
+        data: { avatarKey: keys.still, avatarAnimatedKey: avatar.animated ? keys.animated : null },
+      });
+      await this.storage.remove(avatarKeysOf(previous));
       await this.announce(user);
       return toDetail(user);
     } finally {
@@ -149,9 +161,9 @@ export class UsersService {
     if (!previous.avatarKey) return toDetail(previous);
     const user = await this.prisma.user.update({
       where: { id: userId },
-      data: { avatarKey: null },
+      data: { avatarKey: null, avatarAnimatedKey: null },
     });
-    await this.storage.remove([previous.avatarKey]);
+    await this.storage.remove(avatarKeysOf(previous));
     await this.announce(user);
     return toDetail(user);
   }
@@ -255,8 +267,13 @@ export class UsersService {
 
 type ProfileSource = Pick<
   User,
-  'id' | 'username' | 'nickname' | 'avatarUrl' | 'avatarKey' | 'character'
+  'id' | 'username' | 'nickname' | 'avatarUrl' | 'avatarKey' | 'avatarAnimatedKey' | 'character'
 >;
+
+/** 올린 프로필 사진 파일들 (멈춘 사진, 움직이는 사진) */
+function avatarKeysOf(user: Pick<User, 'avatarKey' | 'avatarAnimatedKey'>): string[] {
+  return [user.avatarKey, user.avatarAnimatedKey].filter((key): key is string => !!key);
+}
 
 /** 인증 없이 주는 저장소 파일(프로필 사진, 커뮤니티 이미지)의 주소 */
 export function publicFileUrl(key: string): string {
@@ -269,6 +286,8 @@ export function toProfile(user: ProfileSource): UserProfile {
     username: user.username,
     displayName: user.nickname,
     avatarUrl: user.avatarKey ? publicFileUrl(user.avatarKey) : user.avatarUrl,
+    avatarAnimatedUrl:
+      user.avatarKey && user.avatarAnimatedKey ? publicFileUrl(user.avatarAnimatedKey) : null,
     character: (user.character as ProfileCharacter | null) ?? null,
   };
 }

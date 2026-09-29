@@ -94,43 +94,68 @@ export function cropPixels(
   };
 }
 
+/** 움직이는 이미지(GIF, 움직이는 WebP)를 움직이는 채로 만들 때 읽는 최대 장면 수 */
+export const MAX_ANIMATION_FRAMES = 150;
+
+/** 멈춘 사진과, 원본이 움직이면 움직이는 사진 */
+export interface CoverImages {
+  still: Buffer;
+  animated: Buffer | null;
+}
+
 /**
  * 프로필 사진: 정사각형(size px) WebP. crop이 없으면 가운데를 기준으로 자른다.
- * 움직이는 이미지는 첫 프레임으로 만든다. 읽을 수 없는 파일이면 null
+ * 움직이는 이미지면 움직이는 WebP도 만든다. 읽을 수 없는 파일이면 null
  */
 export async function makeAvatar(
   input: Buffer,
   size: number,
   crop?: CropRatio,
-): Promise<Buffer | null> {
-  return makeCover(input, size, size, crop);
+): Promise<CoverImages | null> {
+  return makeCoverImages(input, size, size, crop);
 }
 
 /**
  * 커뮤니티 아이콘·배너, 프로필 사진: crop으로 고른 곳(없으면 가운데)을 width×height로 채운 WebP.
- * 고른 곳의 비율이 조금 달라도 가운데를 채워 맞춘다. 이미지가 아니면 null
+ * still은 첫 장면만 담은 멈춘 사진, animated는 원본이 움직일 때만 모든 장면(최대 MAX_ANIMATION_FRAMES)을
+ * 담은 움직이는 사진이다. 이미지가 아니면 null
  */
-export async function makeCover(
+export async function makeCoverImages(
   input: Buffer,
   width: number,
   height: number,
   crop?: CropRatio,
-): Promise<Buffer | null> {
+): Promise<CoverImages | null> {
   try {
-    const options = { limitInputPixels: MAX_INPUT_PIXELS, animated: false };
-    let image = sharp(input, options).rotate();
-    if (crop) {
-      // 사용자는 회전된(보이는) 사진 위에서 골랐으므로, 회전을 먼저 반영한 크기로 잰다.
-      const meta = await sharp(input, options).metadata();
-      if (!meta.width || !meta.height) return null;
-      const rotated = (meta.orientation ?? 1) >= 5;
-      const shown = rotated
-        ? { width: meta.height, height: meta.width }
-        : { width: meta.width, height: meta.height };
-      // rotate() 다음에 extract()를 부르면 회전한 뒤의 사진에서 자른다 (sharp는 부른 순서대로 적용).
-      image = image.extract(cropPixels(crop, shown.width, shown.height));
-    }
-    return await image.resize(width, height, { fit: 'cover' }).webp({ quality: 85 }).toBuffer();
+    const meta = await sharp(input, { limitInputPixels: MAX_INPUT_PIXELS }).metadata();
+    if (!meta.width || !meta.height) return null;
+    const frameHeight = meta.pageHeight ?? meta.height;
+    // 모든 장면을 합친 크기도 압축 폭탄 제한 안에 들도록 장면 수를 줄인다.
+    const frames = Math.min(
+      meta.pages ?? 1,
+      MAX_ANIMATION_FRAMES,
+      Math.floor(MAX_INPUT_PIXELS / (meta.width * frameHeight)),
+    );
+    const render = (pages: number) => {
+      let image = sharp(input, { limitInputPixels: MAX_INPUT_PIXELS, pages }).rotate();
+      if (crop) {
+        // 사용자는 회전된(보이는) 사진 위에서 골랐으므로, 회전을 먼저 반영한 크기로 잰다.
+        const rotated = (meta.orientation ?? 1) >= 5;
+        const shown = rotated
+          ? { width: frameHeight, height: meta.width! }
+          : { width: meta.width!, height: frameHeight };
+        // rotate() 다음에 extract()를 부르면 회전한 뒤의 사진에서 자른다 (sharp는 부른 순서대로 적용).
+        // 움직이는 이미지는 장면마다 같은 곳을 자른다.
+        image = image.extract(cropPixels(crop, shown.width, shown.height));
+      }
+      return image
+        .resize(width, height, { fit: 'cover' })
+        .webp({ quality: pages > 1 ? 80 : 85 })
+        .toBuffer();
+    };
+    const still = await render(1);
+    const animated = frames > 1 ? await render(frames).catch(() => null) : null;
+    return { still, animated };
   } catch {
     return null;
   }

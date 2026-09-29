@@ -39,7 +39,7 @@ export function MemberList({ communityId }: { communityId: string }) {
                   onClick={(e) => openProfile(m.user, e, communityId)}
                   title={`${displayName(m.user)} 정보`}
                 >
-                  <Avatar user={m.user} size={32} showStatus />
+                  <Avatar user={m.user} size={32} showStatus animate />
                   <span
                     className="members__name"
                     style={{ color: memberColor(m.roleIds, roles) ?? undefined }}

@@ -101,7 +101,7 @@ export class UsersController {
   }
 }
 
-const AVATAR_FILE = /^[0-9a-f-]{36}\.webp$/;
+const AVATAR_FILE = /^[0-9a-f-]{36}(-animated)?\.webp$/;
 
 /**
  * 프로필 사진 파일. <img>로 바로 쓰도록 인증 없이 준다 (데스크톱 앱의 <img>는 토큰을 붙일 수 없다).

@@ -86,6 +86,29 @@ async function centerColor(url: string): Promise<number[]> {
   return [data[i]!, data[i + 1]!, data[i + 2]!];
 }
 
+/** 세 장면(빨강·초록·파랑)이 바뀌는 움직이는 GIF */
+const animatedGif = async () => {
+  const frames = await Promise.all(
+    ['#ff0000', '#00ff00', '#0000ff'].map((color) =>
+      sharp({ create: { width: 120, height: 60, channels: 3, background: color } })
+        .png()
+        .toBuffer(),
+    ),
+  );
+  return sharp(frames, { join: { animated: true } })
+    .gif({ delay: [100, 100, 100], loop: 0 })
+    .toBuffer();
+};
+
+/** 받은 WebP의 장면 수 */
+async function framesOf(url: string): Promise<number> {
+  const file = await t.fetch(avatarPath(url));
+  expect(file.status).toBe(200);
+  return (
+    (await sharp(Buffer.from(await file.arrayBuffer()), { animated: true }).metadata()).pages ?? 1
+  );
+}
+
 const isBlue = ([r, g, b]: number[]) => b! > 200 && r! < 60 && g! < 60;
 const isRed = ([r, g, b]: number[]) => r! > 200 && b! < 60 && g! < 60;
 
@@ -240,6 +263,28 @@ describe('프로필 사진', () => {
       await uploadAvatar(user, stored, { crop: { x: 0, y: 0, width: 0.5, height: 1 } })
     ).json()) as UserDetail;
     expect(isBlue(await centerColor(applied.avatarUrl))).toBe(true);
+  });
+
+  it('움직이는 사진(GIF)은 멈춘 사진과 움직이는 사진을 함께 만들고, 되돌리면 둘 다 지운다', async () => {
+    const user = await loginUser(t);
+    const res = await uploadAvatar(user, await animatedGif(), {
+      crop: { x: 0.25, y: 0, width: 0.5, height: 1 },
+    });
+    expect(res.status).toBe(200);
+    const applied = (await res.json()) as UserDetail;
+    expect(applied.avatarAnimatedUrl).toMatch(/-animated\.webp$/);
+    expect(await framesOf(applied.avatarUrl)).toBe(1);
+    expect(await framesOf(applied.avatarAnimatedUrl!)).toBe(3);
+
+    // 멈춘 사진을 올리면 움직이는 사진은 없고, 이전 움직이는 사진도 지운다.
+    const still = (await (await uploadAvatar(user, await png('#ff0000'))).json()) as UserDetail;
+    expect(still.avatarAnimatedUrl).toBeNull();
+    expect((await t.fetch(avatarPath(applied.avatarAnimatedUrl!))).status).toBe(404);
+
+    const gif = (await (await uploadAvatar(user, await animatedGif())).json()) as UserDetail;
+    await user.json<UserDetail>('/users/me/avatar', json('DELETE'));
+    expect((await t.fetch(avatarPath(gif.avatarAnimatedUrl!))).status).toBe(404);
+    expect((await t.fetch(avatarPath(gif.avatarUrl))).status).toBe(404);
   });
 
   it('이미지가 아니면 거절한다 (SVG 포함)', async () => {

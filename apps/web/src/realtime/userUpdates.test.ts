@@ -6,6 +6,7 @@ const alice = {
   username: 'alice',
   displayName: null,
   avatarUrl: 'https://gh/a',
+  avatarAnimatedUrl: null,
   character: null,
 };
 const bob = {
@@ -13,6 +14,7 @@ const bob = {
   username: 'bob',
   displayName: null,
   avatarUrl: 'https://gh/b',
+  avatarAnimatedUrl: null,
   character: null,
 };
 const renamed = { ...alice, displayName: '앨리스', avatarUrl: 'https://api/avatars/a/1.webp' };
@@ -35,6 +37,12 @@ describe('withUserProfile', () => {
     expect(next.pages[0]!.messages[1]!.replyTo.author).toEqual(renamed);
     // 바뀌지 않은 부분은 같은 객체를 쓴다.
     expect(next.pages[0]!.messages[1]!.author).toBe(bob);
+  });
+
+  it('움직이는 프로필 사진(GIF)만 바뀌어도 바꾼다', () => {
+    const gif = { ...alice, avatarAnimatedUrl: 'https://api/avatars/a/2-animated.webp' };
+    const next = withUserProfile({ member: { user: alice } }, gif);
+    expect(next.member.user.avatarAnimatedUrl).toBe(gif.avatarAnimatedUrl);
   });
 
   it('프로필에 붙은 다른 값(자기소개 등)은 남긴다', () => {

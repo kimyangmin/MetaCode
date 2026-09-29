@@ -10,8 +10,13 @@ export interface UserProfile {
   username: string;
   /** 다른 사람에게 보이는 닉네임. 정하지 않았으면 null (username을 보여 준다) */
   displayName: string | null;
-  /** 프로필 사진: 올린 사진, 없으면 GitHub 프로필 사진 */
+  /** 프로필 사진: 올린 사진(움직이는 사진이면 첫 장면), 없으면 GitHub 프로필 사진 */
   avatarUrl: string;
+  /**
+   * 올린 사진이 GIF처럼 움직이면 움직이는 사진 (없으면 null). 채팅 목록 등은 avatarUrl(멈춘 사진)을,
+   * 멤버 목록과 정보 팝업은 이것을 쓴다. 옛 서버·캐시에는 없을 수 있다.
+   */
+  avatarAnimatedUrl?: string | null;
   /** 광장 캐릭터. 고르지 않았으면 null (사용자 ID로 고른 기본 캐릭터, defaultCharacter) */
   character: ProfileCharacter | null;
 }
