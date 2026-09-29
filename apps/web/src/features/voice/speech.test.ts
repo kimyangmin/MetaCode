@@ -63,4 +63,11 @@ describe('SpeechDetector', () => {
     // 다시 attackMs를 채워야 켜진다.
     expect(run(detector, frames(LOUD, 3), 1000)).toEqual([[1040, true]]);
   });
+
+  it('기준을 넘겨주면 그 기준으로 본다 (입력 감도를 따라)', () => {
+    const detector = new SpeechDetector(options);
+    // 기본 기준(-45)보다 작지만 넘겨준 기준(-60)보다는 크다
+    expect(detector.push(-50, 0, -60)).toBeNull();
+    expect(detector.push(-50, 40, -60)).toBe(true);
+  });
 });

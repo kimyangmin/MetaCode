@@ -1,7 +1,13 @@
 import { type MouseEvent, useEffect, useRef, useState } from 'react';
 import { getDesktopBridge, isDesktop } from '../../platform';
 import { useSettingsStore } from '../../stores/settings';
-import { DeviceSelect, InputGainSlider, OutputVolumeSlider } from './devices';
+import {
+  DeviceSelect,
+  InputGainSlider,
+  InputSensitivity,
+  NoiseSuppressionToggle,
+  OutputVolumeSlider,
+} from './devices';
 import { useChannelLabel } from './hooks';
 import { ScreenPicker } from './ScreenPicker';
 import { useCall, useVoiceStore } from './store';
@@ -241,6 +247,8 @@ function VoiceMenu({
       {kind === 'mic' ? (
         <>
           <DeviceSelect kind="audioinput" />
+          <NoiseSuppressionToggle />
+          <InputSensitivity />
           <InputGainSlider />
         </>
       ) : (

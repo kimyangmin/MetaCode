@@ -11,6 +11,7 @@ import {
 import type { AppSocket } from '../../realtime/RealtimeProvider';
 import { trackVolume } from './calls';
 import type { VoiceConnection } from './connection';
+import type { Sensitivity } from './gate';
 import type { ScreenQuality } from './screenQuality';
 import { useVoiceStore } from './store';
 
@@ -169,9 +170,21 @@ export class VoiceController {
   }
 
   /** 마이크 증폭 (0~2, 1이 원래 크기). 기억하고 통화 중이면 바로 적용한다 */
-  async setInputGain(value: number): Promise<void> {
+  setInputGain(value: number): void {
     store().setInputGain(value);
-    await this.connection?.setInputGain(value);
+    this.connection?.setInputGain(value);
+  }
+
+  /** RNNoise 잡음 제거 켜기/끄기. 기억하고 통화 중이면 바로 적용한다 */
+  async setNoiseSuppression(on: boolean): Promise<void> {
+    store().setNoiseSuppression(on);
+    await this.connection?.setNoiseSuppression(on);
+  }
+
+  /** 입력 감도(자동 또는 직접 정한 문턱). 기억하고 통화 중이면 바로 적용한다 */
+  setSensitivity(sensitivity: Sensitivity): void {
+    store().setSensitivity(sensitivity);
+    this.connection?.setSensitivity(store().sensitivity);
   }
 
   /** 들리는 소리 전체의 크기 (0~1). 기억하고 통화 중이면 바로 적용한다 */
@@ -312,12 +325,13 @@ export class VoiceController {
     });
     this.connection = conn;
     const { muted, deafened, inputDeviceId, outputDeviceId, inputGain } = store();
+    const { noiseSuppression, sensitivity } = store();
     try {
       const micOk = await conn.connect(url, token, {
         micEnabled: !muted && !deafened,
         inputDeviceId,
         outputDeviceId,
-        inputGain,
+        mic: { noiseSuppression, gain: inputGain, sensitivity },
       });
       if (this.connection !== conn) return;
       store().setSession({ channelId, status: 'connected', listenOnly: !micOk });

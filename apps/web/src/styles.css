@@ -4118,3 +4118,86 @@ a {
   flex-basis: 100%;
   margin: 0;
 }
+
+/* ── 잡음 제거, 입력 감도 ── */
+
+.voice-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.sensitivity__modes {
+  display: inline-flex;
+  align-self: flex-start;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.sensitivity__modes button {
+  padding: 3px 10px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.sensitivity__modes button[aria-checked='true'] {
+  background: var(--bg-active);
+  color: var(--fg);
+}
+
+/* 실시간 막대: 음량(왼쪽부터 채움)과 문턱(세로 선). 문턱을 넘으면 초록 */
+.sensitivity-meter {
+  position: relative;
+  height: 14px;
+  overflow: visible;
+  border-radius: 7px;
+  background: var(--bg-input);
+}
+
+.sensitivity-meter__level {
+  width: 0;
+  height: 100%;
+  border-radius: 7px;
+  background: var(--muted);
+  transition: width 40ms linear;
+}
+
+.sensitivity-meter__level[data-open='true'] {
+  background: var(--ok);
+}
+
+.sensitivity-meter__threshold {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  left: 50%;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--fg);
+  transform: translateX(-1px);
+  pointer-events: none;
+}
+
+.sensitivity-meter[data-manual='false'] .sensitivity-meter__threshold {
+  opacity: 0.6;
+}
+
+/* 직접 정하기: 막대 전체를 덮는 투명한 슬라이더로 세로 선을 끈다 */
+.sensitivity-meter__slider {
+  position: absolute;
+  inset: -4px 0;
+  width: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: ew-resize;
+}

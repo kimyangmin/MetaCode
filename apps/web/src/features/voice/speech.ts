@@ -30,9 +30,12 @@ export class SpeechDetector {
     },
   ) {}
 
-  /** 상태가 바뀌었으면 새 상태, 그대로면 null */
-  push(levelDb: number, timeMs: number): boolean | null {
-    const loud = levelDb >= this.options.thresholdDb;
+  /**
+   * 상태가 바뀌었으면 새 상태, 그대로면 null.
+   * thresholdDb를 주면 그 기준으로 본다 (입력 감도: 소리 문턱과 같은 기준을 쓰도록)
+   */
+  push(levelDb: number, timeMs: number, thresholdDb = this.options.thresholdDb): boolean | null {
+    const loud = levelDb >= thresholdDb;
     if (this.speaking) {
       if (loud) this.lastLoudAt = timeMs;
       else if (timeMs - this.lastLoudAt >= this.options.releaseMs) return this.set(false);
