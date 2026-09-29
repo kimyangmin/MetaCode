@@ -7,6 +7,7 @@ import { useProfileStore } from '../../stores/profile';
 import { useIsOnline } from '../../stores/presence';
 import { Avatar } from '../../ui/Avatar';
 import { displayName } from '../../ui/format';
+import { FriendButton } from '../friends/FriendButton';
 import { useCommunities, useMeRequired, useMembers, useOpenDm } from './hooks';
 import { memberColor } from './roles';
 
@@ -117,16 +118,19 @@ function ProfileBody() {
         </div>
       )}
       {user.id !== me.id && (
-        <button
-          type="button"
-          className="button button--primary"
-          onClick={() => {
-            close();
-            void openDm([user.id]);
-          }}
-        >
-          메시지 보내기
-        </button>
+        <div className="profile-popup__actions">
+          <button
+            type="button"
+            className="button button--primary"
+            onClick={() => {
+              close();
+              void openDm([user.id]);
+            }}
+          >
+            메시지 보내기
+          </button>
+          <FriendButton user={user} />
+        </div>
       )}
     </>
   );

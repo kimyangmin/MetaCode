@@ -3,6 +3,7 @@ export * from './domain/plaza.js';
 export * from './domain/limits.js';
 export * from './api/auth.js';
 export * from './api/user.js';
+export * from './api/friend.js';
 export * from './api/presence.js';
 export * from './api/community.js';
 export * from './api/channel.js';

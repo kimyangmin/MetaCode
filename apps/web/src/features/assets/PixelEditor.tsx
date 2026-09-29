@@ -98,6 +98,10 @@ type Drag =
 
 const TRIM_FEET_KEY = 'metacode:editor-trim-feet';
 
+function trimMessage(trimmed: { animations: number; rows: number }): string {
+  return `애니메이션 ${trimmed.animations}개의 발 아래 빈 줄을 정리했습니다 (최대 ${trimmed.rows}줄).`;
+}
+
 function readTrimFeet(): boolean {
   try {
     return localStorage.getItem(TRIM_FEET_KEY) !== 'off';
@@ -574,7 +578,7 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
 
   // ── 저장 ──
   const save = async () => {
-    const trimmed = doc.kind === 'character' && trimFeet ? editor.trimBelowFeet() : 0;
+    const trimmed = doc.kind === 'character' && trimFeet ? editor.trimBelowFeet() : null;
     const result = assetManifestSchema.safeParse(toManifest(editor.doc));
     if (!result.success) {
       setStatus({ kind: 'error', text: result.error.issues.map((i) => i.message).join(' ') });
@@ -588,9 +592,7 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
       editor.markSaved();
       setStatus({
         kind: 'ok',
-        text: trimmed
-          ? `저장했습니다. 발 아래 빈 줄 ${trimmed}개를 정리했습니다.`
-          : '저장했습니다.',
+        text: trimmed?.animations ? `저장했습니다. ${trimMessage(trimmed)}` : '저장했습니다.',
       });
     } catch (err) {
       setStatus({
@@ -971,11 +973,11 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
                   type="button"
                   className="button"
                   onClick={() => {
-                    const rows = editor.trimBelowFeet();
+                    const trimmed = editor.trimBelowFeet();
                     setStatus({
                       kind: 'ok',
-                      text: rows
-                        ? `발 아래 빈 줄 ${rows}개를 정리했습니다.`
+                      text: trimmed.animations
+                        ? trimMessage(trimmed)
                         : '발 아래에 정리할 빈 줄이 없습니다.',
                     });
                   }}
@@ -984,8 +986,9 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
                 </button>
               </div>
               <p className="form__hint">
-                광장은 그림의 맨 아래를 발밑으로 세웁니다. 모든 프레임에서 함께 비어 있는 아래
-                줄만큼 그림을 내려서 캐릭터가 떠 보이지 않게 합니다 (걷기의 들썩임은 그대로).
+                광장은 그림의 맨 아래를 발밑으로 세웁니다. 애니메이션마다 모든 프레임에서 함께 비어
+                있는 아래 줄만큼 그림을 내려서 캐릭터가 떠 보이지 않게 합니다 (걷기의 들썩임은
+                그대로).
               </p>
             </section>
           )}

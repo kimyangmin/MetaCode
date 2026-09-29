@@ -101,6 +101,7 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
   - 말풍선: `message:created`를 채팅과 같이 받아서, 이 광장의 채널(분수 광장은 커뮤니티의 모든 텍스트 채널, 캠프는 그 DM)이면 작성자 위에 띄운다. 서버가 볼 수 있는 채널의 메시지만 보내므로 읽기 권한이 그대로 반영된다. 80자에서 줄이고, 글 길이에 따라 3~8초, 한 사람에 최대 3개까지 쌓는다. 첨부 메시지는 캐릭터의 첨부 모션(`emote`, 한 번 재생 + 제자리 뛰기)과 머리 위의 작은 표시(`🖼️ N` / `📎 N`, 2.5초).
   - 이름표와 말풍선은 캔버스가 아니라 위에 겹친 DOM에 그린다(글자를 도트 배율로 키우지 않는 규칙). 패널 가장자리에서는 말풍선을 안쪽으로 밀고 꼬리만 캐릭터를 가리킨다.
   - 키보드: Phaser의 키보드 입력은 끄고(창 전체의 키를 가로채므로), 광장 패널(`tabIndex=0`)의 keydown/keyup으로만 받는다. 광장을 누르면 포커스가 가고, 채팅 입력창의 키는 캐릭터를 움직이지 않는다. 창이 포커스를 잃으면 눌린 키를 비운다.
+  - 포커스 옮기기(`layout/panelFocus.ts`, `SplitView`): Shift+Tab은 광장 ↔ 채팅 입력창, 광장에서 `/`는 채팅 입력창으로 (`/`는 입력되지 않음). 옮길 패널이 접혀 있으면 펼치고, 광장처럼 펼칠 때 새로 그려지는 패널은 몇 프레임 기다렸다 포커스를 줍니다. Shift+Tab은 분할 화면 안(또는 아무 데도 포커스가 없을 때)에서만 가로채고 대화 상자 등에서는 원래대로 둡니다.
   - 분할 화면: react-resizable-panels v4. 두 패널 모두 접을 수 있고(채팅 최소 300px, 광장 240px), 크기와 접힘은 localStorage에 기억한다. 접힌 채팅은 입력 중이던 글이 남도록 그대로 두고(`inert`), 접힌 광장은 내려서(Phaser 게임 제거, `plaza:unwatch`) 그리기와 구독을 멈춘다. 보기 전환 버튼은 보이는 첫 패널의 머리글에 있다.
   - Phaser는 약 1.4MB라 광장을 처음 열 때 따로 불러온다(`React.lazy`).
   - 캐릭터(`characterSprite.ts`): 고른 캐릭터(없으면 `defaultCharacter(userId)`, 사용자 ID로 고른 기본 캐릭터와 색)를 `characterPalette`로 색을 바꿔 텍스처 하나로 만들고, 같은 모습이면 함께 쓴다(`char:<characterKey>`). 멈추면 `idle-<방향>`, 움직이면 `walk-<방향>`(120ms 동안 안 움직여야 멈춘 것으로 봄, 받은 위치 사이에서 걷기가 끊기지 않게), 첨부 메시지면 `emote`를 한 번. 애니메이션이 바뀔 때 처음 프레임부터 튼다.
@@ -118,18 +119,21 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
   - 미리보기: 참여자 목록(과 DM 머리글)의 공유 중인 사람에게 마우스를 0.3초 올리면 옆에 작게 띄웁니다. 같은 통화에 있을 때만 그 사람의 화면 영상을 받고(소리는 안 받음), 마우스를 떼면 구독을 끊습니다 (`previewing`, `SharePreview.tsx`).
   - 화질(`screenQuality.ts`): 공유를 시작할 때 고릅니다 (부드럽게 720p60 / 선명하게 1080p30 / 최고 1080p60, 기본 최고, localStorage에 기억). 게임 공유가 끊기지 않게 H.264(하드웨어 인코딩), 시뮬캐스트 끔, `degradationPreference: maintain-framerate`(대역폭이 모자라면 해상도를 먼저 낮춤), `contentHint: motion`으로 보냅니다. 사용자가 적어(8명 안팎) 서버 부담보다 화질을 우선합니다.
   - 받고 있는 화면 영상은 `VoiceConnection.screens`에 사람별로 기억합니다. 미리보기로 받던 영상을 LIVE로 크게 볼 때는 구독이 새로 생기지 않아 `TrackSubscribed`가 오지 않으므로, `watch`/`preview`가 기억한 영상을 바로 넘깁니다 (예전엔 "불러오는 중"에서 멈췄음).
-  - 보기 창(`ScreenViewer.tsx`)은 떠 있는 창입니다: 머리글을 끌어 옮기고 가장자리·모서리를 끌어 크기를 바꿉니다(위치·크기는 localStorage, `floatingFrame.ts`). 크게 보기(머리글 두 번 누르기), 전체 화면, ⧉로 새 창 분리. 분리한 창은 같은 출처의 빈 창(`openPopupWindow`, 이름 `metacode-screen`)에 메인 창이 React 포털로 그리는 것이라 통화 연결을 새로 만들지 않습니다 (같은 신원으로 두 번 들어가면 LiveKit이 앞의 연결을 끊음). 데스크톱은 이 빈 창을 `isScreenPopup`으로 허락합니다 (0.4.0부터, 이전 앱은 안내만).
+  - 보기 창(`ScreenViewer.tsx`)은 떠 있는 창입니다: 머리글을 끌어 옮기고 가장자리·모서리를 끌어 크기를 바꿉니다(위치·크기는 localStorage, `floatingFrame.ts`). 크게 보기(머리글 두 번 누르기), 전체 화면(⛶ 또는 영상 두 번 누르기, `useFullscreen.ts`), ⧉로 새 창 분리. 전체 화면은 영상 영역(`.screen-viewer__stage`)을 `requestFullscreen`하고, 거절되면 창 안을 꽉 채웁니다(Esc로 끝냄). 데스크톱 0.4.0까지는 권한 처리기에 `fullscreen`이 빠져 있어 늘 거절되었고 0.4.1부터 허락합니다. 분리한 창은 같은 출처의 빈 창(`openPopupWindow`, 이름 `metacode-screen`)에 메인 창이 React 포털로 그리는 것이라 통화 연결을 새로 만들지 않습니다 (같은 신원으로 두 번 들어가면 LiveKit이 앞의 연결을 끊음). 데스크톱은 이 빈 창을 `isScreenPopup`으로 허락합니다 (0.4.0부터, 이전 앱은 안내만).
   - 데스크톱 화면 공유: Electron의 getDisplayMedia는 고르는 창이 없어서, 웹이 브리지(`screen.getSources`)로 받은 목록을 보여 주고 고른 것(`screen.select`, 30초 유효)을 메인 프로세스의 `setDisplayMediaRequestHandler`가 넘겨줍니다. 고르지 않은 요청과 앱 화면이 아닌 요청은 거절합니다. 시스템 소리(loopback)는 Windows에서만 됩니다. 데스크톱 0.1.0에는 이 브리지가 없어서 "새 버전 설치" 안내가 뜹니다.
-  - 데스크톱: Electron은 권한 처리기가 없으면 모든 권한을 허락하므로, 앱 화면에만 마이크·스피커 선택·클립보드 쓰기를 허락하고 나머지(카메라 포함)는 거절합니다 (`apps/desktop/src/main/permissions.ts`).
+  - 데스크톱: Electron은 권한 처리기가 없으면 모든 권한을 허락하므로, 앱 화면에만 마이크·스피커 선택·클립보드 쓰기·전체 화면을 허락하고 나머지(카메라 포함)는 거절합니다 (`apps/desktop/src/main/permissions.ts`).
   - 로컬에서 두 사람 음성 확인: 브라우저 패널은 마이크를 막으므로, 두 번째 사용자는 `@livekit/rtc-node`로 음을 보내는 스크립트로 확인했습니다. 실제 마이크로 말하는 확인은 사람이 해야 합니다.
-- **데스크톱 설치 파일:** `apps/desktop/electron-builder.yml`, `pnpm --filter @metacode/desktop dist:win` (NSIS, 현재 사용자에 설치, 서명 없음). 배포용은 자동 업데이트 항목의 워크플로가 만듭니다.
+- **데스크톱 설치 파일:** `apps/desktop/electron-builder.yml`, `pnpm --filter @metacode/desktop dist:win` (NSIS, 현재 사용자에 설치, 서명 없음), `dist:mac`(dmg+zip, arm64·x64), `dist:linux`(AppImage+deb, x64). 배포용은 자동 업데이트 항목의 워크플로가 만듭니다.
+  - macOS는 Apple 개발자 서명 없이 임시 서명(`identity: '-'`)만 합니다. Apple Silicon은 서명이 아예 없으면 실행되지 않고, 서명 없이 hardened runtime을 켜면 JIT 권한이 없어 뜨지 않으므로 `hardenedRuntime: false`입니다. 받은 앱을 처음 열 때 "확인되지 않은 개발자" 경고가 뜹니다 (시스템 설정 → 개인정보 보호 및 보안 → 그래도 열기).
+  - deb는 `homepage`(package.json)와 `maintainer`가 있어야 만들어집니다. Linux 실행 파일 이름은 `metacode`, 창과 `.desktop`을 묶으려고 `desktopName`을 둡니다.
   - 설치한 앱은 운영 사이트(`https://metacode.kimyangmin.me`)를 앱 창에서 엽니다 (웹 빌드를 앱에 넣지 않음). 개발 중(`app.isPackaged`가 아님)에는 `localhost:5173`, 둘 다 `METACODE_WEB_URL`/`METACODE_API_URL`로 바꿀 수 있습니다. 앱 안에는 메인 프로세스와 preload만 들어갑니다.
   - 브리지 호출, 권한, 창 이동은 웹 주소와 **같은 출처**인지로 판단합니다 (`isAppUrl`). 다른 사이트로 이동하지 못하고, 외부 링크는 시스템 브라우저로 엽니다.
   - 설치한 앱은 이름(productName)이 MetaCode라 사용자 데이터가 `%APPDATA%\MetaCode`에 따로 생깁니다. 개발용 앱(`@metacode/desktop`)과 로그인, 한 번에 하나만 실행 잠금(`requestSingleInstanceLock`)이 섞이지 않습니다 (처음엔 이름이 같아서 개발용 앱이 켜져 있으면 설치한 앱이 바로 꺼졌음).
 - **데스크톱 자동 업데이트:** `apps/desktop/src/main/updater.ts`(electron-updater), `.github/workflows/desktop-release.yml`, 웹 `features/desktop/UpdateNotice.tsx`
-  - `desktop-v<버전>` 태그를 push하면 Actions의 Windows 러너가 설치 파일 + `.blockmap` + `latest.yml`을 만들어 GitHub Release(Latest)로 올립니다. 태그와 `apps/desktop/package.json` 버전이 다르면 실패합니다. 저장소가 공개라서 앱에 토큰이 필요 없습니다.
+  - `desktop-v<버전>` 태그를 push하면 Actions가 Windows·macOS·Linux 러너에서 각각 설치 파일 + `.blockmap` + `latest*.yml`을 만들고, 모두 끝나면 GitHub Release(Latest) 하나로 올립니다 (한 OS라도 실패하면 올리지 않음). 태그와 `apps/desktop/package.json` 버전이 다르면 실패합니다. 저장소가 공개라서 앱에 토큰이 필요 없습니다.
   - 앱(설치한 것만)은 켤 때와 4시간마다 확인하고, 백그라운드에서 받아 두었다가 앱을 끌 때 설치합니다. 받으면 브리지 `updates`로 웹에 알려 화면 위에 "다시 시작"을 띄웁니다 (`quitAndInstall(true, true)`: 조용히 설치 후 다시 켬).
   - 앱은 저장소의 **Latest Release**를 보므로, 데스크톱이 아닌 Release를 Latest로 올리면 업데이트 확인이 깨집니다.
+  - 스스로 설치하는 것은 Windows와 Linux AppImage뿐입니다. 서명하지 않은 macOS 앱(Squirrel.Mac은 서명을 확인함)과 deb로 설치한 Linux 앱(`APPIMAGE` 환경변수가 없음)은 `manual` 모드로 받지 않고 새 버전이 있다는 것만 알려(`update-available` → `UpdateReadyInfo.manual`) 웹이 "새 버전 받기"를 띄웁니다 (0.4.1부터).
   - 코드 서명을 하지 않아서 받은 설치 파일의 서명은 확인하지 않습니다. 서명을 도입하면 `electron-builder.yml`의 `win.publisherName`을 넣어 확인하게 합니다.
   - 0.2.0 이하 앱에는 `updates` 브리지가 없어서, 웹이 "새 버전 받기"(Releases 링크) 안내를 띄웁니다.
   - 업데이트 캐시 폴더 이름은 패키지 이름에서 나와 `@metacodedesktop-updater`입니다 (`%LOCALAPPDATA%` 아래).
@@ -142,8 +146,15 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
 - **채팅 편의:**
   - 답장: `message:send`의 `replyToId`(같은 채널의 메시지만), DTO의 `replyTo`(앞 120자, 원래 메시지가 지워지면 null). 전달: `message:forward`(볼 수 있는 메시지를 쓸 수 있는 채널로, 보낸 사람은 전달한 사람, `forwarded: true`). 전달할 때 첨부는 저장소 파일까지 복사해서 원래 채널이 지워져도 남습니다.
   - 메시지 우클릭 메뉴(답장, 전달, 텍스트 복사, 링크 복사). 글을 골라 둔 상태면 브라우저 기본 메뉴를 씁니다.
-  - 링크: `ui/links.ts`의 `splitLinks`로 http(s) 주소만 나눠 React 요소로 그립니다 (HTML을 해석하지 않음, javascript: 주소는 글자로 남음). 새 창으로 열리고, 데스크톱은 setWindowOpenHandler가 시스템 브라우저로 엽니다.
+  - 마크다운(`ui/markdownParser.ts` → `ui/Markdown.tsx`): Discord와 비슷한 범위. 블록은 ```코드 블록```, `>` 인용, `>>>` 끝까지 인용, `#`~`###` 제목, `-`/`*`/`1.` 목록, 나머지는 문단(줄바꿈 유지). 글자는 `**굵게**`, `*기울임*`/`_기울임_`(단어 속 `_`는 제외), `__밑줄__`, `~~취소선~~`, `||스포일러||`(누르면 보임), `` `코드` ``, `[글](https://…)`, `\`로 기호 그대로. 파서가 트리를 만들고 React 요소로 그리므로 HTML을 해석하지 않습니다.
+  - 링크: http(s) 주소만 링크로 만듭니다 (`ui/links.ts`의 `splitLinks`, `[글](주소)`도 http(s)만. javascript: 주소는 글자로 남음). 새 창으로 열리고, 데스크톱은 setWindowOpenHandler가 시스템 브라우저로 엽니다.
+  - 광장 말풍선과 답장 미리보기는 `markdownToPlain`으로 기호를 뺀 글을 씁니다 (스포일러는 `▒`로 가림).
+  - GIF(`image/gif`, 15MB 이하)는 목록에서 썸네일(첫 장면만 담긴 WebP) 대신 원본을 틀어 움직이게 합니다. 더 크면 썸네일에 GIF 표시만 하고 크게 보기에서 움직입니다.
+  - 목록을 맨 아래에서 400px 넘게 올리면 "맨 아래로" 버튼이 뜨고, 그 사이 온 메시지 수를 함께 보여 줍니다.
+  - 여러 줄 메시지의 아바타는 위에 붙입니다 (`.message__gutter`의 `align-items: flex-start`, 예전엔 버튼이 줄 높이만큼 늘어나 가운데로 내려갔음).
   - 앱 화면의 글자는 고르거나 끌 수 없게(`user-select: none`) 하고, 메시지 내용·입력칸·정보 팝업만 고를 수 있습니다.
+  - 채팅 영역 잡기(`features/chat/messageSelection.ts`, `MessageList`): Ctrl과 Shift를 **함께 눌렀다 떼면**(사이에 다른 키가 없을 때, `createModifierChord`) 화면 맨 아래에 보이는 메시지부터 잡기 시작합니다. 누르는 순간이 아니라 뗄 때 시작해서 Ctrl+Shift+Z 같은 단축키를 방해하지 않습니다. Shift+↑↓로 범위를 늘리고(↑↓만 누르면 한 칸 옮김), 잡기 중에는 메시지를 눌러 끌어서도 잡습니다. D = 범위 안의 **내** 메시지만 삭제(확인 창, 한 개씩 `message:delete`), C = "[시각] 이름: 내용" 기록 복사(날짜 줄 포함), F = 전달 창(여러 개면 오래된 것부터 차례로 `message:forward`), Esc = 끝. 글자 키는 한글 자판에서도 되도록 `e.code`(KeyD 등)로 봅니다. 시작할 때 입력창 포커스를 뺍니다.
+  - 복사는 `ui/clipboard.ts`의 `copyText`(Clipboard API가 막히면 `execCommand('copy')`로 한 번 더)를 씁니다.
   - 사용자 정보 팝업(`stores/profile.ts`, `ProfilePopup`): 메시지·멤버 목록·통화 참여자의 아바타나 이름을 누르면 뜹니다. 멤버 목록은 예전처럼 바로 DM을 열지 않고 팝업의 "메시지 보내기"로 엽니다. 멤버 목록 보이기/숨기기(👥)는 localStorage에 기억합니다.
 - **패널 배치와 분리:** `layout/SplitView.tsx`, `layout/arrangement.ts`, `stores/layout.ts`, `layout/Popout.tsx`
   - 머리글의 ⠿를 끌어 분할 영역의 가장자리(상하좌우 중 가장 가까운 쪽)에 놓으면 그쪽으로 옮깁니다. 배치(방향, 앞 패널)는 localStorage에 기억하고, 크기는 방향별로 기억합니다.
@@ -156,6 +167,11 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
   - API: `PATCH /communities/:id {name}`, 아이콘·배너는 프로필 사진과 같은 흐름 `POST /communities/:id/images/:kind/upload` → 저장소에 PUT → `PUT /communities/:id/images/:kind`(매직 바이트 확인, 아이콘 256×256·배너 960×540으로 가운데를 채워 자른 WebP, `community-images/<id>/<종류>-<무작위>.webp`), `DELETE`로 지우기. 바뀌면 `community:updated`로 알립니다.
   - 이미지는 `GET /community-images/<id>/<file>`로 **인증 없이** 줍니다 (초대 화면은 아직 멤버가 아니고, 데스크톱 `<img>`는 토큰을 못 붙임. 주소에 무작위 ID). 1년 캐시(immutable). 커뮤니티를 지우면 이미지도 지웁니다.
   - 아이콘은 왼쪽 커뮤니티 목록과 초대 화면(`InviteInfo.communityIconUrl`), 배너는 채널 목록 위(16:9)에 보입니다.
+- **친구:** `apps/server/src/friends/`, 웹 `features/friends/`
+  - `Friendship`(requesterId, addresseeId, status `PENDING`|`ACCEPTED`): 두 사람 사이에 줄 하나. 사용자 ID(username)로 요청하고, 상대의 요청이 이미 와 있으면 요청만으로 친구가 됩니다. 거절·취소·끊기는 줄을 지웁니다.
+  - API: `GET /friends`(friends/incoming/outgoing + 온라인 여부), `POST /friends/requests {username}`, `POST /friends/requests/:userId/accept`, `DELETE /friends/:userId`(거절·취소·끊기). 바뀔 때마다 두 사람의 `user:` 방에 `friend:updated {userId, status}`(상대 기준 관계)를 보내고 웹은 친구 목록을 다시 받습니다.
+  - 친구끼리는 커뮤니티·DM이 겹치지 않아도 온라인 상태(`presenceAudience`)와 프로필 변경(`user:updated`, 요청 중 포함)을 받습니다.
+  - 화면: DM 홈(대화를 고르지 않았을 때)이 친구 화면(온라인 · 모두 · 대기 중 · 친구 추가), DM 목록 위 "친구"와 왼쪽 DM 아이콘에 받은 요청 표시, 사용자 정보 팝업의 친구 버튼(추가/취소/수락/끊기), 새 대화 창에 친구 목록(검색하지 않아도 체크해서 그룹 대화).
 - **프로필 (닉네임, 자기소개, 사진):** `apps/server/src/users/`
   - 사용자 ID는 GitHub 로그인 이름(`username`)이고 바꿀 수 없습니다. 다른 사람에게 보이는 이름은 `nickname`(없으면 username), 자기소개는 `bio`입니다. DTO의 `displayName`은 닉네임입니다 (GitHub 이름은 DB의 `displayName`에 남지만 화면에는 쓰지 않음).
   - GitHub로 다시 로그인하면 username, GitHub 이름, GitHub 사진만 맞추고 닉네임·자기소개·올린 사진은 건드리지 않습니다.
@@ -186,13 +202,13 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
   - 설정 → 에셋(`AssetSettings`, 지연 로딩): 내 캐릭터. 커뮤니티 타일·오브젝트와 광장 맵 편집은 커뮤니티 설정 → 광장(`CommunityPlazaAssets`)에 있습니다. 새로 그리기, 내장 에셋 복제해서 시작, 편집, 삭제.
   - 도트 에디터(`PixelEditor`, 편집 로직은 `editorModel.ts`의 `PixelDocument`): 연필·지우개·채우기·스포이트·올가미·자르기, 좌우 대칭, 앞 프레임 겹쳐 보기, 되돌리기(붓질 한 번 = 한 단계, 색 고르기 드래그도 한 단계), 팔레트 편집(지운 색의 픽셀은 투명), 프레임 넣기·복제·옮기기·지우기, 애니메이션 미리보기, PNG 가져오기(프레임 크기 또는 가로로 이어 붙인 시트, 64색이 넘으면 가까운 색)·내보내기. 오른쪽 버튼은 지우개.
   - 선택·자르기(`selection.ts`): 올가미는 그린 다각형 안(픽셀 가운데 기준)을 고르고, 고른 곳을 끌거나 방향키로 옮깁니다. 옮기는 동안은 떠 있는 상태(`lifted`: 아래 그림 `base` + 얹은 값)라 지나간 자리의 그림이 지워지지 않습니다. 선택은 고른 프레임에서 다른 편집이 없을 때만(`version`이 같을 때) 살아 있고, 복사한 조각은 같은 자리에 붙습니다 (다른 프레임·애니메이션에 붙여 맞추기 쉽게). 자르기는 사각형 밖을 지우고(이 프레임 또는 모든 프레임), "그림 크기도 맞추기"면 캐릭터는 가로 = max(사각형 가로, 세로/2)로 발밑 가운데, 오브젝트는 16px 단위로 왼쪽 아래에 둡니다.
-  - 발 아래 정리(`trimBelowFeet`): 광장은 그림 맨 아래를 발밑으로 세우므로, 모든 프레임에 공통으로 빈 아래 줄만큼 캐릭터 그림을 내립니다 (걷기 들썩임 유지, 빈 프레임은 세지 않음). 캐릭터를 저장할 때 자동으로 하고 에디터에서 끌 수 있습니다 (localStorage).
+  - 발 아래 정리(`trimBelowFeet`): 광장은 그림 맨 아래를 발밑으로 세우므로, **애니메이션마다** 그 안의 프레임에 공통으로 빈 아래 줄만큼 캐릭터 그림을 내립니다 (한 애니메이션 안의 걷기 들썩임은 유지, 빈 프레임은 세지 않음). 처음엔 모든 프레임의 최솟값을 써서, 내장 캐릭터처럼 걷기에 바닥에 닿은 프레임이 하나라도 있으면 대기·첨부 모션도 정리되지 않았습니다. 캐릭터를 저장할 때 자동으로 하고 에디터에서 끌 수 있습니다 (localStorage).
   - 에디터에서는 애니메이션마다 프레임을 따로 갖고, 저장할 때 같은 그림을 한 장으로 합칩니다 (`toManifest`). 캐릭터는 `missingAnimations`가 비어야 저장 버튼이 켜집니다.
   - 도트 에디터·맵 에디터는 앱에 하나만 둔 `AssetEditors`가 화면 전체로 띄웁니다 (설정 창과 커뮤니티 설정 어디서 열어도 그 위에 뜸). Esc는 에디터가 먼저 받아 `preventDefault()`하고, 설정 창과 `Dialog`는 `defaultPrevented`면 닫지 않습니다. 에디터를 연 창을 닫으면 에디터도 닫습니다 (`closeAssetEditors`).
 - **캐릭터 고르기 (Phase 6):** `UsersService.setCharacter`, 웹 `features/assets/CharacterSettings.tsx`
   - `User.character`(JSON `{asset, colors, version?}`), null이면 `defaultCharacter(userId)`. 프로필(`UserProfile.character`)에 실려 메시지·멤버·광장 인원 어디서나 같은 값을 씁니다.
   - `PUT /users/me/character {character | null}`: 기본 캐릭터(`BUILTIN_CHARACTERS`)나 **직접 만든** 캐릭터만 고를 수 있습니다 (남의 캐릭터 400). 색은 부위(`colorSlots`)가 있는 캐릭터에만 적용됩니다 (내장 캐릭터를 복제해 그린 것도 부위가 남음).
-  - 직접 그린 캐릭터는 `version`(에셋 updatedAt)을 함께 저장합니다. 그 에셋을 고치면 version을 올리고, 지우면 기본 캐릭터로 돌려서 `user:updated`로 알립니다 (`characterAssetChanged`). 광장은 `['assets','one',id,version]`으로 에셋을 받아(`PlazaView.loadCharacters`) 씬에 등록한 뒤 다시 그리고, 받기 전에는 기본 캐릭터로 보입니다. 텍스처 키에 version이 들어가서 고친 그림이 바로 반영됩니다.
+  - 직접 그린 캐릭터는 `version`(에셋 updatedAt)을 함께 저장합니다. 그 에셋을 고치면 version을 올리고, 지우면 기본 캐릭터로 돌려서 `user:updated`로 알립니다 (`characterAssetChanged`). 광장은 `['assets','one',id,version]`으로 에셋을 받아(`PlazaView.loadCharacters`) 씬에 등록한 뒤 다시 그리고, 받기 전에는 기본 캐릭터로 보입니다. 텍스처 키는 version이 아니라 **실제로 그린 매니페스트 객체**(`manifestId`, 맵 타일·오브젝트와 같은 방식)로 만듭니다. `user:updated`가 먼저 와서 새 에셋을 받기 전에 다시 그리므로, version으로 키를 만들면 새 버전 키에 예전 그림이 들어가 받은 뒤에도 바뀌지 않았습니다 (실제로 겪은 문제).
   - `withUserProfile`은 닉네임·사진과 함께 캐릭터도 바꿉니다.
 - **맵 에디터 (Phase 6):** `apps/server/src/plaza/plaza-maps.service.ts`, `maps.controller.ts`, 웹 `features/assets/MapEditor.tsx`, `mapModel.ts`
   - `CommunityMap`(communityId, definition JSON). 없으면 내장 분수 광장. DM 모닥불 캠프는 늘 내장 맵입니다.
@@ -295,11 +311,12 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
 
 ## 실시간 이벤트 규칙
 
-- 이름은 `도메인:동작` 형식입니다. 도메인: `message`, `channel`, `plaza`, `presence`, `voice`, `typing`, `user`
+- 이름은 `도메인:동작` 형식입니다. 도메인: `message`, `channel`, `plaza`, `presence`, `voice`, `typing`, `user`, `friend`
 - 클라이언트 → 서버는 명령형, 서버 → 클라이언트는 과거형으로 짓습니다.
   - `message:send` → `message:created`, `message:edit` → `message:updated`, `message:delete` → `message:deleted` (내 메시지만)
   - `typing:start` → `typing:started` (보낸 연결 제외)
   - 닉네임·프로필 사진·캐릭터 변경 → `user:updated`
+  - 친구 요청·수락·거절·취소·끊기 → `friend:updated` (두 사람의 `user:` 방)
   - `channel:created`, `dm:created`, `community:member-joined` / `member-left` / `deleted`, `presence:changed`
   - `plaza:watch` / `plaza:unwatch`: 광장 화면을 열고 닫을 때 (위치 업데이트 구독)
   - `plaza:move` → `plaza:moved`
@@ -341,6 +358,7 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
 
 - `User` (구현됨): githubId, username(사용자 ID), displayName(GitHub 이름), avatarUrl(GitHub 사진), nickname, bio, avatarKey(올린 사진), character(광장 캐릭터 `{asset, colors, version?}`, null이면 기본)
 - `RefreshToken` (구현됨): userId, tokenHash, familyId, client, expiresAt, revokedAt
+- `Friendship` (구현됨): requesterId, addresseeId(둘이 기본 키), status(`PENDING` | `ACCEPTED`), createdAt, acceptedAt
 - `Community` (구현됨): name, ownerId, iconKey·bannerKey(올린 아이콘·배너, 없으면 null) / `CommunityMember`: userId, communityId, role(`OWNER` | `ADMIN` | `MEMBER`) / `Invite`: code(8자), expiresAt(7일), uses
 - `Role` (구현됨): communityId, name(커뮤니티 안에서 고유), color(#rrggbb), position / `MemberRole`: 멤버 ↔ 역할 / `ChannelRoleAccess`: 비공개 채널 ↔ 볼 수 있는 역할
 - `Channel` (구현됨): type(`TEXT` | `VOICE` | `DM` | `GROUP_DM`), communityId(DM이면 null), name, position, proximityVoice, private(비공개 채널), dmKey(1:1 DM 중복 방지)

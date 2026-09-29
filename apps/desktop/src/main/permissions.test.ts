@@ -13,6 +13,11 @@ describe('allowPermission', () => {
     expect(allowPermission('display-capture', false)).toBe(false);
   });
 
+  it('화면 공유 보기의 전체 화면은 앱 화면에만 허락한다', () => {
+    expect(allowPermission('fullscreen', true)).toBe(true);
+    expect(allowPermission('fullscreen', false)).toBe(false);
+  });
+
   it('카메라는 마이크와 함께 요청해도 거절한다', () => {
     expect(allowPermission('media', true, ['audio', 'video'])).toBe(false);
   });

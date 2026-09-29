@@ -62,7 +62,7 @@ export function ChatView({
   const drafts = useAttachmentDrafts(channelId);
   const [dragging, setDragging] = useState(false);
   const [replyTo, setReplyTo] = useState<MessageDto | null>(null);
-  const [forwarding, setForwarding] = useState<MessageDto | null>(null);
+  const [forwarding, setForwarding] = useState<MessageDto[] | null>(null);
 
   const history = useInfiniteQuery({
     queryKey: queryKeys.messages(channelId),
@@ -223,7 +223,9 @@ export function ChatView({
         replyTo={replyTo}
         onCancelReply={() => setReplyTo(null)}
       />
-      {forwarding && <ForwardDialog message={forwarding} onClose={() => setForwarding(null)} />}
+      {forwarding && forwarding.length > 0 && (
+        <ForwardDialog messages={forwarding} onClose={() => setForwarding(null)} />
+      )}
     </section>
   );
 }

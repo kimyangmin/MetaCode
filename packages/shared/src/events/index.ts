@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { ChannelSummary, DmSummary } from '../api/channel.js';
 import type { CommunityMember } from '../api/community.js';
+import type { FriendChanged } from '../api/friend.js';
 import type {
   DeleteMessageRequest,
   EditMessageRequest,
@@ -60,6 +61,8 @@ export const SocketEvent = {
   PresenceChanged: 'presence:changed',
   /** 닉네임, 프로필 사진, 캐릭터가 바뀌었다 (같은 커뮤니티·DM 사람과 본인에게) */
   UserUpdated: 'user:updated',
+  /** 친구 요청·수락·거절·취소·끊기 (두 사람 모두에게, user: 방으로) */
+  FriendUpdated: 'friend:updated',
   /** 광장 화면을 열 때: 광장 방에 들어가고 현재 상태(스냅숏)를 받는다 */
   PlazaWatch: 'plaza:watch',
   PlazaUnwatch: 'plaza:unwatch',
@@ -142,6 +145,7 @@ export interface ServerToClientEvents {
   [SocketEvent.CommunityUpdated]: (payload: { communityId: string }) => void;
   [SocketEvent.PresenceChanged]: (payload: { userId: string; online: boolean }) => void;
   [SocketEvent.UserUpdated]: (user: UserProfile) => void;
+  [SocketEvent.FriendUpdated]: (payload: FriendChanged) => void;
   [SocketEvent.PlazaMoved]: (payload: PlazaMoved) => void;
   [SocketEvent.PlazaMember]: (payload: PlazaMemberChange) => void;
   [SocketEvent.PlazaCorrected]: (payload: PlazaCorrection) => void;

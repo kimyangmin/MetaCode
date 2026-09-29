@@ -1,7 +1,8 @@
 name: Desktop Release
 
-# desktop-v<버전> 태그를 push하면 Windows 설치 파일을 만들어 GitHub Release(최신)로 올린다.
-# 설치한 앱은 최신 Release의 latest.yml을 보고 스스로 업데이트한다 (apps/desktop/src/main/updater.ts).
+# desktop-v<버전> 태그를 push하면 Windows·macOS·Linux 설치 파일을 만들어 GitHub Release(최신)로 올린다.
+# 설치한 앱은 최신 Release의 latest*.yml을 보고 업데이트를 확인한다 (apps/desktop/src/main/updater.ts).
+# Windows와 Linux AppImage는 스스로 업데이트하고, 서명하지 않은 macOS와 deb는 새 버전 알림만 띄운다.
 # 태그의 버전은 apps/desktop/package.json의 version과 같아야 한다. 절차는 README "데스크톱 앱 새 버전 내기".
 on:
   push:
@@ -15,16 +16,12 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  windows:
-    runs-on: windows-latest
-    timeout-minutes: 30
-    defaults:
-      run:
-        shell: bash
-
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@v4
-
       - name: Check version
         id: version
         run: |
@@ -34,6 +31,28 @@ jobs:
             exit 1
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
+
+  # OS마다 그 OS의 러너에서 만든다 (macOS 설치 파일은 Mac에서만 만들 수 있음).
+  build:
+    needs: version
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - os: windows-latest
+            script: dist:win
+          # Apple Silicon 러너가 arm64와 x64를 모두 만든다.
+          - os: macos-latest
+            script: dist:mac
+          - os: ubuntu-latest
+            script: dist:linux
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
 
       - uses: pnpm/action-setup@v4
 
@@ -47,20 +66,54 @@ jobs:
       # 데스크톱은 shared의 타입을 쓰므로 먼저 빌드한다.
       - run: pnpm --filter @metacode/shared build
       - run: pnpm --filter @metacode/desktop test
-      - run: pnpm --filter @metacode/desktop dist:win
+      - run: pnpm --filter @metacode/desktop ${{ matrix.script }}
+
+      # 올릴 파일만 모은다: 설치 파일, 차등 업데이트용 blockmap, 업데이트 확인용 latest*.yml.
+      # (macOS dmg의 blockmap은 업데이트에 쓰지 않는다. 앱은 zip으로 버전을 확인한다.)
+      - name: Collect files
+        working-directory: apps/desktop/release
+        run: |
+          mkdir -p ../upload
+          shopt -s nullglob
+          for file in *.exe *.exe.blockmap *.dmg *.zip *.zip.blockmap *.AppImage *.deb latest*.yml; do
+            cp "$file" ../upload/
+          done
+          ls -la ../upload
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ matrix.os }}
+          path: apps/desktop/upload/*
+          if-no-files-found: error
+
+  release:
+    needs: [version, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: desktop-*
+          path: upload
+          merge-multiple: true
 
       - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ steps.version.outputs.version }}
-        working-directory: apps/desktop/release
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ needs.version.outputs.version }}
+        working-directory: upload
         run: |
-          gh release create "$GITHUB_REF_NAME" \
-            "MetaCode-Setup-$VERSION.exe" \
-            "MetaCode-Setup-$VERSION.exe.blockmap" \
-            latest.yml \
+          ls -la
+          gh release create "$GITHUB_REF_NAME" ./* \
             --latest \
             --title "MetaCode 데스크톱 $VERSION" \
-            --notes "Windows 설치 파일: MetaCode-Setup-$VERSION.exe를 받아 실행합니다. 이미 설치한 앱(0.3.0 이상)은 알아서 업데이트됩니다.
+            --notes "## 설치 파일
+          - **Windows**: \`MetaCode-Setup-$VERSION.exe\`
+          - **macOS**: Apple Silicon(M1 이후)은 \`MetaCode-$VERSION-mac-arm64.dmg\`, Intel은 \`MetaCode-$VERSION-mac-x64.dmg\`
+          - **Linux**: \`MetaCode-$VERSION-linux-x86_64.AppImage\`(실행 권한을 주고 실행, 자동 업데이트됨) 또는 Debian·Ubuntu용 \`MetaCode-$VERSION-linux-amd64.deb\`
 
-          코드 서명을 하지 않아서 처음 설치할 때 \"Windows의 PC 보호\" 창이 뜨면 추가 정보 → 실행을 누릅니다."
+          이미 설치한 Windows 앱(0.3.0 이상)과 Linux AppImage는 알아서 업데이트됩니다. macOS와 deb는 새 버전이 나오면 앱에 \"새 버전 받기\" 안내가 뜹니다.
+
+          ## 코드 서명을 하지 않아서 처음 열 때
+          - **Windows**: \"Windows의 PC 보호\" 창이 뜨면 추가 정보 → 실행
+          - **macOS**: \"확인되지 않은 개발자\" 경고가 뜨면 시스템 설정 → 개인정보 보호 및 보안 → 아래의 \"그래도 열기\". 또는 터미널에서 \`xattr -dr com.apple.quarantine /Applications/MetaCode.app\`"

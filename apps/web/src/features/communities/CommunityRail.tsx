@@ -2,6 +2,7 @@ import { hasUnread } from '@metacode/shared';
 import { useState } from 'react';
 import { NavLink } from 'react-router';
 import { initials } from '../../ui/format';
+import { useFriends } from '../friends/api';
 import { CreateCommunityDialog } from './CreateCommunityDialog';
 import { useCommunities, useDms } from './hooks';
 
@@ -10,7 +11,9 @@ export function CommunityRail() {
   const communities = useCommunities();
   const dms = useDms();
   const [creating, setCreating] = useState(false);
-  const dmUnread = dms.data?.some(hasUnread) ?? false;
+  // 안 읽은 DM이나 받은 친구 요청이 있으면 DM에 점을 찍는다.
+  const incoming = useFriends().data?.incoming.length ?? 0;
+  const dmUnread = (dms.data?.some(hasUnread) ?? false) || incoming > 0;
 
   return (
     <nav className="rail" aria-label="커뮤니티">

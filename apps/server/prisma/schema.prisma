@@ -29,18 +29,44 @@ model User {
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
-  refreshTokens      RefreshToken[]
-  ownedCommunities   Community[]
-  memberships        CommunityMember[]
-  invitesCreated     Invite[]
-  channelMemberships ChannelMember[]
-  messages           Message[]
-  readStates         ChannelReadState[]
-  attachments        Attachment[]
-  assets             Asset[]
+  refreshTokens          RefreshToken[]
+  ownedCommunities       Community[]
+  memberships            CommunityMember[]
+  invitesCreated         Invite[]
+  channelMemberships     ChannelMember[]
+  messages               Message[]
+  readStates             ChannelReadState[]
+  attachments            Attachment[]
+  assets                 Asset[]
+  friendRequestsSent     Friendship[]       @relation("FriendRequester")
+  friendRequestsReceived Friendship[]       @relation("FriendAddressee")
 
   @@index([username])
   @@map("users")
+}
+
+enum FriendshipStatus {
+  /// 요청을 보냈고 상대가 아직 받지 않음
+  PENDING
+  /// 서로 친구
+  ACCEPTED
+}
+
+/// 친구 관계. 두 사람 사이에 한 줄만 둔다 (반대 방향 줄이 있으면 그것을 쓴다).
+/// 거절·취소·친구 끊기는 줄을 지운다.
+model Friendship {
+  requesterId String           @map("requester_id") @db.Uuid
+  addresseeId String           @map("addressee_id") @db.Uuid
+  status      FriendshipStatus @default(PENDING)
+  createdAt   DateTime         @default(now()) @map("created_at")
+  acceptedAt  DateTime?        @map("accepted_at")
+
+  requester User @relation("FriendRequester", fields: [requesterId], references: [id], onDelete: Cascade)
+  addressee User @relation("FriendAddressee", fields: [addresseeId], references: [id], onDelete: Cascade)
+
+  @@id([requesterId, addresseeId])
+  @@index([addresseeId])
+  @@map("friendships")
 }
 
 enum CommunityRole {
@@ -193,17 +219,17 @@ model ChannelMember {
 
 /// id는 UUIDv7이라 생성 순서대로 정렬된다. 페이지네이션은 (channelId, id) 인덱스로 한다.
 model Message {
-  id        String   @id @default(uuid(7)) @db.Uuid
-  channelId String   @map("channel_id") @db.Uuid
-  authorId  String   @map("author_id") @db.Uuid
+  id        String    @id @default(uuid(7)) @db.Uuid
+  channelId String    @map("channel_id") @db.Uuid
+  authorId  String    @map("author_id") @db.Uuid
   content   String
   /// 답장한 메시지. 원래 메시지가 지워지면 비운다
-  replyToId String?  @map("reply_to_id") @db.Uuid
+  replyToId String?   @map("reply_to_id") @db.Uuid
   /// 다른 곳에서 전달한 메시지
-  forwarded Boolean  @default(false)
+  forwarded Boolean   @default(false)
   /// 작성자가 글을 고친 시각 (고치지 않았으면 null)
   editedAt  DateTime? @map("edited_at")
-  createdAt DateTime @default(now()) @map("created_at")
+  createdAt DateTime  @default(now()) @map("created_at")
 
   channel     Channel      @relation(fields: [channelId], references: [id], onDelete: Cascade)
   author      User         @relation(fields: [authorId], references: [id], onDelete: Cascade)

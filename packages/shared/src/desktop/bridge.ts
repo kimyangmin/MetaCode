@@ -29,6 +29,11 @@ export interface DesktopNavigationBridge {
 /** 다 받아서 설치만 하면 되는 새 버전 */
 export interface UpdateReadyInfo {
   version: string;
+  /**
+   * 앱이 스스로 설치할 수 없어 사용자가 설치 파일을 받아야 하는 새 버전 (0.4.1부터).
+   * 코드 서명을 하지 않은 macOS 앱과 deb로 설치한 Linux 앱이 그렇다.
+   */
+  manual?: boolean;
 }
 
 /**

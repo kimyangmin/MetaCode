@@ -500,6 +500,90 @@ a.button {
   color: var(--danger);
 }
 
+.message-list-wrap {
+  position: relative;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* 채팅 영역 잡기 (Ctrl+Shift) */
+.selection-bar {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  z-index: 4;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 4px 10px;
+  width: max-content;
+  max-width: calc(100% - 24px);
+  padding: 6px 10px;
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  background: var(--bg-sidebar);
+  box-shadow: 0 4px 14px rgb(0 0 0 / 0.3);
+  font-size: 0.8rem;
+  transform: translateX(-50%);
+}
+
+.selection-bar > * {
+  white-space: nowrap;
+}
+
+.selection-bar kbd {
+  padding: 0 5px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-input);
+  font: inherit;
+  font-weight: 700;
+}
+
+.message-list[data-selecting='true'] .message {
+  cursor: pointer;
+  user-select: none;
+}
+
+.message[data-selected='true'],
+.message[data-selected='true']:hover {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.message-list__toast {
+  position: absolute;
+  bottom: 12px;
+  left: 50%;
+  z-index: 4;
+  margin: 0;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: var(--bg-active);
+  font-size: 0.85rem;
+  transform: translateX(-50%);
+}
+
+/* 위로 많이 올라가 있을 때 맨 아래(최신)로 돌아가는 버튼 */
+.jump-to-bottom {
+  position: absolute;
+  right: 20px;
+  bottom: 12px;
+  z-index: 3;
+  padding: 6px 14px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-fg);
+  font: inherit;
+  font-size: 0.85rem;
+  box-shadow: 0 4px 14px rgb(0 0 0 / 0.3);
+  cursor: pointer;
+}
+
 .message-list {
   display: flex;
   flex: 1;
@@ -565,6 +649,8 @@ a.button {
 
 .message__gutter {
   display: flex;
+  /* 여러 줄 메시지에서 아바타가 가운데로 내려가지 않게 위에 붙인다 */
+  align-items: flex-start;
   justify-content: center;
   padding-top: 2px;
 }
@@ -596,6 +682,82 @@ a.button {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   line-height: 1.45;
+}
+
+/* ── 메시지 마크다운 ── */
+.message__content .md-paragraph {
+  margin: 0;
+}
+
+.md-heading {
+  margin: 4px 0 2px;
+  line-height: 1.3;
+}
+
+.md-heading--1 {
+  font-size: 1.4rem;
+}
+
+.md-heading--2 {
+  font-size: 1.2rem;
+}
+
+.md-heading--3 {
+  font-size: 1.05rem;
+}
+
+.md-list {
+  margin: 2px 0;
+  padding-left: 22px;
+}
+
+.md-quote {
+  margin: 2px 0;
+  padding: 0 0 0 10px;
+  border-left: 4px solid var(--border);
+}
+
+.md-code {
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: var(--bg-input);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.88em;
+}
+
+.md-codeblock {
+  max-width: 100%;
+  margin: 4px 0;
+  padding: 8px 10px;
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-input);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.85rem;
+  white-space: pre;
+  user-select: text;
+}
+
+.md-spoiler {
+  border-radius: 3px;
+  background: var(--muted);
+  color: transparent;
+  cursor: pointer;
+}
+
+.md-spoiler * {
+  color: transparent;
+}
+
+.md-spoiler[data-shown='true'] {
+  background: var(--bg-hover);
+  color: inherit;
+  cursor: text;
+}
+
+.md-spoiler[data-shown='true'] * {
+  color: inherit;
 }
 
 .message__edited {
@@ -829,6 +991,19 @@ a.button {
   margin-top: 4px;
 }
 
+.attachments__badge {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  z-index: 1;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgb(0 0 0 / 0.65);
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
 .attachments__images {
   display: flex;
   flex-wrap: wrap;
@@ -836,6 +1011,7 @@ a.button {
 }
 
 .attachments__image {
+  position: relative;
   padding: 0;
   border: 0;
   border-radius: 8px;
@@ -1936,6 +2112,39 @@ body.popup-window {
   flex: 1;
   place-items: center;
   min-height: 0;
+}
+
+/* 전체 화면: 브라우저 전체 화면이거나, 거절되면 창 안을 꽉 채운다 */
+.screen-viewer__stage:fullscreen,
+.screen-viewer__stage[data-fullscreen='window'] {
+  background: #000;
+}
+
+.screen-viewer__stage[data-fullscreen='window'] {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+}
+
+.screen-viewer__exit-fullscreen {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  padding: 6px 12px;
+  border: 0;
+  border-radius: 6px;
+  background: rgb(0 0 0 / 0.6);
+  color: #fff;
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.screen-viewer__stage:hover .screen-viewer__exit-fullscreen,
+.screen-viewer__exit-fullscreen:focus-visible {
+  opacity: 1;
 }
 
 .screen-viewer__stage video {
@@ -3738,4 +3947,174 @@ a {
   height: 72px;
   border-radius: 20px;
   object-fit: cover;
+}
+
+/* ── 친구 ── */
+
+.friends {
+  overflow: hidden;
+}
+
+.friends__header {
+  gap: 16px;
+}
+
+.friends__header h2 {
+  margin: 0;
+  font-size: 1rem;
+  white-space: nowrap;
+}
+
+.friends__tabs {
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+}
+
+.friends__tabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.friends__tabs button:hover {
+  background: var(--bg-hover);
+  color: var(--fg);
+}
+
+.friends__tabs button[aria-selected='true'] {
+  background: var(--bg-active);
+  color: var(--fg);
+}
+
+.friends__tabs button[data-add='true'] {
+  background: var(--ok);
+  color: #fff;
+}
+
+.friends__tabs button[data-add='true'][aria-selected='true'] {
+  background: transparent;
+  color: var(--ok);
+}
+
+.friends__badge {
+  display: inline-grid;
+  place-items: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--danger, #e84537);
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.sidebar__item--friends .friends__badge {
+  margin-left: auto;
+}
+
+.friends__body {
+  flex: 1;
+  min-height: 0;
+  padding: 16px 24px;
+  overflow-y: auto;
+}
+
+.friends__section {
+  margin: 12px 0 8px;
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.friends__section:first-child {
+  margin-top: 0;
+}
+
+.friends__empty {
+  margin: 24px 0;
+  color: var(--muted);
+  text-align: center;
+}
+
+.friends__list {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.friends__row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px;
+  border-top: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.friends__row:hover {
+  background: var(--bg-hover);
+}
+
+.friends__names {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+}
+
+.friends__names strong,
+.friends__names small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.friends__names small {
+  color: var(--muted);
+}
+
+.friends__actions {
+  display: flex;
+  gap: 6px;
+}
+
+.friends__add {
+  max-width: 560px;
+}
+
+.search-results__title {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.profile-popup__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.profile-popup__actions > .button {
+  flex: 1;
+}
+
+.friend-button {
+  display: contents;
+}
+
+.friend-button .form__error {
+  flex-basis: 100%;
+  margin: 0;
 }
