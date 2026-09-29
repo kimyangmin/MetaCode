@@ -1938,6 +1938,39 @@ body.popup-window {
   min-height: 0;
 }
 
+/* 전체 화면: 브라우저 전체 화면이거나, 거절되면 창 안을 꽉 채운다 */
+.screen-viewer__stage:fullscreen,
+.screen-viewer__stage[data-fullscreen='window'] {
+  background: #000;
+}
+
+.screen-viewer__stage[data-fullscreen='window'] {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+}
+
+.screen-viewer__exit-fullscreen {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  padding: 6px 12px;
+  border: 0;
+  border-radius: 6px;
+  background: rgb(0 0 0 / 0.6);
+  color: #fff;
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.screen-viewer__stage:hover .screen-viewer__exit-fullscreen,
+.screen-viewer__exit-fullscreen:focus-visible {
+  opacity: 1;
+}
+
 .screen-viewer__stage video {
   width: 100%;
   height: 100%;
