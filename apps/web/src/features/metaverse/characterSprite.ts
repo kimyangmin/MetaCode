@@ -11,7 +11,7 @@ import {
 } from '@metacode/shared';
 import type Phaser from 'phaser';
 import { frameAt, frameOnce } from '../assets/render';
-import { type AssetLookup, ensureAssetTexture } from './mapView';
+import { type AssetLookup, ensureAssetTexture, manifestId } from './mapView';
 
 /** 캐릭터 한 명의 겉모습: 색을 바꾼 텍스처와 매니페스트(애니메이션) */
 export interface CharacterLook {
@@ -35,8 +35,9 @@ export function characterLook(
     picked = defaultCharacter(userId);
     manifest = assetOf(picked.asset)!;
   }
-  // 직접 그린 캐릭터는 고칠 때마다 version이 바뀌므로 텍스처도 새로 만든다.
-  const key = `char:${picked.version ?? ''}:${characterKey(picked)}`;
+  // 텍스처 키는 실제로 그린 매니페스트 기준이다. user:updated가 먼저 오고 고친 에셋은 나중에 받으므로,
+  // version으로 키를 만들면 새 버전 키에 예전 그림이 들어가 받은 뒤에도 바뀌지 않았다.
+  const key = `char:${manifestId(manifest)}:${characterKey(picked)}`;
   ensureAssetTexture(scene, key, manifest, characterPalette(manifest, picked.colors));
   return { key, manifest };
 }

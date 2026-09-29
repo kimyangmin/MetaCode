@@ -525,29 +525,38 @@ export class PixelDocument {
 
   /**
    * 캐릭터의 발 아래 빈 줄 정리. 광장은 그림의 맨 아래를 발밑으로 보고 세우므로, 발 아래가 비어 있으면
-   * 캐릭터가 떠 보인다. 모든 프레임에 공통으로 비어 있는 줄 수만큼 그림 전체를 내린다
-   * (걷기의 들썩임처럼 프레임끼리의 높이 차이는 그대로). 내린 줄 수를 돌려준다.
+   * 캐릭터가 떠 보인다. 애니메이션마다 그 안의 프레임에 공통으로 비어 있는 줄 수만큼 내린다: 걷기의
+   * 들썩임처럼 한 애니메이션 안의 높이 차이는 남기고, 다른 애니메이션(예: 걷기에서 발이 바닥에 닿은
+   * 프레임)이 막지 않는다. 빈 프레임(아직 안 그림)은 세지 않는다.
+   * 정리한 애니메이션 수와 가장 많이 내린 줄 수를 돌려준다.
    */
-  trimBelowFeet(): number {
+  trimBelowFeet(): { animations: number; rows: number } {
     const { kind, width, height } = this.doc;
-    if (kind !== 'character') return 0;
-    let rows = height;
-    for (const animation of this.doc.animations) {
+    const none = { animations: 0, rows: 0 };
+    if (kind !== 'character') return none;
+    const shifts = this.doc.animations.map((animation) => {
+      let rows = height;
       for (const pixels of animation.frames) {
         const empty = emptyRowsBelow(pixels, width, height);
-        // 빈 프레임은 세지 않는다 (아직 그리지 않은 프레임)
         if (empty < height) rows = Math.min(rows, empty);
       }
-    }
-    if (rows === 0 || rows === height) return 0;
-    this.edit((doc) => {
-      for (const animation of doc.animations) {
-        animation.frames = animation.frames.map((pixels) =>
-          shiftPixels(pixels, width, height, 0, rows),
-        );
-      }
+      return rows === height ? 0 : rows;
     });
-    return rows;
+    if (shifts.every((rows) => rows === 0)) return none;
+    this.edit((doc) => {
+      doc.animations.forEach((animation, i) => {
+        const rows = shifts[i]!;
+        if (rows > 0) {
+          animation.frames = animation.frames.map((pixels) =>
+            shiftPixels(pixels, width, height, 0, rows),
+          );
+        }
+      });
+    });
+    return {
+      animations: shifts.filter((rows) => rows > 0).length,
+      rows: Math.max(...shifts),
+    };
   }
 
   /**
