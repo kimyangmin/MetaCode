@@ -17,6 +17,7 @@ import { apiFetch } from '../../api/client';
 import { useRealtime } from '../../realtime/RealtimeProvider';
 import { displayName } from '../../ui/format';
 import { useVoiceStore } from '../voice/store';
+import { markdownToPlain } from '../../ui/markdownParser';
 import { EMOTE_DURATION_MS, bubbleDurationMs, bubbleText, emoteText } from './bubbles';
 import { PlazaScene } from './PlazaScene';
 import { plazaVoiceStates } from './plazaVoice';
@@ -168,7 +169,11 @@ export default function PlazaView({ plazaId, me, channelLabels, voiceLabels }: P
       const labels = labelsRef.current;
       if (!labels.has(message.channelId)) return;
       const kind = messagePresentation(message);
-      const text = kind === 'bubble' ? bubbleText(message.content) : emoteText(message.attachments);
+      // 말풍선은 마크다운 기호를 빼고 보여 준다 (스포일러는 가림).
+      const text =
+        kind === 'bubble'
+          ? bubbleText(markdownToPlain(message.content))
+          : emoteText(message.attachments);
       if (!text) return;
       const duration = kind === 'bubble' ? bubbleDurationMs(text) : EMOTE_DURATION_MS;
       scene.say(message.author.id, {
@@ -184,7 +189,7 @@ export default function PlazaView({ plazaId, me, channelLabels, voiceLabels }: P
     const onMessageUpdated = (message: MessageDto) => {
       if (!labelsRef.current.has(message.channelId)) return;
       if (messagePresentation(message) !== 'bubble') return;
-      scene.editBubble(message.id, bubbleText(message.content));
+      scene.editBubble(message.id, bubbleText(markdownToPlain(message.content)));
     };
     const onMessageDeleted = ({ messageId }: { messageId: string }) =>
       scene.removeBubble(messageId);

@@ -5,17 +5,28 @@ import {
   type SocketAck,
   type UserProfile,
 } from '@metacode/shared';
-import { Fragment, type KeyboardEvent, type MouseEvent, useEffect, useRef, useState } from 'react';
+import {
+  Fragment,
+  type KeyboardEvent,
+  type MouseEvent,
+  type UIEvent,
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
 import { type AppSocket, useRealtime } from '../../realtime/RealtimeProvider';
 import { openProfile } from '../../stores/profile';
 import { Avatar } from '../../ui/Avatar';
 import { displayName, formatDay, formatTime, sameDay } from '../../ui/format';
-import { splitLinks } from '../../ui/links';
+import { Markdown } from '../../ui/Markdown';
+import { markdownToPlain } from '../../ui/markdownParser';
 import { MessageAttachments } from './MessageAttachments';
 import { type MenuTarget, MessageMenu } from './MessageMenu';
 
 /** 같은 사람이 이 시간 안에 이어서 보낸 메시지는 이름/아바타 없이 붙여 보여준다. */
 const GROUP_WINDOW_MS = 5 * 60 * 1000;
+/** 맨 아래에서 이만큼(px) 넘게 위로 올라가면 "맨 아래로" 버튼을 띄운다 */
+export const JUMP_BUTTON_OFFSET_PX = 400;
 
 export interface PendingMessage {
   clientId: string;
@@ -53,7 +64,20 @@ export function MessageList(props: MessageListProps) {
   const [menu, setMenu] = useState<MenuTarget | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  // 위로 올라가 있을 때: 그때 가장 최신이던 메시지 (그 뒤로 온 메시지 수를 센다)
+  const [away, setAway] = useState<{ newestId: string | null } | null>(null);
+  const listRef = useRef<HTMLDivElement>(null);
   const { socket } = useRealtime();
+
+  // column-reverse라 맨 아래가 scrollTop 0이고, 위로 갈수록 음수다.
+  const onScroll = (e: UIEvent<HTMLDivElement>) => {
+    const far = Math.abs(e.currentTarget.scrollTop) > JUMP_BUTTON_OFFSET_PX;
+    if (far && !away) setAway({ newestId: messages[0]?.id ?? null });
+    else if (!far && away) setAway(null);
+  };
+  const jumpToBottom = () => listRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+  const newIndex = away?.newestId ? messages.findIndex((m) => m.id === away.newestId) : -1;
+  const newCount = newIndex > 0 ? newIndex : 0;
 
   const remove = async (message: MessageDto) => {
     const preview = message.content ? `"${Array.from(message.content).slice(0, 40).join('')}"` : '';
@@ -81,73 +105,82 @@ export function MessageList(props: MessageListProps) {
   }, [hasMore, loadingMore, onLoadMore]);
 
   return (
-    <div className="message-list" role="log" aria-live="polite">
-      {pending.map((p) => (
-        <div key={p.clientId} className="message message--pending" data-status={p.status}>
-          <div className="message__gutter" />
-          <div className="message__body">
-            <p className="message__content">{p.content || `📎 파일 ${p.attachmentIds.length}개`}</p>
-            {p.status === 'failed' && (
-              <button className="message__retry" onClick={() => props.onRetry(p.clientId)}>
-                전송 실패 · 다시 보내기
-              </button>
-            )}
+    <div className="message-list-wrap">
+      <div className="message-list" role="log" aria-live="polite" ref={listRef} onScroll={onScroll}>
+        {pending.map((p) => (
+          <div key={p.clientId} className="message message--pending" data-status={p.status}>
+            <div className="message__gutter" />
+            <div className="message__body">
+              <p className="message__content">
+                {p.content || `📎 파일 ${p.attachmentIds.length}개`}
+              </p>
+              {p.status === 'failed' && (
+                <button className="message__retry" onClick={() => props.onRetry(p.clientId)}>
+                  전송 실패 · 다시 보내기
+                </button>
+              )}
+            </div>
           </div>
+        ))}
+
+        {messages.map((message, i) => {
+          // messages는 최신부터이므로 시간상 바로 앞 메시지는 i + 1번째다.
+          const previous = messages[i + 1];
+          const newDay = !previous || !sameDay(previous.createdAt, message.createdAt);
+          const grouped =
+            !newDay &&
+            previous.author.id === message.author.id &&
+            Date.parse(message.createdAt) - Date.parse(previous.createdAt) < GROUP_WINDOW_MS;
+          return (
+            <Fragment key={message.id}>
+              <MessageItem
+                message={message}
+                grouped={grouped}
+                mine={message.author.id === me.id}
+                communityId={props.communityId}
+                onMenu={setMenu}
+                editing={editing === message.id}
+                onEditDone={() => setEditing(null)}
+              />
+              {newDay && (
+                <div className="day-divider" role="separator">
+                  <span>{formatDay(message.createdAt)}</span>
+                </div>
+              )}
+            </Fragment>
+          );
+        })}
+
+        {messages.length === 0 && pending.length === 0 && !hasMore && (
+          <p className="message-list__empty">{props.emptyText}</p>
+        )}
+        <div ref={sentinel} className="message-list__top">
+          {loadingMore && '이전 메시지를 불러오는 중…'}
         </div>
-      ))}
-
-      {messages.map((message, i) => {
-        // messages는 최신부터이므로 시간상 바로 앞 메시지는 i + 1번째다.
-        const previous = messages[i + 1];
-        const newDay = !previous || !sameDay(previous.createdAt, message.createdAt);
-        const grouped =
-          !newDay &&
-          previous.author.id === message.author.id &&
-          Date.parse(message.createdAt) - Date.parse(previous.createdAt) < GROUP_WINDOW_MS;
-        return (
-          <Fragment key={message.id}>
-            <MessageItem
-              message={message}
-              grouped={grouped}
-              mine={message.author.id === me.id}
-              communityId={props.communityId}
-              onMenu={setMenu}
-              editing={editing === message.id}
-              onEditDone={() => setEditing(null)}
-            />
-            {newDay && (
-              <div className="day-divider" role="separator">
-                <span>{formatDay(message.createdAt)}</span>
-              </div>
-            )}
-          </Fragment>
-        );
-      })}
-
-      {messages.length === 0 && pending.length === 0 && !hasMore && (
-        <p className="message-list__empty">{props.emptyText}</p>
-      )}
-      <div ref={sentinel} className="message-list__top">
-        {loadingMore && '이전 메시지를 불러오는 중…'}
+        {actionError && (
+          <p className="message-list__error" role="alert">
+            {actionError}
+            <button type="button" className="icon-button" onClick={() => setActionError(null)}>
+              ×
+            </button>
+          </p>
+        )}
+        {menu && (
+          <MessageMenu
+            target={menu}
+            mine={menu.message.author.id === me.id}
+            onReply={props.onReply}
+            onForward={props.onForward}
+            onEdit={(message) => setEditing(message.id)}
+            onDelete={(message) => void remove(message)}
+            onClose={() => setMenu(null)}
+          />
+        )}
       </div>
-      {actionError && (
-        <p className="message-list__error" role="alert">
-          {actionError}
-          <button type="button" className="icon-button" onClick={() => setActionError(null)}>
-            ×
-          </button>
-        </p>
-      )}
-      {menu && (
-        <MessageMenu
-          target={menu}
-          mine={menu.message.author.id === me.id}
-          onReply={props.onReply}
-          onForward={props.onForward}
-          onEdit={(message) => setEditing(message.id)}
-          onDelete={(message) => void remove(message)}
-          onClose={() => setMenu(null)}
-        />
+      {away && (
+        <button type="button" className="jump-to-bottom" onClick={jumpToBottom}>
+          {newCount > 0 ? `새 메시지 ${newCount}개 · 맨 아래로 ↓` : '맨 아래로 ↓'}
+        </button>
       )}
     </div>
   );
@@ -241,14 +274,18 @@ function MessageItem({
           <MessageEditor message={message} onDone={onEditDone} />
         ) : (
           message.content && (
-            <p className="message__content">
-              <LinkedText text={message.content} />
-              {message.editedAt && (
-                <span className="message__edited" title={formatTime(message.editedAt)}>
-                  (수정됨)
-                </span>
-              )}
-            </p>
+            <div className="message__content">
+              <Markdown
+                text={message.content}
+                suffix={
+                  message.editedAt && (
+                    <span className="message__edited" title={formatTime(message.editedAt)}>
+                      (수정됨)
+                    </span>
+                  )
+                }
+              />
+            </div>
           )
         )}
         <MessageAttachments attachments={message.attachments} />
@@ -337,21 +374,12 @@ function ReplyPreview({ reply }: { reply: NonNullable<MessageDto['replyTo']> }) 
       <span aria-hidden>↩</span>
       <strong>{displayName(reply.author)}</strong>
       <span className="message__reply-text">
-        {reply.content || (reply.attachmentCount > 0 ? `📎 파일 ${reply.attachmentCount}개` : '')}
+        {reply.content
+          ? markdownToPlain(reply.content)
+          : reply.attachmentCount > 0
+            ? `📎 파일 ${reply.attachmentCount}개`
+            : ''}
       </span>
     </button>
-  );
-}
-
-/** 글 속 http(s) 주소를 누를 수 있는 링크로 (새 창, 데스크톱은 시스템 브라우저) */
-function LinkedText({ text }: { text: string }) {
-  return splitLinks(text).map((part, i) =>
-    part.type === 'link' ? (
-      <a key={i} href={part.value} target="_blank" rel="noopener noreferrer">
-        {part.value}
-      </a>
-    ) : (
-      <Fragment key={i}>{part.value}</Fragment>
-    ),
   );
 }

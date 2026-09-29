@@ -4,6 +4,16 @@ import { attachmentUrl, downloadAttachment, formatBytes } from './uploads';
 
 /** 채팅에 보이는 이미지의 최대 크기 (썸네일은 480px로 만들어 두었다) */
 const IMAGE_BOX = { width: 320, height: 240 };
+/**
+ * 이 크기 이하의 GIF는 목록에서 원본을 바로 틀어 움직이게 한다 (썸네일은 첫 장면만 담긴 WebP라 멈춰 있음).
+ * 더 크면 썸네일에 GIF 표시만 하고, 누르면 크게 보기에서 움직인다.
+ */
+export const GIF_INLINE_MAX_BYTES = 15 * 1024 * 1024;
+
+/** 목록에서 원본을 바로 보여 줄 움직이는 이미지인지 */
+export function playsInline(image: Pick<AttachmentDto, 'contentType' | 'size'>): boolean {
+  return image.contentType === 'image/gif' && image.size <= GIF_INLINE_MAX_BYTES;
+}
 
 function fitInBox(width: number | null, height: number | null) {
   if (!width || !height) return IMAGE_BOX;
@@ -26,6 +36,8 @@ export function MessageAttachments({ attachments }: { attachments: AttachmentDto
           {images.map((image) => {
             // 원본 비율로 자리를 먼저 잡아, 이미지가 늦게 떠도 목록이 밀리지 않게 한다.
             const size = fitInBox(image.width, image.height);
+            const gif = image.contentType === 'image/gif';
+            const animated = playsInline(image);
             return (
               <button
                 key={image.id}
@@ -34,8 +46,13 @@ export function MessageAttachments({ attachments }: { attachments: AttachmentDto
                 title={image.fileName}
                 style={size}
               >
+                {gif && !animated && <span className="attachments__badge">GIF</span>}
                 <img
-                  src={attachmentUrl(image.id, { variant: 'thumbnail' })}
+                  src={
+                    animated
+                      ? attachmentUrl(image.id)
+                      : attachmentUrl(image.id, { variant: 'thumbnail' })
+                  }
                   alt={image.fileName}
                   width={size.width}
                   height={size.height}
