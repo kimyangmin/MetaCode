@@ -6,7 +6,7 @@ import {
   queryKeys,
   removeMessageFromCache,
   updateMessageInCache,
-} from './queries';
+} from './cache.js';
 
 const author = { id: 'u', username: 'u', displayName: null, avatarUrl: '', character: null };
 const message = (

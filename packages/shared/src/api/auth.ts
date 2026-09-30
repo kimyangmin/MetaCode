@@ -63,6 +63,13 @@ export type DesktopTokenRequest = z.infer<typeof desktopTokenRequestSchema>;
 export const androidSessionRequestSchema = desktopTokenRequestSchema;
 export type AndroidSessionRequest = DesktopTokenRequest;
 
+/**
+ * 안드로이드 네이티브 앱(apps/mobile): 같은 코드 + verifier를 토큰으로 바꾼다. 데스크톱처럼
+ * 액세스 토큰은 Authorization: Bearer로, 리프레시 토큰은 /auth/refresh의 본문으로 보낸다.
+ */
+export const androidTokenRequestSchema = desktopTokenRequestSchema;
+export type AndroidTokenRequest = DesktopTokenRequest;
+
 /** 웹은 쿠키로 보내므로 본문이 비어 있고, 데스크톱은 본문에 담아 보낸다. */
 export const refreshTokenBodySchema = z
   .object({ refreshToken: z.string().min(1).max(256).optional() })

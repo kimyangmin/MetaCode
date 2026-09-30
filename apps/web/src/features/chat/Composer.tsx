@@ -1,5 +1,5 @@
 import { MESSAGE_MAX_LENGTH, type MessageDto } from '@metacode/shared';
-import { displayName } from '../../ui/format';
+import { displayName } from '@metacode/client';
 import {
   type ClipboardEvent,
   type KeyboardEvent,

@@ -1,7 +1,7 @@
 import { hasUnread } from '@metacode/shared';
 import { useState } from 'react';
 import { NavLink } from 'react-router';
-import { initials } from '../../ui/format';
+import { initials } from '@metacode/client';
 import { useFriends } from '../friends/api';
 import { CreateCommunityDialog } from './CreateCommunityDialog';
 import { useCommunities, useDms } from './hooks';

@@ -1,0 +1,19 @@
+# Expo
+.expo/
+expo-env.d.ts
+.metro-health-check*
+
+# 네이티브 프로젝트는 빌드할 때 app.config.ts로 만든다 (expo prebuild). 손으로 고치지 않는다.
+/android
+/ios
+.kotlin/
+
+# 서명 키
+*.jks
+*.keystore
+*.p12
+*.pem
+
+# 로컬 APK 빌드 결과를 모아 두는 곳
+/upload
+build.log

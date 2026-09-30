@@ -13,6 +13,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import {
   type AndroidSessionRequest,
+  type AndroidTokenRequest,
   AuthClient,
   type AuthTokens,
   type DesktopTokenRequest,
@@ -20,6 +21,7 @@ import {
   type RefreshTokenBody,
   androidAuthRedirectUrl,
   androidSessionRequestSchema,
+  androidTokenRequestSchema,
   desktopLoopbackUrl,
   desktopTokenRequestSchema,
   githubLoginQuerySchema,
@@ -174,6 +176,22 @@ export class AuthController {
       throw new UnauthorizedException('로그인 코드가 올바르지 않거나 만료되었습니다.');
     }
     this.setAuthCookies(res, await this.sessions.issue(entry.userId, AuthClient.Android));
+  }
+
+  /**
+   * 안드로이드 네이티브 앱: 딥링크로 받은 코드 + PKCE verifier를 토큰으로 바꾼다 (데스크톱과 같은 방식).
+   * 웹을 감싼 예전 앱(Capacitor)은 위의 android/session으로 쿠키를 받는다.
+   */
+  @Post('android/token')
+  @HttpCode(200)
+  async androidToken(
+    @Body(new ZodValidationPipe(androidTokenRequestSchema)) body: AndroidTokenRequest,
+  ): Promise<AuthTokens> {
+    const entry = await this.store.consumeAppCode(AuthClient.Android, body.code);
+    if (!entry || !verifyPkce(body.codeVerifier, entry.codeChallenge)) {
+      throw new UnauthorizedException('로그인 코드가 올바르지 않거나 만료되었습니다.');
+    }
+    return this.sessions.issue(entry.userId, AuthClient.Android);
   }
 
   /** 웹은 쿠키로, 데스크톱은 본문으로 리프레시 토큰을 보낸다. 응답도 같은 방식으로 돌려준다. */

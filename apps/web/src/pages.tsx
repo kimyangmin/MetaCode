@@ -20,7 +20,7 @@ import { PlazaPanel } from './features/metaverse/PlazaPanel';
 import { CallButton } from './features/voice/CallButton';
 import { SplitView } from './layout/SplitView';
 import { useUiStore } from './stores/ui';
-import { dmTitle } from './ui/format';
+import { dmTitle } from '@metacode/client';
 import { NARROW_QUERY, useMediaQuery } from './ui/useMediaQuery';
 import { Flame, Users } from 'lucide-react';
 import { Fountain } from './ui/icons';

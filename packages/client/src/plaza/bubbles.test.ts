@@ -8,7 +8,7 @@ import {
   bubbleText,
   emoteLabel,
   pushBubble,
-} from './bubbles';
+} from './bubbles.js';
 
 const bubble = (id: string, expiresAt: number): Bubble => ({
   id,

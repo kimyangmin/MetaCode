@@ -11,7 +11,7 @@ import {
   RoomEvent,
   Track,
 } from 'livekit-client';
-import type { TrackKind } from './calls';
+import type { TrackKind } from '@metacode/client';
 import type { Sensitivity } from './gate';
 import {
   MIC_SAMPLE_RATE,

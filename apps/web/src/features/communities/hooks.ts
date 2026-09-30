@@ -4,7 +4,7 @@ import { useEffect } from 'react';
 import { useNavigate } from 'react-router';
 import { apiFetch } from '../../api/client';
 import { fetchCommunities, fetchDms, fetchMembers, jsonBody, queryKeys } from '../../api/queries';
-import { usePresenceStore } from '../../stores/presence';
+import { usePresenceStore } from '@metacode/client';
 import { meQueryKey } from '../auth/auth';
 
 export const useCommunities = () =>

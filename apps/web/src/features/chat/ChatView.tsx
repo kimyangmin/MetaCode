@@ -17,8 +17,7 @@ import {
 } from 'react';
 import { addMessageToCache, fetchMessages, markChannelRead, queryKeys } from '../../api/queries';
 import { useRealtime } from '../../realtime/RealtimeProvider';
-import { useTypingUsers } from '../../stores/typing';
-import { displayName } from '../../ui/format';
+import { useTypingUsers, displayName } from '@metacode/client';
 import { Composer } from './Composer';
 import { ForwardDialog } from './ForwardDialog';
 import { MessageList, type PendingMessage } from './MessageList';

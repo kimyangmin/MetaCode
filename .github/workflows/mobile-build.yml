@@ -1,0 +1,63 @@
+name: Mobile Build
+
+# 네이티브 안드로이드 앱(apps/mobile, React Native)이 빌드되는지 확인한다. APK는 Actions 아티팩트로 남긴다.
+# 예전 앱(apps/android, Capacitor)을 대신할 때까지는 Release로 올리지 않는다 (android-release.yml이 그대로 담당).
+on:
+  pull_request:
+    paths:
+      - 'apps/mobile/**'
+      - 'packages/shared/**'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/mobile-build.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: mobile-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # 앱이 불러오는 @metacode/shared는 dist를 쓴다
+      - run: pnpm --filter @metacode/shared build
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+
+      # 네이티브 프로젝트는 커밋하지 않고 app.config.ts로 만든다
+      - run: pnpm --filter @metacode/mobile exec expo prebuild --platform android --no-install
+
+      # 서명 키가 아직 없어 둘 다 디버그 키로 서명한다 (설치 확인용).
+      # - MetaCode-mobile-<커밋>.apk: 앱 안에 JS를 넣은 빌드 (그대로 써 보기)
+      # - MetaCode-mobile-<커밋>-dev.apk: 개발 빌드(dev client). PC의 Metro에 붙어 JS를 바로 바꿔 끼운다 (docs/mobile.md)
+      - name: Build APK
+        working-directory: apps/mobile/android
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon assembleRelease assembleDebug -PreactNativeArchitectures=arm64-v8a,armeabi-v7a
+          mkdir -p ../upload
+          short=${GITHUB_SHA::7}
+          cp app/build/outputs/apk/release/app-release.apk ../upload/MetaCode-mobile-$short.apk
+          cp app/build/outputs/apk/debug/app-debug.apk ../upload/MetaCode-mobile-$short-dev.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mobile-apk
+          path: apps/mobile/upload/*.apk
+          if-no-files-found: error

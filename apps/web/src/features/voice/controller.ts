@@ -9,7 +9,7 @@ import {
   type VoiceProximityChanged,
 } from '@metacode/shared';
 import type { AppSocket } from '../../realtime/RealtimeProvider';
-import { trackVolume } from './calls';
+import { trackVolume } from '@metacode/client';
 import type { VoiceConnection } from './connection';
 import type { Sensitivity } from './gate';
 import type { ScreenQuality } from './screenQuality';

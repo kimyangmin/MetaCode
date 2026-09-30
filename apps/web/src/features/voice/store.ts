@@ -1,6 +1,12 @@
 import type { VoiceCall } from '@metacode/shared';
 import { create } from 'zustand';
-import { type Calls, callsFromList, withMember, withProximity, withoutMember } from './calls';
+import {
+  type Calls,
+  callsFromList,
+  withMember,
+  withProximity,
+  withoutMember,
+} from '@metacode/client';
 import {
   DEFAULT_SENSITIVITY,
   type Sensitivity,

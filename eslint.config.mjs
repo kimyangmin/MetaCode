@@ -13,6 +13,10 @@ export default tseslint.config(
       '**/generated/**',
       // 안드로이드 네이티브 프로젝트 (Gradle 빌드 결과, cap sync가 넣는 파일)
       'apps/android/android/**',
+      // 네이티브 앱: expo prebuild가 만드는 네이티브 프로젝트와 Expo가 만드는 타입
+      'apps/mobile/android/**',
+      'apps/mobile/.expo/**',
+      'apps/mobile/expo-env.d.ts',
     ],
   },
   js.configs.recommended,
@@ -22,6 +26,8 @@ export default tseslint.config(
       'apps/server/**/*.ts',
       'apps/desktop/**/*.ts',
       'apps/android/scripts/**/*.mjs',
+      'apps/mobile/scripts/**/*.mjs',
+      'apps/mobile/app.config.ts',
       '*.mjs',
       'tools/**/*.mjs',
     ],
@@ -34,6 +40,15 @@ export default tseslint.config(
     languageOptions: {
       globals: globals.browser,
     },
+    plugins: {
+      'react-hooks': reactHooks,
+    },
+    rules: {
+      ...reactHooks.configs.recommended.rules,
+    },
+  },
+  {
+    files: ['apps/mobile/src/**/*.{ts,tsx}'],
     plugins: {
       'react-hooks': reactHooks,
     },

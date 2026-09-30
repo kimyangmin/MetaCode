@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { Avatar } from '../../ui/Avatar';
 import { ConfirmDialog } from '../../ui/ConfirmDialog';
 import { openProfile } from '../../stores/profile';
-import { displayName } from '../../ui/format';
+import { displayName } from '@metacode/client';
 import { useSharePreview } from './SharePreview';
 import { useVoiceStore } from './store';
 import { useVoice } from './VoiceProvider';
