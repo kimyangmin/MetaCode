@@ -5,6 +5,8 @@ packages:
 # pnpm 10은 의존성의 설치 스크립트를 기본으로 막는다. 필요한 것만 허용한다.
 onlyBuiltDependencies:
   - '@prisma/engines'
+  # 미리 빌드된 Skia 네이티브 라이브러리를 받는다 (apps/mobile)
+  - '@shopify/react-native-skia'
   - '@swc/core'
   - electron
   - esbuild
