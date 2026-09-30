@@ -36,6 +36,7 @@ export function MessageAttachments({ attachments }: { attachments: AttachmentDto
         <div className="attachments__images">
           {images.map((image) => {
             // 원본 비율로 자리를 먼저 잡아, 이미지가 늦게 떠도 목록이 밀리지 않게 한다.
+            // 폭은 메시지 본문보다 넓어지지 않고(휴대폰), 줄어들면 높이도 비율대로 줄어든다.
             const size = fitInBox(image.width, image.height);
             const gif = image.contentType === 'image/gif';
             const animated = playsInline(image);
@@ -45,7 +46,7 @@ export function MessageAttachments({ attachments }: { attachments: AttachmentDto
                 className="attachments__image"
                 onClick={() => setViewing(image)}
                 title={image.fileName}
-                style={size}
+                style={{ width: size.width, aspectRatio: `${size.width} / ${size.height}` }}
               >
                 {gif && !animated && <span className="attachments__badge">GIF</span>}
                 <img
