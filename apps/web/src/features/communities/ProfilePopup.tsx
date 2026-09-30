@@ -4,12 +4,11 @@ import { type CSSProperties, Suspense, lazy } from 'react';
 import { apiFetch } from '../../api/client';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { type ProfileTarget, useProfileStore } from '../../stores/profile';
-import { useIsOnline, displayName } from '@metacode/client';
+import { useIsOnline, displayName, memberColor } from '@metacode/client';
 import { Avatar } from '../../ui/Avatar';
 import { useExitTransition } from '../../ui/useExitTransition';
 import { FriendButton } from '../friends/FriendButton';
 import { useCommunities, useMeRequired, useMembers, useOpenDm } from './hooks';
-import { memberColor } from './roles';
 
 const ROLE_LABEL = { OWNER: '소유자', ADMIN: '관리자', MEMBER: '' } as const;
 
