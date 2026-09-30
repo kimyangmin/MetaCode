@@ -960,7 +960,15 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
                   checked={doc.solid}
                   onChange={(e) => editor.setSolid(e.target.checked)}
                 />
-                지나갈 수 없음 (벽, 물, 나무 등)
+                지나갈 수 없음 (벽, 물, 나무 등. 횡스크롤에서는 딛고 서는 땅)
+              </label>
+              <label className="pixel-editor__check">
+                <input
+                  type="checkbox"
+                  checked={doc.platform}
+                  onChange={(e) => editor.setPlatform(e.target.checked)}
+                />
+                발판 (횡스크롤: 위에서만 딛고 아래에서는 뛰어 지나감)
               </label>
             </section>
           )}

@@ -34,6 +34,8 @@ export interface EditorDoc {
   palette: string[];
   animations: EditorAnimation[];
   solid: boolean;
+  /** 타일: 횡스크롤의 발판 (위에서만 딛는다) */
+  platform: boolean;
   footprint: number[];
   colorSlots?: AssetManifest['colorSlots'];
 }
@@ -97,6 +99,7 @@ export function newDoc(kind: AssetKind, name: string, tiles = { w: 1, h: 1 }): E
     palette: [...STARTER_PALETTE],
     animations,
     solid: false,
+    platform: false,
     footprint: defaultFootprint(width, height),
   };
 }
@@ -135,6 +138,7 @@ export function fromManifest(manifest: AssetManifest): EditorDoc {
     palette: [...manifest.palette],
     animations,
     solid: manifest.solid ?? false,
+    platform: manifest.platform ?? false,
     footprint: manifest.footprint ? [...manifest.footprint] : Array<number>(cells).fill(0),
     colorSlots: manifest.colorSlots,
   };
@@ -168,6 +172,7 @@ export function toManifest(doc: EditorDoc): AssetManifest {
     frames,
     animations,
     ...(doc.kind === 'tile' ? { solid: doc.solid } : {}),
+    ...(doc.kind === 'tile' && doc.platform && !doc.solid ? { platform: true } : {}),
     ...(doc.kind === 'object' ? { footprint: doc.footprint.map((v) => (v ? 1 : 0) as 0 | 1) } : {}),
     ...(doc.kind === 'character' && doc.colorSlots ? { colorSlots: doc.colorSlots } : {}),
   };
@@ -440,9 +445,18 @@ export class PixelDocument {
     this.changed();
   }
 
+  /** 지나갈 수 없음과 발판은 함께 쓸 수 없다 (하나를 켜면 다른 하나는 꺼진다) */
   setSolid(solid: boolean): void {
     this.edit((doc) => {
       doc.solid = solid;
+      if (solid) doc.platform = false;
+    });
+  }
+
+  setPlatform(platform: boolean): void {
+    this.edit((doc) => {
+      doc.platform = platform;
+      if (platform) doc.solid = false;
     });
   }
 

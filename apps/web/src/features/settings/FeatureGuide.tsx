@@ -54,6 +54,9 @@ const SHORTCUTS: { title: string; items: Shortcut[] }[] = [
     items: [
       { keys: '← / ↑ / → / ↓', what: '캐릭터 움직이기 (광장을 누른 뒤)' },
       { keys: '클릭', what: '누른 곳으로 걸어가기 (휴대폰은 탭)' },
+      { keys: '← / →', what: '횡스크롤 광장: 걷기' },
+      { keys: 'Space / ↑', what: '횡스크롤 광장: 점프 (누르고 있으면 높이 뜁니다)' },
+      { keys: '↓', what: '횡스크롤 광장: 발판에서 내려가기' },
       { keys: '/', what: '채팅 입력창으로. 보내면 광장으로 돌아옵니다' },
       { keys: 'Shift+Tab', what: '광장 ↔ 채팅 입력창' },
     ],

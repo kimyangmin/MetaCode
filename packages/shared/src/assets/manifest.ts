@@ -115,8 +115,10 @@ const manifestShape = z.object({
   palette: z.array(hexColor).min(1).max(PALETTE_MAX_COLORS),
   frames: z.array(z.string().max(MAX_FRAME_BASE64)).min(1).max(FRAME_LIMIT.character),
   animations: z.record(z.string().regex(/^[a-z][a-z0-9-]{0,31}$/), animationSchema),
-  /** 타일: 지나갈 수 없는 칸인지 */
+  /** 타일: 지나갈 수 없는 칸인지 (횡스크롤에서는 땅·벽) */
   solid: z.boolean().optional(),
+  /** 타일: 횡스크롤의 발판인지 (위에서 내려올 때만 딛고, 아래·옆에서는 지나간다. 탑다운에서는 막지 않음) */
+  platform: z.boolean().optional(),
   /** 오브젝트: 그림을 덮는 타일 격자(row-major) 중 지나갈 수 없는 칸. 1이면 막힘 */
   footprint: z.array(z.union([z.literal(0), z.literal(1)])).optional(),
   /** 캐릭터: 색을 바꿀 수 있는 부위 → [밝은 면, 그림자, 외곽선] 픽셀 값 */
@@ -211,6 +213,12 @@ export function manifestProblems(manifest: AssetManifest): string[] {
 
   if (kind !== AssetKind.Tile && manifest.solid !== undefined) {
     problems.push('지나갈 수 없음(solid)은 타일만 쓸 수 있습니다.');
+  }
+  if (kind !== AssetKind.Tile && manifest.platform !== undefined) {
+    problems.push('발판(platform)은 타일만 쓸 수 있습니다.');
+  }
+  if (manifest.solid && manifest.platform) {
+    problems.push('지나갈 수 없는 타일은 발판이 될 수 없습니다.');
   }
   const cells = (width / TILE_SIZE) * (height / TILE_SIZE);
   if (kind === AssetKind.Object) {

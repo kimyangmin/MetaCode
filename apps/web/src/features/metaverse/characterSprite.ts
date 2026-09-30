@@ -70,6 +70,18 @@ export function animationName(state: CharacterState, now: number): string {
   return `${state.walking ? 'walk' : 'idle'}-${state.dir}`;
 }
 
+/**
+ * 횡스크롤에서 공중에 있을 때(점프, 떨어지기)의 프레임: jump-<방향> 애니메이션이 있으면 그것을 한 번,
+ * 없으면 걷기의 두 번째 프레임(다리를 벌린 모습)에 멈춘다.
+ */
+export function airborneFrame(manifest: AssetManifest, dir: Direction, elapsedMs: number): number {
+  const jump = manifest.animations[`jump-${dir}`];
+  if (jump) return frameOnce(jump, elapsedMs);
+  const walk = manifest.animations[`walk-${dir}`] ?? manifest.animations[`idle-${dir}`];
+  if (!walk) return 0;
+  return walk.frames[Math.min(1, walk.frames.length - 1)]!;
+}
+
 /** 애니메이션을 시작한 뒤 elapsedMs가 지났을 때의 프레임. 첨부 모션은 한 번만 재생한다 */
 export function characterFrame(
   manifest: AssetManifest,

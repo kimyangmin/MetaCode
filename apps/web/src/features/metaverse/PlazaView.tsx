@@ -5,9 +5,11 @@ import {
   type PlazaId,
   type PlazaMemberChange,
   type PlazaMoved,
+  PlazaStyle,
   SocketEvent,
   type UserProfile,
   isBuiltinRef,
+  mapStyle,
   messagePresentation,
 } from '@metacode/shared';
 import { useQueryClient } from '@tanstack/react-query';
@@ -29,6 +31,8 @@ import { PlazaScene } from './PlazaScene';
 import { type VoiceLabel, plazaVoiceStates } from './plazaVoice';
 
 const ARROW_KEYS = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
+/** 횡스크롤은 Space로도 뛴다 */
+const SIDE_KEYS = new Set([...ARROW_KEYS, ' ']);
 
 export interface PlazaViewProps {
   plazaId: PlazaId;
@@ -55,6 +59,8 @@ export default function PlazaView({ plazaId, me, channelLabels, voiceLabels }: P
   const [scene, setScene] = useState<PlazaScene | null>(null);
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [focused, setFocused] = useState(false);
+  const [style, setStyle] = useState<PlazaStyle>(PlazaStyle.TopDown);
+  const side = style === PlazaStyle.SideScroll;
 
   // 씬이 보내는 이동은 항상 최신 연결로 보낸다.
   const socketRef = useRef(socket);
@@ -158,6 +164,7 @@ export default function PlazaView({ plazaId, me, channelLabels, voiceLabels }: P
           if (request !== latestWatch) return;
           scene.applySnapshot(ack.data);
           loadCharacters(ack.data.occupants.map((o) => o.user));
+          setStyle(mapStyle(ack.data.definition));
           setStatus('ready');
         });
       });
@@ -270,8 +277,10 @@ export default function PlazaView({ plazaId, me, channelLabels, voiceLabels }: P
       requestPanelFocus('chat', 'plaza');
       return;
     }
-    if (!ARROW_KEYS.has(e.key) || e.altKey || e.ctrlKey || e.metaKey) return;
+    if (!(side ? SIDE_KEYS : ARROW_KEYS).has(e.key) || e.altKey || e.ctrlKey || e.metaKey) return;
     e.preventDefault();
+    // 누르고 있어서 반복되는 keydown은 새로 누른 것이 아니다 (점프가 계속 이어지지 않게).
+    if (e.repeat) return;
     scene?.press(e.key);
   };
   const onKeyUp = (e: KeyboardEvent) => {
@@ -284,7 +293,11 @@ export default function PlazaView({ plazaId, me, channelLabels, voiceLabels }: P
       className="plaza"
       tabIndex={0}
       role="application"
-      aria-label="광장. 방향키로 움직이고, 가고 싶은 곳을 누르면 걸어갑니다."
+      aria-label={
+        side
+          ? '광장. 좌우 방향키로 걷고 위쪽 방향키나 스페이스로 뜁니다. 아래쪽 방향키로 발판에서 내려갑니다.'
+          : '광장. 방향키로 움직이고, 가고 싶은 곳을 누르면 걸어갑니다.'
+      }
       data-focused={focused}
       onKeyDown={onKeyDown}
       onKeyUp={onKeyUp}
@@ -308,7 +321,11 @@ export default function PlazaView({ plazaId, me, channelLabels, voiceLabels }: P
           광장을 누르면 방향키로 움직일 수 있어요 · Shift+Tab으로 오가기
         </p>
       )}
-      {status === 'ready' && focused && <p className="plaza__hint">/ 를 누르면 바로 채팅</p>}
+      {status === 'ready' && focused && (
+        <p className="plaza__hint">
+          {side ? '←→ 걷기 · Space 점프 · ↓ 내려가기 · ' : ''}/ 를 누르면 바로 채팅
+        </p>
+      )}
     </div>
   );
 }

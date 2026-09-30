@@ -10,8 +10,10 @@ import {
   type PlazaSnapshot,
   type Position,
   DEFAULT_THEME,
-  getPlazaMap,
+  isGrounded,
+  isSideScroll,
   isValidMove,
+  isValidSideMove,
   parsePlazaId,
   spawnPosition,
 } from '@metacode/shared';
@@ -29,6 +31,8 @@ interface StoredPosition {
   moving: boolean;
   /** 마지막으로 받아들인 시각 (ms). 다음 이동의 속도 검사에 쓴다 */
   t: number;
+  /** 횡스크롤: 마지막으로 딛은 땅의 높이. 여기서 점프 높이 이상 오르면(날기) 받아들이지 않는다 */
+  g?: number;
 }
 
 /** 광장 위치는 휘발성이라 Redis에만 둔다 (설계 원칙). 광장마다 해시 하나: userId → 위치 */
@@ -106,7 +110,7 @@ export class PlazaService {
     const map = await this.maps.load(plazaId);
     return {
       plazaId,
-      map: getPlazaMap(plazaId),
+      map: map.plazaMap,
       theme: DEFAULT_THEME,
       definition: map.definition,
       assets: map.assets,
@@ -123,12 +127,18 @@ export class PlazaService {
   /**
    * 클라이언트가 보낸 위치를 검사한다. 마지막으로 받아들인 위치에서 속도상 갈 수 있고
    * 장애물을 지나지 않았으면 저장하고, 아니면 되돌릴 위치를 돌려준다.
+   * 횡스크롤은 가로·세로 속도와 점프 높이(마지막으로 딛은 땅 기준)를 따로 본다.
    */
   async move(userId: string, request: PlazaMoveRequest): Promise<MoveResult> {
     const layout = await this.layoutOf(request.plazaId);
     const now = Date.now();
     const current = await this.positionOf(request.plazaId, userId, layout);
-    if (!isValidMove(layout, current, request, now - current.t)) {
+    const side = isSideScroll(layout);
+    const ground = current.g ?? current.y;
+    const valid = side
+      ? isValidSideMove(layout, current, request, now - current.t, ground)
+      : isValidMove(layout, current, request, now - current.t);
+    if (!valid) {
       return {
         ok: false,
         correction: { plazaId: request.plazaId, x: current.x, y: current.y, dir: current.dir },
@@ -140,6 +150,7 @@ export class PlazaService {
       dir: request.dir,
       moving: request.moving,
       t: now,
+      ...(side ? { g: isGrounded(layout, request.x, request.y) ? request.y : ground } : {}),
     };
     await this.redis.hset(positionsKey(request.plazaId), userId, JSON.stringify(next));
     return {
@@ -190,7 +201,13 @@ export class PlazaService {
     const raw = await this.redis.hget(positionsKey(plazaId), userId);
     if (raw) return JSON.parse(raw) as StoredPosition;
     const spawn = spawnPosition(layout, userId);
-    const position: StoredPosition = { ...spawn, dir: 'down', moving: false, t: 0 };
+    const position: StoredPosition = {
+      ...spawn,
+      dir: 'down',
+      moving: false,
+      t: 0,
+      ...(isSideScroll(layout) ? { g: spawn.y } : {}),
+    };
     await this.redis.hset(positionsKey(plazaId), userId, JSON.stringify(position));
     return position;
   }

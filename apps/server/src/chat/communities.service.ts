@@ -12,6 +12,7 @@ import {
   CommunityRole,
   type CommunitySummary,
   type InviteInfo,
+  type PlazaStyle,
   SocketEvent,
 } from '@metacode/shared';
 import { AttachmentsService } from '../attachments/attachments.service.js';
@@ -52,10 +53,11 @@ export class CommunitiesService {
   ) {}
 
   /** 커뮤니티를 만들고 만든 사람을 OWNER로, 기본 텍스트 채널 하나를 함께 만든다. */
-  async create(userId: string, name: string): Promise<CommunitySummary> {
+  async create(userId: string, name: string, plazaStyle: PlazaStyle): Promise<CommunitySummary> {
     const community = await this.prisma.community.create({
       data: {
         name,
+        plazaStyle,
         ownerId: userId,
         members: { create: { userId, role: CommunityRole.Owner } },
         channels: { create: { type: 'TEXT', name: DEFAULT_CHANNEL_NAME } },
@@ -74,6 +76,7 @@ export class CommunitiesService {
       roles: [],
       iconUrl: null,
       bannerUrl: null,
+      plazaStyle: community.plazaStyle,
     };
   }
 
@@ -105,6 +108,7 @@ export class CommunitiesService {
       channels: m.community.channels.map((c) => summaries.get(c.id)!),
       roles: m.community.roles.map(toRoleDto),
       ...communityImages(m.community),
+      plazaStyle: m.community.plazaStyle,
     }));
   }
 

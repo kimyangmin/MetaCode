@@ -21,10 +21,8 @@ import {
   type CommunityMember,
   type CommunitySummary,
   type CreateChannelRequest,
-  type CreateCommunityRequest,
   type InviteInfo,
   type ReorderRequest,
-  type UpdateCommunityRequest,
   applyImageSchema,
   avatarUploadSchema,
   communityImageKindSchema,
@@ -55,9 +53,9 @@ export class CommunitiesController {
   @Post('communities')
   create(
     @CurrentUserId() userId: string,
-    @Body(new ZodValidationPipe(createCommunitySchema)) body: CreateCommunityRequest,
+    @Body(new ZodValidationPipe(createCommunitySchema)) body: z.infer<typeof createCommunitySchema>,
   ): Promise<CommunitySummary> {
-    return this.communities.create(userId, body.name);
+    return this.communities.create(userId, body.name, body.plazaStyle);
   }
 
   @Get('communities')
@@ -65,15 +63,15 @@ export class CommunitiesController {
     return this.communities.list(userId);
   }
 
-  /** 이름 바꾸기 (소유자, 관리자) */
+  /** 이름, 광장 방식 바꾸기 (소유자, 관리자) */
   @Patch('communities/:id')
   @HttpCode(204)
   update(
     @CurrentUserId() userId: string,
     @UuidParam('id') id: string,
-    @Body(new ZodValidationPipe(updateCommunitySchema)) body: UpdateCommunityRequest,
+    @Body(new ZodValidationPipe(updateCommunitySchema)) body: z.infer<typeof updateCommunitySchema>,
   ): Promise<void> {
-    return this.profile.rename(userId, id, body.name);
+    return this.profile.update(userId, id, body);
   }
 
   /** 아이콘·배너 올리기 1단계: 원본을 올릴 주소 */

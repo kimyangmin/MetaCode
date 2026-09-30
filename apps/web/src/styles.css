@@ -2142,6 +2142,107 @@ a.button {
   color: var(--muted);
 }
 
+/* 광장 방식 고르기 (커뮤니티 만들기, 커뮤니티 설정 → 광장): 내장 광장 미리보기가 있는 카드 두 장 */
+.community-plaza {
+  display: grid;
+  gap: 20px;
+}
+
+.community-plaza .plaza-style {
+  max-width: 560px;
+}
+
+.dialog.dialog--create-community {
+  width: min(520px, 100%);
+}
+
+.plaza-style {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.plaza-style legend {
+  margin-bottom: 6px;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.form .plaza-style__option,
+.plaza-style__option {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-content: start;
+  column-gap: 8px;
+  row-gap: 4px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--fg);
+  cursor: pointer;
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
+}
+
+.plaza-style__option:has(input:checked) {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.plaza-style__option:has(input:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.plaza-style__option input {
+  margin: 0;
+  align-self: center;
+}
+
+.plaza-style__preview {
+  grid-column: 1 / -1;
+  order: -1;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border-radius: 5px;
+  background: #11161d;
+}
+
+.plaza-thumbnail {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.plaza-style__option strong {
+  font-size: 0.9rem;
+}
+
+.plaza-style__option small {
+  grid-column: 1 / -1;
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+
+.plaza-style:disabled .plaza-style__option {
+  cursor: default;
+  opacity: 0.7;
+}
+
+@media (max-width: 480px) {
+  .plaza-style {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* 광장: 캐릭터 위 참여 중인 음성 채널, 말하는 중 */
 .plaza-actor__voice {
   margin-bottom: 2px;

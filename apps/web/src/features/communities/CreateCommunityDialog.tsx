@@ -1,4 +1,4 @@
-import type { CommunitySummary } from '@metacode/shared';
+import { type CommunitySummary, PlazaStyle } from '@metacode/shared';
 import { useQueryClient } from '@tanstack/react-query';
 import { type FormEvent, useState } from 'react';
 import { useNavigate } from 'react-router';
@@ -6,6 +6,7 @@ import { ApiError, apiFetch } from '../../api/client';
 import { jsonBody, queryKeys } from '../../api/queries';
 import { Dialog } from '../../ui/Dialog';
 import { upsertCommunity } from './hooks';
+import { PlazaStylePicker } from './PlazaStylePicker';
 import { parseInviteCode } from '@metacode/client';
 
 export function CreateCommunityDialog({ onClose }: { onClose(): void }) {
@@ -13,6 +14,7 @@ export function CreateCommunityDialog({ onClose }: { onClose(): void }) {
   const navigate = useNavigate();
   const [mode, setMode] = useState<'create' | 'join'>('create');
   const [name, setName] = useState('');
+  const [plazaStyle, setPlazaStyle] = useState<PlazaStyle>(PlazaStyle.TopDown);
   const [invite, setInvite] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -36,7 +38,11 @@ export function CreateCommunityDialog({ onClose }: { onClose(): void }) {
   };
 
   return (
-    <Dialog title={mode === 'create' ? '커뮤니티 만들기' : '초대로 참여하기'} onClose={onClose}>
+    <Dialog
+      title={mode === 'create' ? '커뮤니티 만들기' : '초대로 참여하기'}
+      onClose={onClose}
+      className="dialog--create-community"
+    >
       <div className="tabs" role="tablist">
         <button role="tab" aria-selected={mode === 'create'} onClick={() => setMode('create')}>
           새로 만들기
@@ -53,7 +59,7 @@ export function CreateCommunityDialog({ onClose }: { onClose(): void }) {
             run(e, () =>
               apiFetch<CommunitySummary>('/communities', {
                 method: 'POST',
-                ...jsonBody({ name }),
+                ...jsonBody({ name, plazaStyle }),
               }),
             )
           }
@@ -62,6 +68,10 @@ export function CreateCommunityDialog({ onClose }: { onClose(): void }) {
             커뮤니티 이름
             <input value={name} onChange={(e) => setName(e.target.value)} maxLength={50} required />
           </label>
+          <PlazaStylePicker value={plazaStyle} onChange={setPlazaStyle} />
+          <p className="form__hint">
+            광장 방식은 나중에 커뮤니티 설정 → 광장에서 바꿀 수 있습니다.
+          </p>
           {error && <p className="form__error">{error}</p>}
           <button className="button button--primary" disabled={busy || !name.trim()}>
             만들기

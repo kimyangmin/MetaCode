@@ -22,6 +22,7 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
 - 개발용 GitHub OAuth App(`localhost` 콜백)으로 웹·데스크톱, 운영용 OAuth App으로 운영 웹의 실제 로그인을 확인했습니다 (2026-09-26).
 - 기술 스택은 README 표대로 확정되었습니다 (2026-09-26). 메타버스 렌더링은 Phaser 3 대신 Phaser 4로 정했습니다 (2026-09-27).
 - 2026-09-30: Phase 8(네이티브 안드로이드 앱, `apps/mobile`) 시작. 1단계: Expo 뼈대, 토큰 로그인(`POST /auth/android/token`), Actions APK 빌드 — 실제 기기에서 운영 서버 로그인 확인. 2단계: 화면 틀(서랍, 채널·DM·멤버 목록, 실시간 연결).
+- 2026-10-01: 커뮤니티를 만들 때 광장 방식(탑다운 / 횡스크롤)을 고릅니다 (커뮤니티 설정 → 광장에서 바꿀 수 있음). 횡스크롤 광장은 옆에서 본 분수 광장(`fountain-side`)에서 좌우로 걷고 점프합니다.
 - Phase를 진행하면 이 섹션과 README 로드맵 체크박스를 함께 갱신합니다.
 
 ## 기술 메모
@@ -234,6 +235,16 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
   - 맵에 쓰고 있는 에셋은 지울 수 없습니다 (409).
   - 스냅샷의 `assets`(쓴 커뮤니티 에셋 `{id, version}`)를 클라이언트가 `['assets','one',id,version]`으로 받아 씬에 등록한 뒤 맵을 그립니다. 텍스처 키는 매니페스트마다 달라서 고친 에셋이 바로 반영됩니다.
   - 맵 에디터: 바닥 칠하기, 장식 칠하기, 바닥 채우기, 오브젝트 놓기(누른 칸 = 그림의 왼쪽 아래), 지우기(앞에 그려지는 오브젝트부터, 없으면 장식), 스폰 영역(끌어서), 막힌 칸 보기, 크기(12~64, 왼쪽 위 기준), 되돌리기. 팔레트는 내장 타일·오브젝트 + 커뮤니티 에셋(★). 열 때마다 맵을 새로 받습니다 (예전에 받아 둔 맵으로 시작해 다른 사람이 고친 것을 덮어쓰지 않게, 실제로 겪은 문제). 저장할 때 쓰지 않는 타일은 목록에서 뺍니다.
+- **횡스크롤 광장 (광장 방식):** `packages/shared/src/plaza/side.ts`·`movement.ts`, `packages/client/src/plaza/sideMotion.ts`, 웹 `PlazaScene`(`moveMeSide`, `drawBackdrop`), `features/communities/PlazaStylePicker.tsx`
+  - `Community.plazaStyle`(`TOP_DOWN` 기본 | `SIDE_SCROLL`). 만들 때 고르고(`POST /communities {name, plazaStyle?}`), 소유자·관리자가 `PATCH /communities/:id {plazaStyle}`로 바꿉니다. 바뀌면 `PlazaMapsService.styleChanged`(캐시 버림, 위치 지움, `plaza:mapChanged`) + `community:updated`. DM 모닥불 캠프는 늘 탑다운입니다.
+  - 맵 정의에 `style`이 들어갑니다 (없으면 탑다운, 이전에 저장한 맵과 호환). 서버의 이동 검증과 클라이언트가 **맵 정의의 style**로 물리를 고릅니다 (`MapLayout.style`, `isSideScroll`). 커뮤니티 방식과 저장한 맵의 방식이 다르면 그 방식의 내장 맵을 쓰고, 저장한 맵은 지우지 않아 되돌리면 다시 씁니다. 다른 방식의 맵은 저장할 수 없습니다(400). 맵이 에셋을 쓰는지(`uses`)는 DB의 저장한 맵으로 봅니다.
+  - 충돌 격자 칸 값(`Cell`): 0 열림, 1 막힘(`solid`: 횡스크롤에서는 땅·벽), 2 발판(타일의 `platform`, 횡스크롤에서만: 위에서 내려올 때만 딛고 아래·옆에서는 지나감, ↓로 내려감). 횡스크롤에서 **오브젝트는 배경이라 막지 않고**, 부딪히는 영역은 발(10×6)이 아니라 몸(`SIDE_BODY` 8×28, 천장에 머리가 닿고 두 칸 높이 굴은 지나감)입니다. `isWalkable`이 `bodyOf(layout)`로 고르므로 호출하는 쪽은 그대로입니다.
+  - 물리(`side.ts`): 중력 1200px/s², 점프 높이 56px(3.5타일, 세 칸 위 발판까지), 최대 낙하 480px/s, 가로는 `MOVE_SPEED`. 점프 키를 일찍 떼면 낮게 뜁니다. 클라이언트(`stepSide`)는 세로를 1px씩 옮겨 발판·땅을 뚫지 않고, 서 있으면 칸 경계에 딱 맞춥니다(`settle`, 서버의 `isGrounded`와 맞게).
+  - 서버 검증(`isValidSideMove`): 가로는 걷는 속도, 세로는 오를 때 점프 속도·내려갈 때 낙하 속도 안, 벽을 뚫지 않고, **마지막으로 딛은 땅(`g`, Redis 위치에 함께 저장)에서 점프 높이 이상 오르지 않음**. 클라이언트는 내려앉거나 뛰어오르는 순간의 위치를 간격과 상관없이 바로 보냅니다(`sendMove(force)`). 그러지 않으면 서버가 발판을 딛은 순간을 놓쳐 연달아 오르는 점프를 날기로 보고 되돌렸습니다.
+  - 그리기: 하늘색 카메라 배경 + 언덕 띠(`TileSprite`)·구름 두 겹 패럴랙스(가로만, `setScrollFactor(x, 1)`). 깊이는 바닥 층·오브젝트 < 캐릭터(`SIDE_ACTOR_DEPTH`) < 장식 층(앞에 겹치는 풀). 그림자와 말하는 중 고리는 발 아래 땅(`groundBelow`)에 그리고 높이 뜰수록 옅게 합니다. 공중이면 `jump-<방향>` 애니메이션이 있으면 그것, 없으면 걷기 두 번째 프레임(`airborneFrame`). 다른 사람의 공중 여부는 받은 위치로 계산합니다(프로토콜 변경 없음).
+  - 조작: ←→ 걷기, Space·↑ 점프(키 반복은 무시), ↓ 발판에서 내려가기, 클릭은 그 x로 걸어가고 막히면 뛰어 봄(1.5초 동안 못 가면 그만둠).
+  - 내장 맵 `fountain-side`(63×20, 가운데 돌바닥에 분수, 양쪽 한 칸씩 오르는 언덕, 두 칸씩 겹친 발판 피라미드)와 옆모습 타일 10종(`builtin:side-*`, `tools/assets/side.mjs`: 풀 덮인 땅·흙·돌바닥·바위·나무 상자·나무 발판·흙 벽·풀·꽃·울타리). 맵 에디터는 하늘 바탕, 옆모습 타일을 앞에, 발판은 노란 선으로 보여 주고, 지우개가 땅까지 지우며 넓힌 칸은 하늘입니다.
+  - 광장 방식 고르기(`PlazaStylePicker`): 만들기 창과 커뮤니티 설정 → 광장. 두 방식의 내장 맵을 미리 그려 보여 줍니다(`PlazaThumbnail`, 내장 에셋 때문에 lazy). 네이티브 앱의 만들기 시트에도 같은 선택이 있습니다.
 - **프로필 사진 불러오기 실패:** `ui/Avatar.tsx`는 사진을 못 불러오면(연결이 불안정할 때) 깨진 그림 대신 이름 첫 글자를 보여 주고, 2초·5초·15초·60초 뒤와 `online` 이벤트 때 주소에 `retry=N`을 붙여 다시 불러옵니다 (같은 주소면 `<img>`가 다시 요청하지 않음).
 - **웹 새 배포 자동 반영:** 빌드마다 `__BUILD_ID__`를 앱에 넣고 같은 값을 `version.json`으로 내보냅니다 (`vite.config.ts`). 앱(`features/app/liveUpdate.ts`)은 1분마다와 창이 다시 보일 때 `version.json`을 보고, 바뀌었으면 잃을 것이 없을 때(통화 중이 아님, 에셋·맵 에디터를 열지 않음, 입력칸에 쓰던 글이 없음) `location.reload()`합니다. 기다리는 동안은 "새 버전" 안내를 띄웁니다. Caddy는 `/assets/*` 밖(index.html, version.json)에 `Cache-Control: no-cache`를 붙여, 예전처럼 데스크톱 앱이 캐시된 옛 index.html을 여는 일을 막습니다. 개발 서버에서는 동작하지 않습니다.
 - **아이콘과 화면 톤:** `ui/icons.tsx`, `styles.css`
@@ -317,6 +328,7 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
 | 안드로이드 앱 | Capacitor로 운영 웹을 감싼 앱. GitHub Releases에 서명한 APK로 배포 (Play 스토어는 쓰지 않음) (2026-09-29) |
 | 네이티브 안드로이드 앱 | 웹 티가 나는 Capacitor 앱을 React Native로 새로 만듦: Expo(prebuild, EAS 등 외부 빌드 서비스는 안 씀) + Expo Router, 광장은 react-native-skia로 새로 그림, 안드로이드만. 에디터·커뮤니티 관리까지 **모두 네이티브**로 만든 뒤 Capacitor 앱을 대신함 (같은 패키지 이름·서명 키로 덮어 설치) (2026-09-30) |
 | 채널 권한 | Discord식 사용자 정의 역할. 역할을 만들고 채널마다 역할별로 허용 (2026-09-27) |
+| 광장 방식 | 커뮤니티를 만들 때 탑다운(기존)과 횡스크롤 중에서 고름. 횡스크롤은 옆에서 본 광장에서 좌우로 걷고 점프하며, 지나갈 수 없는 타일이 땅, 발판 타일은 위에서만 딛고, 오브젝트는 배경. 소유자·관리자가 커뮤니티 설정에서 바꿀 수 있음. DM 모닥불 캠프는 탑다운 (2026-10-01) |
 
 ## 용어
 
@@ -328,7 +340,8 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
 | 커뮤니티 | `Community` | Discord의 "서버". 멤버, 채널들, 분수 광장 하나를 가짐 |
 | 채널 | `Channel` | 대화 또는 통화 단위. 종류: 텍스트 채널(`TEXT`), 음성 채널(`VOICE`), DM(`DM`), 그룹 DM(`GROUP_DM`) |
 | 광장 | `Plaza` | 커뮤니티 또는 DM에 1:1로 딸린 메타버스 공간 |
-| 광장 맵 | `PlazaMap` | 광장의 맵 종류. `fountain-square`(분수 광장), `campfire`(모닥불 캠프) |
+| 광장 맵 | `PlazaMap` | 광장의 맵 종류. `fountain-square`(분수 광장), `fountain-side`(옆에서 본 분수 광장, 횡스크롤), `campfire`(모닥불 캠프) |
+| 광장 방식 | `PlazaStyle` | 커뮤니티 광장을 보는 방식. `TOP_DOWN`(탑다운), `SIDE_SCROLL`(횡스크롤) |
 | 테마 | `Theme` | 계절·행사에 따라 바뀌는 겉모습 묶음 (타일셋, 장식 등). 기본값은 `default`. UI의 라이트/다크 모드(`ColorScheme`)와는 다른 개념 |
 | 캐릭터 | `Character` | 유저당 하나. 모든 광장에서 같은 캐릭터 사용 |
 | 메시지 / 첨부 | `Message` / `Attachment` | 채팅 모드와 메타버스 모드가 공유하는 단일 데이터 |
@@ -427,7 +440,7 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
 - `User` (구현됨): githubId, username(사용자 ID), displayName(GitHub 이름), avatarUrl(GitHub 사진), nickname, bio, avatarKey(올린 사진, 멈춘 것), avatarAnimatedKey(GIF로 올렸으면 움직이는 사진), character(광장 캐릭터 `{asset, colors, version?}`, null이면 기본)
 - `RefreshToken` (구현됨): userId, tokenHash, familyId, client, expiresAt, revokedAt
 - `Friendship` (구현됨): requesterId, addresseeId(둘이 기본 키), status(`PENDING` | `ACCEPTED`), createdAt, acceptedAt
-- `Community` (구현됨): name, ownerId, iconKey·bannerKey(올린 아이콘·배너, 없으면 null) / `CommunityMember`: userId, communityId, role(`OWNER` | `ADMIN` | `MEMBER`) / `Invite`: code(8자), expiresAt(7일), uses
+- `Community` (구현됨): name, ownerId, iconKey·bannerKey(올린 아이콘·배너, 없으면 null), plazaStyle(`TOP_DOWN` | `SIDE_SCROLL`) / `CommunityMember`: userId, communityId, role(`OWNER` | `ADMIN` | `MEMBER`) / `Invite`: code(8자), expiresAt(7일), uses
 - `Role` (구현됨): communityId, name(커뮤니티 안에서 고유), color(#rrggbb), position / `MemberRole`: 멤버 ↔ 역할 / `ChannelRoleAccess`: 비공개 채널 ↔ 볼 수 있는 역할
 - `Channel` (구현됨): type(`TEXT` | `VOICE` | `DM` | `GROUP_DM`), communityId(DM이면 null), name, position, proximityVoice, private(비공개 채널), dmKey(1:1 DM 중복 방지)
   - `ChannelMember`: DM 참여자. 커뮤니티 채널의 접근은 커뮤니티 멤버십(추후 채널 권한)으로 판단
@@ -436,7 +449,7 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
 - `ChannelReadState` (구현됨): channelId, userId, lastReadMessageId. 앞으로만 옮긴다
 - `Attachment` (구현됨): channelId(권한 판단), uploaderId, messageId(보내기 전 null), status(`PENDING` | `READY`), kind(`IMAGE` | `FILE`), objectKey, thumbnailKey, fileName, contentType, size, width, height
 - `Asset` (구현됨): kind(`TILE` | `OBJECT` | `CHARACTER`), name, creatorId, communityId(캐릭터는 null), manifest(에셋 매니페스트 JSON)
-- `CommunityMap` (구현됨): communityId, definition(맵 정의 JSON). 없으면 내장 분수 광장
+- `CommunityMap` (구현됨): communityId, definition(맵 정의 JSON, 광장 방식 `style` 포함). 없거나 방식이 다르면 그 방식의 내장 분수 광장
 
 ## 도트 에셋 규격
 

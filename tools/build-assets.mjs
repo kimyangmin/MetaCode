@@ -11,6 +11,7 @@ import { fileURLToPath } from 'node:url';
 import sharp from 'sharp';
 import { baseCharacters } from './assets/characters.mjs';
 import { drawnAssets } from './assets/objects.mjs';
+import { sideAssets } from './assets/side.mjs';
 import { kenneyTiles } from './assets/tiles.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -19,6 +20,7 @@ const out = join(root, 'packages/shared/src/assets/builtin/assets.json');
 const assets = {
   ...(await kenneyTiles(join(root, 'assets/vendor/kenney-tiny-town/tilemap_packed.png'))),
   ...drawnAssets(),
+  ...sideAssets(),
   ...(await baseCharacters(join(root, 'assets/vendor/base-sprites'))),
 };
 
