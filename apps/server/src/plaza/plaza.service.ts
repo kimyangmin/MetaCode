@@ -4,6 +4,7 @@ import {
   type MapLayout,
   type PlazaCorrection,
   type PlazaId,
+  type PlazaMotionChanged,
   type PlazaMoveRequest,
   type PlazaMoved,
   type PlazaOccupant,
@@ -33,6 +34,8 @@ interface StoredPosition {
   t: number;
   /** 횡스크롤: 마지막으로 딛은 땅의 높이. 여기서 점프 높이 이상 오르면(날기) 받아들이지 않는다 */
   g?: number;
+  /** 반복 중인 캐릭터 모션. 움직이면 멈춘다 */
+  m?: string;
 }
 
 /** 광장 위치는 휘발성이라 Redis에만 둔다 (설계 원칙). 광장마다 해시 하나: userId → 위치 */
@@ -151,6 +154,8 @@ export class PlazaService {
       moving: request.moving,
       t: now,
       ...(side ? { g: isGrounded(layout, request.x, request.y) ? request.y : ground } : {}),
+      // 움직이면 반복 중이던 모션은 멈춘다
+      ...(!request.moving && current.m ? { m: current.m } : {}),
     };
     await this.redis.hset(positionsKey(request.plazaId), userId, JSON.stringify(next));
     return {
@@ -164,6 +169,25 @@ export class PlazaService {
         moving: next.moving,
       },
     };
+  }
+
+  /**
+   * 캐릭터 모션을 틀거나 멈춘다. 반복 모션은 나중에 광장을 연 사람에게도 보이도록 위치와 함께 저장한다.
+   * 모션이 있는지는 확인하지 않는다 (없으면 보는 쪽에서 대기 모습으로 보인다).
+   */
+  async setMotion(
+    userId: string,
+    plazaId: PlazaId,
+    motion: string | null,
+    loop: boolean,
+  ): Promise<PlazaMotionChanged> {
+    const layout = await this.layoutOf(plazaId);
+    const current = await this.positionOf(plazaId, userId, layout);
+    const next: StoredPosition = { ...current };
+    if (motion && loop) next.m = motion;
+    else delete next.m;
+    await this.redis.hset(positionsKey(plazaId), userId, JSON.stringify(next));
+    return { plazaId, userId, motion, loop };
   }
 
   /** 여러 사람의 이 광장 위치 (근접 음성 거리 계산). 처음이면 스폰 자리 */
@@ -189,6 +213,7 @@ export class PlazaService {
       y: positions[i]!.y,
       dir: positions[i]!.dir,
       moving: false,
+      motion: positions[i]!.m ?? null,
     }));
   }
 

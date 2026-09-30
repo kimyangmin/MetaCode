@@ -1714,6 +1714,104 @@ a.button {
   bottom: 12px;
 }
 
+/* Ctrl +/−로 바꾼 배율 (잠깐 보임) */
+.plaza__zoom {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 3;
+  margin: 0;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+  animation: plaza-zoom-in 0.12s ease-out;
+}
+
+@keyframes plaza-zoom-in {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+}
+
+/* 캐릭터 모션 (숫자 키) 목록: 광장 오른쪽 아래(아래 안내 위). 휴대폰처럼 자판이 없어도 누르면 튼다 */
+.plaza-motions {
+  position: absolute;
+  right: 12px;
+  bottom: 44px;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+
+.plaza-motions__toggle {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  cursor: pointer;
+}
+
+.plaza-motions__toggle[aria-expanded='true'] {
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+
+.plaza-motions__list {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 4px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.72);
+  list-style: none;
+}
+
+.plaza-motions__list button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 120px;
+  padding: 5px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #fff;
+  font: inherit;
+  font-size: 0.85rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.plaza-motions__list button:hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.plaza-motions__list kbd {
+  min-width: 18px;
+  padding: 0 4px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.18);
+  font-family: inherit;
+  font-size: 0.75rem;
+  text-align: center;
+}
+
+.plaza-motions__list span {
+  flex: 1;
+}
+
 /* 캐릭터 머리 위: 0×0 기준점에서 위로 쌓는다 */
 .plaza-actor {
   position: absolute;
@@ -4030,6 +4128,37 @@ a {
   color: var(--muted);
 }
 
+/* 캐릭터 모션의 숫자 키와 반복 표시 */
+.pixel-editor__motion-key {
+  min-width: 16px;
+  padding: 0 4px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 0.72rem;
+  text-align: center;
+}
+
+.pixel-editor__loop {
+  color: var(--muted);
+}
+
+.pixel-editor__field {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 8px;
+  font-size: 0.85rem;
+}
+
+.pixel-editor__field input {
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-input);
+  color: var(--fg);
+  font: inherit;
+}
+
 .pixel-editor .mark {
   width: 14px;
   font-weight: 700;
@@ -5759,6 +5888,10 @@ a {
 @media (max-width: 768px), (pointer: coarse) {
   .plaza__hint {
     display: none;
+  }
+
+  .plaza-motions {
+    bottom: 12px;
   }
 }
 

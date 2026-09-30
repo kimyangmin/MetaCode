@@ -4,6 +4,7 @@ import {
   type AssetManifest,
   assetManifestSchema,
   assetRefSchema,
+  characterMotions,
   footprintCells,
   missingAnimations,
 } from './manifest.js';
@@ -187,5 +188,45 @@ describe('footprintCells', () => {
     ]);
     const top = footprintCells({ width: 16, height: 32, footprint: [1, 0] }, 3, 5);
     expect(top).toEqual([{ x: 3, y: 4 }]);
+  });
+});
+
+describe('캐릭터 모션 (숫자 키)', () => {
+  const base = builtinAsset('builtin:char-short')!;
+  const withMotions = (animations: AssetManifest['animations']): AssetManifest => ({
+    ...base,
+    animations: { ...base.animations, ...animations },
+  });
+  const frame = base.animations['idle-down']!.frames[0]!;
+
+  it('필수 애니메이션 밖의 애니메이션에 키를 달면 모션이고, 키 순서로 나온다', () => {
+    const manifest = withMotions({
+      'motion-2': { frames: [frame], frameMs: 150, key: '0', label: '인사' },
+      'motion-1': { frames: [frame], frameMs: 150, key: '1', label: '춤', loop: true },
+    });
+    expect(problemsOf(manifest)).toEqual([]);
+    expect(characterMotions(manifest)).toEqual([
+      { name: 'motion-1', key: '1', label: '춤', loop: true },
+      { name: 'motion-2', key: '0', label: '인사', loop: false },
+    ]);
+  });
+
+  it('키가 겹치거나, 필수 애니메이션에 달거나, 캐릭터가 아니면 거절한다', () => {
+    expect(
+      problemsOf(
+        withMotions({
+          a: { frames: [frame], frameMs: 150, key: '1' },
+          b: { frames: [frame], frameMs: 150, key: '1' },
+        }),
+      ).join(' '),
+    ).toContain('겹칩니다');
+    expect(
+      problemsOf(withMotions({ 'idle-down': { ...base.animations['idle-down']!, key: '2' } })).join(
+        ' ',
+      ),
+    ).toContain('필수 애니메이션');
+    expect(
+      problemsOf(tile({ animations: { default: { frames: [0], frameMs: 1000, key: '1' } } })),
+    ).toContain('모션(키, 이름, 반복)은 캐릭터만 쓸 수 있습니다.');
   });
 });

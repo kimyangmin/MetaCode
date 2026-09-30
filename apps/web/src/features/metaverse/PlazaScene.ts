@@ -15,6 +15,7 @@ import {
   TILE_SIZE,
   type UserProfile,
   buildCollision,
+  characterMotions,
   groundBelow,
   isGrounded,
   isWalkable,
@@ -44,6 +45,7 @@ import {
   type Bubble,
   activeBubbles,
   pushBubble,
+  stepZoomOffset,
   zoomFor,
   RemoteTrack,
   directionOf,
@@ -58,12 +60,14 @@ import {
 import type { VoiceLabel } from './plazaVoice';
 import {
   type CharacterLook,
+  type PlayingMotion,
   airborneFrame,
   animationName,
   characterFrame,
   characterLook,
   emoteDurationMs,
   fitCharacter,
+  motionDurationMs,
 } from './characterSprite';
 import { MapView, SIDE_ACTOR_DEPTH } from './mapView';
 
@@ -109,6 +113,10 @@ export interface PlazaSceneOptions {
   nameOf(user: UserProfile): string;
   /** 내 캐릭터 위치를 서버에 보낸다 */
   onMove(state: MoveState): void;
+  /** 내 캐릭터 모션을 틀거나(이름) 멈췄다(null): 서버에 보낸다 */
+  onMotion(motion: string | null, loop: boolean): void;
+  /** 처음 배율 단계 (사용자가 Ctrl +/−로 바꾼 값, 기억해 둔 것) */
+  zoomOffset?: number;
 }
 
 interface Actor {
@@ -136,6 +144,8 @@ interface Actor {
   bubblesWidth: number;
   /** 첨부 모션이 끝나는 시각 */
   emoteUntil: number;
+  /** 틀고 있는 캐릭터 모션 (숫자 키). 움직이면 멈춘다 */
+  motion: (PlayingMotion & { start: number }) | null;
   dom: {
     root: HTMLDivElement;
     bubbles: HTMLOListElement;
@@ -180,6 +190,8 @@ export class PlazaScene extends Phaser.Scene {
   private voice: ReadonlyMap<string, ActorVoice> = new Map();
   private lastSent: (MoveState & { at: number }) | null = null;
   private zoomLevel = 2;
+  /** 사용자가 Ctrl +/−로 더하거나 뺀 배율 단계 */
+  private zoomOffset = 0;
   /** 눌려 있는 방향키. PlazaView가 광장 패널에 포커스가 있을 때만 넣는다 */
   private readonly held = new Set<string>();
   /** 지난 프레임 이후 눌린 키. 프레임 사이에 눌렀다 뗀 짧은 입력도 한 걸음은 움직이게 한다 */
@@ -188,6 +200,7 @@ export class PlazaScene extends Phaser.Scene {
   constructor(options: PlazaSceneOptions) {
     super('plaza');
     this.options = options;
+    this.zoomOffset = options.zoomOffset ?? 0;
     this.readyPromise = new Promise((resolve) => (this.resolveReady = resolve));
   }
 
@@ -275,6 +288,10 @@ export class PlazaScene extends Phaser.Scene {
       renderedBubbles: '',
       bubblesWidth: 0,
       emoteUntil: 0,
+      // 반복 중이던 모션은 나중에 연 사람에게도 보인다
+      motion: occupant.motion
+        ? { name: occupant.motion, loop: true, until: Infinity, start: performance.now() }
+        : null,
       dom: this.createActorDom(occupant.user, isMe),
     };
     this.actors.set(occupant.user.id, actor);
@@ -314,6 +331,50 @@ export class PlazaScene extends Phaser.Scene {
     if (!actor?.track) return;
     actor.track.push(event, performance.now());
     actor.dir = event.dir;
+    // 움직이면 모션은 멈춘다 (서버도 반복 모션을 지운다)
+    if (event.moving) actor.motion = null;
+  }
+
+  // ── 캐릭터 모션 (숫자 키) ──
+
+  /** 내 캐릭터의 모션 (키 순서). 직접 그린 캐릭터에 추가한 것만 있다 */
+  myMotions() {
+    const me = this.actors.get(this.options.meId);
+    return me ? characterMotions(me.look.manifest) : [];
+  }
+
+  /**
+   * 숫자 키: 내 캐릭터의 그 키 모션을 튼다. 반복 모션을 다시 누르면 멈춘다. 그 키의 모션이 없으면 false
+   * (PlazaView가 키를 브라우저에 그대로 넘긴다).
+   */
+  playMotion(key: string): boolean {
+    const me = this.actors.get(this.options.meId);
+    if (!me) return false;
+    const motion = characterMotions(me.look.manifest).find((m) => m.key === key);
+    if (!motion) return false;
+    const now = performance.now();
+    if (me.motion?.name === motion.name && me.motion.loop && me.motion.until > now) {
+      me.motion = null;
+      this.options.onMotion(null, false);
+      return true;
+    }
+    this.startMotion(me, motion.name, motion.loop, now);
+    this.options.onMotion(motion.name, motion.loop);
+    return true;
+  }
+
+  /** 다른 사람이 모션을 틀거나(이름) 멈췄다(null) */
+  setMotion(userId: string, motion: string | null, loop: boolean): void {
+    const actor = this.actors.get(userId);
+    if (!actor || userId === this.options.meId) return;
+    if (motion) this.startMotion(actor, motion, loop, performance.now());
+    else actor.motion = null;
+  }
+
+  private startMotion(actor: Actor, name: string, loop: boolean, now: number): void {
+    const until = loop ? Infinity : now + motionDurationMs(actor.look.manifest, name);
+    actor.motion = { name, loop, until, start: now };
+    actor.animation = { name, start: now };
   }
 
   /** 서버가 내 이동을 받아들이지 않았다: 그 자리로 되돌린다 */
@@ -460,6 +521,7 @@ export class PlazaScene extends Phaser.Scene {
     }
 
     me.walking = me.position.x !== before.x || me.position.y !== before.y;
+    if (me.walking) me.motion = null;
     this.sendMove(me, now);
   }
 
@@ -516,6 +578,7 @@ export class PlazaScene extends Phaser.Scene {
     me.position = { x: body.x, y: body.y };
     if (dx !== 0) me.dir = dx < 0 ? 'left' : 'right';
     me.walking = body.x !== before.x || body.y !== before.y;
+    if (me.walking) me.motion = null;
     // 내려앉거나 뛰어오르는 순간은 바로 보낸다: 서버가 딛은 땅을 알아야 다음 점프를 받아들인다.
     this.sendMove(me, now, body.grounded !== before.grounded);
   }
@@ -594,20 +657,29 @@ export class PlazaScene extends Phaser.Scene {
       side && (isMe && this.body ? !this.body.grounded : !isGrounded(this.layout!, x, y));
     if (airborne && !actor.airborne) actor.airborneSince = now;
     actor.airborne = airborne;
+    if (actor.motion && actor.motion.until <= now) actor.motion = null;
     const name = animationName(
       {
         dir: actor.dir,
         walking: now - actor.lastMovedAt < WALK_HOLD_MS,
         emoteUntil: actor.emoteUntil,
+        motion: actor.motion,
       },
       now,
     );
     if (actor.animation.name !== name) actor.animation = { name, start: now };
     const { manifest } = actor.look;
+    const playing = name === 'emote' || name === actor.motion?.name;
     actor.sprite.setFrame(
-      airborne && name !== 'emote'
+      airborne && !playing
         ? airborneFrame(manifest, actor.dir, now - actor.airborneSince)
-        : characterFrame(manifest, name, actor.dir, now - actor.animation.start),
+        : characterFrame(
+            manifest,
+            name,
+            actor.dir,
+            now - actor.animation.start,
+            name === 'emote' || (name === actor.motion?.name && !actor.motion.loop),
+          ),
     );
     // 첨부 모션 동안에는 제자리에서 뛴다.
     const lift =
@@ -706,8 +778,20 @@ export class PlazaScene extends Phaser.Scene {
   private updateZoom(): void {
     if (!this.layout) return;
     const { width, height } = this.scale.gameSize;
-    this.zoomLevel = zoomFor(this.layout, width, height);
+    this.zoomLevel = zoomFor(this.layout, width, height, this.zoomOffset);
     this.cameras.main.setZoom(this.zoomLevel);
+  }
+
+  /**
+   * Ctrl +/−: 배율을 한 단계 올리거나 내린다 (정수 배율만). 바뀐 배율과, 기억해 둘 단계를 돌려준다.
+   * 맵을 아직 그리지 않았으면 null.
+   */
+  zoomBy(step: 1 | -1): { zoom: number; offset: number } | null {
+    if (!this.layout) return null;
+    const { width, height } = this.scale.gameSize;
+    this.zoomOffset = stepZoomOffset(this.layout, width, height, this.zoomOffset, step);
+    this.updateZoom();
+    return { zoom: this.zoomLevel, offset: this.zoomOffset };
   }
 
   /** 카메라 가운데: 내 캐릭터를 따라가되, 맵이 화면보다 작은 쪽은 맵 가운데에 둔다 */

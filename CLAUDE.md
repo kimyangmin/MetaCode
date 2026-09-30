@@ -22,7 +22,7 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
 - 개발용 GitHub OAuth App(`localhost` 콜백)으로 웹·데스크톱, 운영용 OAuth App으로 운영 웹의 실제 로그인을 확인했습니다 (2026-09-26).
 - 기술 스택은 README 표대로 확정되었습니다 (2026-09-26). 메타버스 렌더링은 Phaser 3 대신 Phaser 4로 정했습니다 (2026-09-27).
 - 2026-09-30: Phase 8(네이티브 안드로이드 앱, `apps/mobile`) 시작. 1단계: Expo 뼈대, 토큰 로그인(`POST /auth/android/token`), Actions APK 빌드 — 실제 기기에서 운영 서버 로그인 확인. 2단계: 화면 틀(서랍, 채널·DM·멤버 목록, 실시간 연결).
-- 2026-10-01: 커뮤니티를 만들 때 광장 방식(탑다운 / 횡스크롤)을 고릅니다 (커뮤니티 설정 → 광장에서 바꿀 수 있음). 횡스크롤 광장은 옆에서 본 분수 광장(`fountain-side`)에서 좌우로 걷고 점프합니다.
+- 2026-10-01: 커뮤니티를 만들 때 광장 방식(탑다운 / 횡스크롤)을 고릅니다 (커뮤니티 설정 → 광장에서 바꿀 수 있음). 횡스크롤 광장은 옆에서 본 분수 광장(`fountain-side`)에서 좌우로 걷고 점프합니다. 광장 배율(Ctrl +/−), 캐릭터 모션(숫자 키).
 - Phase를 진행하면 이 섹션과 README 로드맵 체크박스를 함께 갱신합니다.
 
 ## 기술 메모
@@ -245,6 +245,14 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
   - 조작: ←→ 걷기, Space·↑ 점프(키 반복은 무시), ↓ 발판에서 내려가기, 클릭은 그 x로 걸어가고 막히면 뛰어 봄(1.5초 동안 못 가면 그만둠).
   - 내장 맵 `fountain-side`(63×20, 가운데 돌바닥에 분수, 양쪽 한 칸씩 오르는 언덕, 두 칸씩 겹친 발판 피라미드)와 옆모습 타일 10종(`builtin:side-*`, `tools/assets/side.mjs`: 풀 덮인 땅·흙·돌바닥·바위·나무 상자·나무 발판·흙 벽·풀·꽃·울타리). 맵 에디터는 하늘 바탕, 옆모습 타일을 앞에, 발판은 노란 선으로 보여 주고, 지우개가 땅까지 지우며 넓힌 칸은 하늘입니다.
   - 광장 방식 고르기(`PlazaStylePicker`): 만들기 창과 커뮤니티 설정 → 광장. 두 방식의 내장 맵을 미리 그려 보여 줍니다(`PlazaThumbnail`, 내장 에셋 때문에 lazy). 네이티브 앱의 만들기 시트에도 같은 선택이 있습니다.
+- **광장 배율 (Ctrl +/−):** `packages/client/src/plaza/camera.ts`(`zoomFor(…, offset)`, `stepZoomOffset`), `PlazaView`
+  - 광장에 포커스가 있을 때 Ctrl(맥은 Cmd) + `=`/`+`/`-`(숫자 자판 포함, `e.code`로도 봄)과 Ctrl+휠(트랙패드 모아 벌리기, 60씩 모이면 한 단계)로 배율을 한 단계씩 바꿉니다. 브라우저 확대는 막습니다(`preventDefault`, 휠은 passive가 아닌 리스너).
+  - 배율은 여전히 정수(1~6배)입니다. 패널 크기에 맞춘 기본 배율에 **더한 단계(offset)** 를 기억해서(localStorage `metacode:plaza-zoom`) 패널 크기가 바뀌어도 같은 만큼 크게/작게 보입니다. 범위 끝에서는 단계가 더 쌓이지 않습니다. 바꾸면 오른쪽 위에 `×N`이 잠깐 뜹니다.
+  - Ctrl+0은 아홉 번째 커뮤니티로 옮기는 단축키라 배율 되돌리기에 쓰지 않습니다.
+- **캐릭터 모션 (숫자 키):** `packages/shared/src/assets/manifest.ts`(`MOTION_KEYS`, `characterMotions`), `plaza/events.ts`, 서버 `PlazaService.setMotion`, 웹 `PlazaScene.playMotion`, 도트 에디터 `MotionSettings`
+  - 캐릭터 매니페스트의 필수가 아닌 애니메이션에 `key`(숫자 1~9, 0), `label`(화면 이름), `loop`(반복)를 달면 모션입니다. 키는 겹칠 수 없고, 필수 애니메이션·캐릭터가 아닌 에셋에는 달 수 없습니다 (서버 검증). 도트 에디터의 "+ 모션"이 남은 키를 주고 대기(아래) 첫 프레임을 복사해 시작합니다. "+ 점프"는 횡스크롤에서 공중일 때 트는 `jump-left`/`jump-right`를 걷기 두 번째 프레임으로 만듭니다.
+  - 광장: 숫자 키(`e.code`의 Digit/Numpad)나 광장 오른쪽 아래 ✨ 목록(휴대폰)으로 내 모션을 틉니다. 한 번 모션은 끝까지, 반복 모션은 다시 누르거나 움직이면 멈춥니다. 우선순위는 첨부 모션 > 캐릭터 모션 > 걷기·대기, 횡스크롤 공중 모습보다 모션이 먼저입니다.
+  - 이벤트: `plaza:setMotion {plazaId, motion|null, loop}` → 같은 광장을 보는 다른 연결에 `plaza:motionChanged`. 광장을 열어 둔 연결만 보낼 수 있고, 150ms보다 잦은 요청은 버립니다(`socket.data.lastMotionAt`). 반복 모션은 Redis 위치에 `m`으로 저장해 나중에 연 사람의 스냅숏(`PlazaOccupant.motion`)에도 보이고, 움직이면(`moving: true`) 지웁니다. 다른 사람의 `plaza:moved`(moving)를 받으면 그 사람의 모션을 멈춥니다. 모션이 실제로 있는지는 서버가 확인하지 않습니다 (없으면 보는 쪽에서 대기 모습).
 - **프로필 사진 불러오기 실패:** `ui/Avatar.tsx`는 사진을 못 불러오면(연결이 불안정할 때) 깨진 그림 대신 이름 첫 글자를 보여 주고, 2초·5초·15초·60초 뒤와 `online` 이벤트 때 주소에 `retry=N`을 붙여 다시 불러옵니다 (같은 주소면 `<img>`가 다시 요청하지 않음).
 - **웹 새 배포 자동 반영:** 빌드마다 `__BUILD_ID__`를 앱에 넣고 같은 값을 `version.json`으로 내보냅니다 (`vite.config.ts`). 앱(`features/app/liveUpdate.ts`)은 1분마다와 창이 다시 보일 때 `version.json`을 보고, 바뀌었으면 잃을 것이 없을 때(통화 중이 아님, 에셋·맵 에디터를 열지 않음, 입력칸에 쓰던 글이 없음) `location.reload()`합니다. 기다리는 동안은 "새 버전" 안내를 띄웁니다. Caddy는 `/assets/*` 밖(index.html, version.json)에 `Cache-Control: no-cache`를 붙여, 예전처럼 데스크톱 앱이 캐시된 옛 index.html을 여는 일을 막습니다. 개발 서버에서는 동작하지 않습니다.
 - **아이콘과 화면 톤:** `ui/icons.tsx`, `styles.css`
@@ -347,6 +355,7 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
 | 메시지 / 첨부 | `Message` / `Attachment` | 채팅 모드와 메타버스 모드가 공유하는 단일 데이터 |
 | 말풍선 | `SpeechBubble` | 메타버스 모드에서 메시지를 캐릭터 위에 띄우는 표현 |
 | 첨부 모션 | `AttachmentEmote` | 첨부 메시지를 말풍선 대신 캐릭터 모션으로 보여주는 표현 |
+| 모션 | `CharacterMotion` | 캐릭터에 직접 추가해서 광장에서 숫자 키로 트는 애니메이션 (한 번 / 반복) |
 | 통화 | `Call` | 음성 채널 또는 DM에서 진행 중인 음성 연결 |
 | 근접 음성 | `ProximityVoice` | 광장 거리에 따라 통화 음성을 듣게 하는 설정 |
 | 온라인 상태 | `Presence` | WebSocket 연결 기준의 접속 상태 |
@@ -401,6 +410,7 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
   - `channel:created`, `dm:created`, `community:member-joined` / `member-left` / `deleted`, `presence:changed`
   - `plaza:watch` / `plaza:unwatch`: 광장 화면을 열고 닫을 때 (위치 업데이트 구독)
   - `plaza:move` → `plaza:moved`
+  - `plaza:setMotion` → `plaza:motionChanged` (캐릭터 모션, 보낸 연결 제외)
   - 광장 인원 변화 → `plaza:member` (나타남/사라짐 한 명씩), 되돌림 → `plaza:corrected`
   - 커뮤니티 광장의 맵(또는 맵에 쓴 에셋)이 바뀜 → `plaza:mapChanged` (다시 `plaza:watch`)
   - `voice:sync`(ack로 볼 수 있는 통화 전부), `voice:join`(ack로 음성 서버 주소와 입장권) / `voice:leave` → `voice:joined` / `voice:left`
@@ -456,7 +466,7 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
 크기는 확정, 나머지는 Phase 4~6에서 이 기준으로 구현합니다.
 
 - **크기 (확정):** 타일 16×16px. 캐릭터 한 프레임의 해상도는 가로 16~128px, 세로는 가로의 2배(기본 16×32px)이고, 광장에서 차지하는 크기는 늘 16×32px(가로 1타일, 세로 2타일)입니다. 도트 에디터의 "해상도"에서 직접 고칩니다 (그림은 발밑 가운데를 기준으로 남음).
-- **확대:** 화면에는 정수배로만 확대합니다 (기본 3배, 사용자가 2~4배 선택 — 선택 UI는 아직 없음). Phaser는 `pixelArt: true`, `roundPixels: true`로 설정하고, 패널 크기가 바뀌면 정수 배율을 다시 계산합니다. 2.5배 같은 소수 배율은 쓰지 않습니다.
+- **확대:** 화면에는 정수배로만 확대합니다 (기본 3배, 광장에 포커스가 있을 때 Ctrl +/−로 1~6배). Phaser는 `pixelArt: true`, `roundPixels: true`로 설정하고, 패널 크기가 바뀌면 정수 배율을 다시 계산합니다. 2.5배 같은 소수 배율은 쓰지 않습니다.
 - **카메라:** 모닥불 캠프(약 16×12타일)는 맵 전체가 패널에 들어오는 가장 큰 정수 배율로 보여주고, 분수 광장(약 48×36타일 이상)은 배율을 고정하고 카메라가 내 캐릭터를 따라갑니다.
 - **캐릭터 기준점:** 발밑 가운데입니다. 충돌 판정은 발 영역(약 10×6px)만 쓰고, y좌표 순서로 앞뒤를 그려서 분수나 모닥불 뒤로 지나갈 때 가려지게 합니다.
 - **스프라이트시트 배치:** 행은 방향(아래, 왼쪽, 오른쪽, 위), 열은 프레임입니다. 커스터마이징 부품(몸, 머리카락, 옷)은 같은 배치로 따로 그려서 실행 중에 겹칩니다.

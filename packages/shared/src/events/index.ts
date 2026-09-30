@@ -15,8 +15,10 @@ import type { PlazaId } from '../domain/plaza.js';
 import type {
   PlazaCorrection,
   PlazaMemberChange,
+  PlazaMotionChanged,
   PlazaMoveRequest,
   PlazaMoved,
+  PlazaSetMotionRequest,
   PlazaSnapshot,
 } from '../plaza/events.js';
 import type {
@@ -72,6 +74,9 @@ export const SocketEvent = {
   PlazaCorrected: 'plaza:corrected',
   /** 커뮤니티 광장의 맵(또는 맵에 쓴 에셋)이 바뀌었다: 광장을 보던 클라이언트는 다시 연다 */
   PlazaMapChanged: 'plaza:mapChanged',
+  /** 내 캐릭터 모션(숫자 키)을 틀거나 멈춘다 → 같은 광장을 보는 다른 사람에게 plaza:motionChanged */
+  PlazaSetMotion: 'plaza:setMotion',
+  PlazaMotionChanged: 'plaza:motionChanged',
   /** 볼 수 있는 진행 중인 통화 전부 (접속할 때, 커뮤니티가 바뀔 때) */
   VoiceSync: 'voice:sync',
   VoiceJoin: 'voice:join',
@@ -115,6 +120,7 @@ export interface ClientToServerEvents {
   ) => void;
   [SocketEvent.PlazaUnwatch]: (payload: { plazaId: string }) => void;
   [SocketEvent.PlazaMove]: (payload: PlazaMoveRequest) => void;
+  [SocketEvent.PlazaSetMotion]: (payload: PlazaSetMotionRequest) => void;
   [SocketEvent.VoiceSync]: (payload: object, ack: (result: SocketAck<VoiceCall[]>) => void) => void;
   [SocketEvent.VoiceJoin]: (
     payload: { channelId: string },
@@ -150,6 +156,7 @@ export interface ServerToClientEvents {
   [SocketEvent.PlazaMember]: (payload: PlazaMemberChange) => void;
   [SocketEvent.PlazaCorrected]: (payload: PlazaCorrection) => void;
   [SocketEvent.PlazaMapChanged]: (payload: { plazaId: PlazaId }) => void;
+  [SocketEvent.PlazaMotionChanged]: (payload: PlazaMotionChanged) => void;
   [SocketEvent.VoiceJoined]: (payload: VoiceJoined) => void;
   [SocketEvent.VoiceLeft]: (payload: VoiceLeft) => void;
   [SocketEvent.VoiceUpdated]: (payload: { channelId: string; member: VoiceMember }) => void;

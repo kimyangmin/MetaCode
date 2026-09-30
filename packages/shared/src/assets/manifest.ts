@@ -95,11 +95,31 @@ export const REQUIRED_CHARACTER_ANIMATIONS: readonly RequiredAnimation[] = [
   { name: 'emote', minFrames: 2, label: '첨부 모션' },
 ];
 
+/**
+ * 광장에서 공중에 있을 때(횡스크롤 점프·떨어지기) 트는 애니메이션. 없으면 걷기의 두 번째 프레임을 쓴다
+ * (필수가 아닌 캐릭터 애니메이션).
+ */
+export const JUMP_ANIMATIONS = ['jump-left', 'jump-right'] as const;
+
+/**
+ * 캐릭터 모션: 필수 애니메이션 말고 직접 추가해서 광장에서 숫자 키로 트는 애니메이션 (춤, 인사 등).
+ * 키는 숫자 1~9, 0이라 한 캐릭터에 열 개까지다.
+ */
+export const MOTION_KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'] as const;
+export type MotionKey = (typeof MOTION_KEYS)[number];
+export const MOTION_LABEL_MAX_LENGTH = 16;
+
 const hexColor = z.string().regex(/^#[0-9a-f]{6}$/, '색은 #rrggbb 형식이어야 합니다.');
 
 const animationSchema = z.object({
   frames: z.array(z.number().int().min(0)).min(1).max(FRAME_LIMIT.character),
   frameMs: z.number().int().min(FRAME_MS_MIN).max(FRAME_MS_MAX),
+  /** 캐릭터 모션: 화면에 보일 이름 (애니메이션 이름은 영문이라 따로 둔다) */
+  label: z.string().trim().min(1).max(MOTION_LABEL_MAX_LENGTH).optional(),
+  /** 캐릭터 모션: 광장에서 이 숫자 키를 누르면 튼다 */
+  key: z.enum(MOTION_KEYS).optional(),
+  /** 캐릭터 모션: 움직이거나 다시 누를 때까지 반복한다 (없으면 한 번) */
+  loop: z.boolean().optional(),
 });
 export type AssetAnimation = z.infer<typeof animationSchema>;
 
@@ -131,6 +151,27 @@ export type AssetManifest = z.infer<typeof manifestShape>;
 
 export function decodeFrames(manifest: AssetManifest): (Uint8Array | null)[] {
   return manifest.frames.map(decodePixels);
+}
+
+export interface CharacterMotion {
+  /** 애니메이션 이름 */
+  name: string;
+  key: MotionKey;
+  label: string;
+  loop: boolean;
+}
+
+/** 캐릭터의 모션 (키 순서: 1, 2, …, 9, 0) */
+export function characterMotions(manifest: Pick<AssetManifest, 'animations'>): CharacterMotion[] {
+  return Object.entries(manifest.animations)
+    .filter(([, animation]) => animation.key !== undefined)
+    .map(([name, animation]) => ({
+      name,
+      key: animation.key!,
+      label: animation.label ?? name,
+      loop: animation.loop ?? false,
+    }))
+    .sort((a, b) => MOTION_KEYS.indexOf(a.key) - MOTION_KEYS.indexOf(b.key));
 }
 
 /** 캐릭터에 빠진 애니메이션 (없거나, 프레임이 모자라거나, 빈 프레임이 있음) */
@@ -193,6 +234,29 @@ export function manifestProblems(manifest: AssetManifest): string[] {
       problems.push(`${name} 애니메이션이 없는 프레임을 가리킵니다.`);
     }
   }
+
+  const motionProblems = (): string[] => {
+    const found: string[] = [];
+    const keys = new Set<string>();
+    const required = new Set(REQUIRED_CHARACTER_ANIMATIONS.map((r) => r.name));
+    for (const [name, animation] of animations) {
+      const motion =
+        animation.key !== undefined ||
+        animation.label !== undefined ||
+        animation.loop !== undefined;
+      if (!motion) continue;
+      if (kind !== AssetKind.Character) {
+        found.push('모션(키, 이름, 반복)은 캐릭터만 쓸 수 있습니다.');
+        break;
+      }
+      if (required.has(name)) found.push(`${name}: 필수 애니메이션에는 모션 키를 달 수 없습니다.`);
+      if (animation.key === undefined) found.push(`${name}: 모션에는 키가 있어야 합니다.`);
+      else if (keys.has(animation.key)) found.push(`모션 키 ${animation.key}가 겹칩니다.`);
+      else keys.add(animation.key);
+    }
+    return found;
+  };
+  problems.push(...motionProblems());
 
   if (kind === AssetKind.Character) {
     const missing = missingAnimations(manifest);
