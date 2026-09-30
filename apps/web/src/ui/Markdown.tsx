@@ -1,5 +1,5 @@
 import { type ReactNode, useMemo, useState } from 'react';
-import { type Block, type Inline, parseMarkdown } from './markdownParser';
+import { type Block, type Inline, parseMarkdown } from '@metacode/client';
 
 /**
  * 채팅 메시지 글을 마크다운으로 그린다 (parseMarkdown의 트리 → React 요소, HTML은 해석하지 않음).

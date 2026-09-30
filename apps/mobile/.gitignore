@@ -16,3 +16,4 @@ expo-env.d.ts
 
 # 로컬 APK 빌드 결과를 모아 두는 곳
 /upload
+build.log

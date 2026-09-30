@@ -7,9 +7,11 @@ COPY apps/server/package.json apps/server/
 COPY apps/web/package.json apps/web/
 COPY apps/desktop/package.json apps/desktop/
 COPY packages/shared/package.json packages/shared/
+COPY packages/client/package.json packages/client/
 RUN pnpm install --frozen-lockfile --filter "@metacode/web..."
 
 COPY packages/shared packages/shared
+COPY packages/client packages/client
 COPY apps/web apps/web
 # API 주소와 웹 주소(초대 링크용)는 빌드할 때 웹 코드에 들어간다.
 ARG VITE_API_URL

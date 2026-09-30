@@ -1,6 +1,6 @@
 import type { VoiceMember } from '@metacode/shared';
 import { type MouseEvent, useEffect, useRef, useState } from 'react';
-import { displayName } from '../../ui/format';
+import { displayName } from '@metacode/client';
 import { useVoiceStore } from './store';
 import { useVoice } from './VoiceProvider';
 

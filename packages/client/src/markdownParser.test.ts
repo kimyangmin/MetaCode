@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { markdownToPlain, parseInline, parseMarkdown } from './markdownParser';
+import { markdownToPlain, parseInline, parseMarkdown } from './markdownParser.js';
 
 const text = (value: string) => ({ type: 'text', value });
 

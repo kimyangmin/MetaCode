@@ -7,8 +7,8 @@ import {
   directionOf,
   stepByInput,
   stepToward,
-} from './motion';
-import { tileCenter } from './pathfinding';
+} from './motion.js';
+import { tileCenter } from './pathfinding.js';
 
 const square = BUILTIN_LAYOUTS[PlazaMap.FountainSquare];
 

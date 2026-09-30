@@ -15,11 +15,16 @@ import Phaser from 'phaser';
 import { type KeyboardEvent, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { apiFetch } from '../../api/client';
 import { useRealtime } from '../../realtime/RealtimeProvider';
-import { displayName } from '../../ui/format';
+import {
+  displayName,
+  markdownToPlain,
+  EMOTE_DURATION_MS,
+  bubbleDurationMs,
+  bubbleText,
+  emoteLabel,
+} from '@metacode/client';
 import { useVoiceStore } from '../voice/store';
 import { requestPanelFocus } from '../../layout/panelFocus';
-import { markdownToPlain } from '../../ui/markdownParser';
-import { EMOTE_DURATION_MS, bubbleDurationMs, bubbleText, emoteLabel } from './bubbles';
 import { PlazaScene } from './PlazaScene';
 import { type VoiceLabel, plazaVoiceStates } from './plazaVoice';
 

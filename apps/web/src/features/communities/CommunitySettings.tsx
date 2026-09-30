@@ -31,7 +31,7 @@ import {
   cropSource,
   releaseCropSource,
 } from '../../ui/ImageCropDialog';
-import { displayName, initials } from '../../ui/format';
+import { displayName, initials } from '@metacode/client';
 import { useDragSort } from '../../ui/useDragSort';
 import { closeAssetEditors } from '../assets/AssetEditors';
 import { useMeRequired, useMembers } from './hooks';

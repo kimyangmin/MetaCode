@@ -11,3 +11,6 @@ packages/shared/src/assets/builtin/*.json
 # 안드로이드 네이티브 프로젝트: cap sync가 넣는 파일과 Gradle 빌드 결과
 apps/android/android/app/src/main/assets
 apps/android/android/**/build
+# 네이티브 앱: expo prebuild가 만드는 네이티브 프로젝트와 Expo 캐시
+apps/mobile/android
+apps/mobile/.expo

@@ -1,0 +1,34 @@
+{
+  "name": "@metacode/client",
+  "version": "0.0.0",
+  "private": true,
+  "description": "웹과 네이티브 앱이 함께 쓰는 화면 밖 로직 (캐시 규칙, 마크다운 파서, 광장 이동·카메라·말풍선, 통화 상태)",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "dev": "tsc -p tsconfig.build.json --watch --preserveWatchOutput",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@metacode/shared": "workspace:*"
+  },
+  "peerDependencies": {
+    "@tanstack/react-query": "^5.104.0",
+    "zustand": "^5.0.15"
+  },
+  "devDependencies": {
+    "@tanstack/react-query": "^5.104.0",
+    "vitest": "^5.0.2",
+    "zustand": "^5.0.15"
+  }
+}

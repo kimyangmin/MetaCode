@@ -1,4 +1,4 @@
-import { dmTitle } from '../../ui/format';
+import { dmTitle } from '@metacode/client';
 import { useCommunities, useDms } from '../communities/hooks';
 
 export interface ChannelLabel {

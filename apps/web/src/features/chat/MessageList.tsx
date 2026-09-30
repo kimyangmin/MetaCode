@@ -18,10 +18,9 @@ import {
 import { type AppSocket, useRealtime } from '../../realtime/RealtimeProvider';
 import { openProfile } from '../../stores/profile';
 import { Avatar } from '../../ui/Avatar';
-import { displayName, formatDay, formatTime, sameDay } from '../../ui/format';
+import { displayName, formatDay, formatTime, sameDay, markdownToPlain } from '@metacode/client';
 import { copyText } from '../../ui/clipboard';
 import { Markdown } from '../../ui/Markdown';
-import { markdownToPlain } from '../../ui/markdownParser';
 import { MessageAttachments } from './MessageAttachments';
 import { useSwipeToReply } from './swipeReply';
 import { type MenuTarget, MessageMenu } from './MessageMenu';

@@ -8,7 +8,7 @@ import {
 import { createPortal } from 'react-dom';
 import type { UserProfile } from '@metacode/shared';
 import { Avatar } from '../../ui/Avatar';
-import { displayName } from '../../ui/format';
+import { displayName } from '@metacode/client';
 import { openPopupWindow, usePopupWindow } from '../../ui/usePopupWindow';
 import {
   type Edge,

@@ -28,9 +28,19 @@ import {
 } from 'lucide';
 import Phaser from 'phaser';
 import { drawShadow, drawSpeakingRing, drawTargetMarker } from './art';
-import { type Bubble, activeBubbles, pushBubble } from './bubbles';
+import {
+  type Bubble,
+  activeBubbles,
+  pushBubble,
+  zoomFor,
+  RemoteTrack,
+  directionOf,
+  stepByInput,
+  stepToward,
+  findPath,
+  tileCenter,
+} from '@metacode/client';
 import type { VoiceLabel } from './plazaVoice';
-import { zoomFor } from './camera';
 import {
   type CharacterLook,
   animationName,
@@ -39,9 +49,7 @@ import {
   emoteDurationMs,
   fitCharacter,
 } from './characterSprite';
-import { RemoteTrack, directionOf, stepByInput, stepToward } from './motion';
 import { MapView } from './mapView';
-import { findPath, tileCenter } from './pathfinding';
 
 /** 이만큼 움직이지 않아야 걷기를 멈춘다 (받은 위치 사이에서 걷기 모션이 끊겼다 이어지지 않게) */
 const WALK_HOLD_MS = 120;

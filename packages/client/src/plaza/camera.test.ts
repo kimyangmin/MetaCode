@@ -1,7 +1,7 @@
 import { PlazaMap } from '@metacode/shared';
 import { BUILTIN_LAYOUTS } from '@metacode/shared/builtin-assets';
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_ZOOM, zoomFor } from './camera';
+import { DEFAULT_ZOOM, zoomFor } from './camera.js';
 
 const square = BUILTIN_LAYOUTS[PlazaMap.FountainSquare];
 const campfire = BUILTIN_LAYOUTS[PlazaMap.Campfire];

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { withUserProfile } from './userUpdates';
+import { withUserProfile } from './userUpdates.js';
 
 const alice = {
   id: 'a',
