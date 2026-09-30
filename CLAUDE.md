@@ -133,7 +133,9 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
   - 데스크톱 화면 공유: Electron의 getDisplayMedia는 고르는 창이 없어서, 웹이 브리지(`screen.getSources`)로 받은 목록을 보여 주고 고른 것(`screen.select`, 30초 유효)을 메인 프로세스의 `setDisplayMediaRequestHandler`가 넘겨줍니다. 고르지 않은 요청과 앱 화면이 아닌 요청은 거절합니다. 시스템 소리(loopback)는 Windows에서만 됩니다. 데스크톱 0.1.0에는 이 브리지가 없어서 "새 버전 설치" 안내가 뜹니다.
   - 데스크톱: Electron은 권한 처리기가 없으면 모든 권한을 허락하므로, 앱 화면에만 마이크·스피커 선택·클립보드 쓰기·전체 화면을 허락하고 나머지(카메라 포함)는 거절합니다 (`apps/desktop/src/main/permissions.ts`).
   - 로컬에서 두 사람 음성 확인: 브라우저 패널은 마이크를 막으므로, 두 번째 사용자는 `@livekit/rtc-node`로 음을 보내는 스크립트로 확인했습니다. 실제 마이크로 말하는 확인은 사람이 해야 합니다.
-- **데스크톱 설치 파일:** `apps/desktop/electron-builder.yml`, `pnpm --filter @metacode/desktop dist:win` (NSIS, 현재 사용자에 설치, 서명 없음), `dist:mac`(dmg+zip, arm64·x64), `dist:linux`(AppImage+deb, x64). 배포용은 자동 업데이트 항목의 워크플로가 만듭니다.
+- **데스크톱 설치 파일:** `apps/desktop/electron-builder.yml`, `pnpm --filter @metacode/desktop dist:win` (NSIS, 현재 사용자에 설치, 서명 없음), `dist:mac`(dmg+zip, arm64·x64), `dist:linux`(AppImage+deb, x64·arm64). 배포용은 자동 업데이트 항목의 워크플로가 만듭니다.
+  - Linux arm64(ARM 노트북, Apple Silicon Mac의 가상 머신)는 0.5.1부터 x64 러너에서 함께 교차 빌드합니다 (네이티브 모듈이 없어서 됨). 예전엔 x64만 있어서 ARM Ubuntu의 `apt install`이 의존성 전부를 "not installable"로 거절했습니다. 업데이트 확인 파일은 `latest-linux-arm64.yml`로 따로 나옵니다.
+  - `Desktop Release`를 손으로 실행(workflow_dispatch)하면 Release 없이 아티팩트만 만듭니다 (빌드 확인용).
   - macOS는 Apple 개발자 서명 없이 임시 서명(`identity: '-'`)만 합니다. Apple Silicon은 서명이 아예 없으면 실행되지 않고, 서명 없이 hardened runtime을 켜면 JIT 권한이 없어 뜨지 않으므로 `hardenedRuntime: false`입니다. 받은 앱을 처음 열 때 "확인되지 않은 개발자" 경고가 뜹니다 (시스템 설정 → 개인정보 보호 및 보안 → 그래도 열기).
   - deb는 `homepage`(package.json)와 `maintainer`가 있어야 만들어집니다. Linux 실행 파일 이름은 `metacode`, 창과 `.desktop`을 묶으려고 `desktopName`을 둡니다.
   - 설치한 앱은 운영 사이트(`https://metacode.kimyangmin.me`)를 앱 창에서 엽니다 (웹 빌드를 앱에 넣지 않음). 개발 중(`app.isPackaged`가 아님)에는 `localhost:5173`, 둘 다 `METACODE_WEB_URL`/`METACODE_API_URL`로 바꿀 수 있습니다. 앱 안에는 메인 프로세스와 preload만 들어갑니다.

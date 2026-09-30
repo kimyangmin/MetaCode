@@ -4,9 +4,11 @@ name: Desktop Release
 # 설치한 앱은 최신 Release의 latest*.yml을 보고 업데이트를 확인한다 (apps/desktop/src/main/updater.ts).
 # Windows와 Linux AppImage는 스스로 업데이트하고, 서명하지 않은 macOS와 deb는 새 버전 알림만 띄운다.
 # 태그의 버전은 apps/desktop/package.json의 version과 같아야 한다. 절차는 README "데스크톱 앱 새 버전 내기".
+# 손으로 실행(workflow_dispatch)하면 Release 없이 설치 파일만 만들어 Actions 아티팩트로 남긴다 (빌드 확인용).
 on:
   push:
     tags: ['desktop-v*']
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -26,7 +28,7 @@ jobs:
         id: version
         run: |
           version=$(node -p "require('./apps/desktop/package.json').version")
-          if [ "desktop-v$version" != "$GITHUB_REF_NAME" ]; then
+          if [ "$GITHUB_REF_TYPE" = "tag" ] && [ "desktop-v$version" != "$GITHUB_REF_NAME" ]; then
             echo "::error::태그($GITHUB_REF_NAME)와 apps/desktop/package.json 버전($version)이 다릅니다."
             exit 1
           fi
@@ -88,6 +90,7 @@ jobs:
 
   release:
     needs: [version, build]
+    if: github.ref_type == 'tag'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
@@ -110,7 +113,10 @@ jobs:
             --notes "## 설치 파일
           - **Windows**: \`MetaCode-Setup-$VERSION.exe\`
           - **macOS**: Apple Silicon(M1 이후)은 \`MetaCode-$VERSION-mac-arm64.dmg\`, Intel은 \`MetaCode-$VERSION-mac-x64.dmg\`
-          - **Linux**: \`MetaCode-$VERSION-linux-x86_64.AppImage\`(실행 권한을 주고 실행, 자동 업데이트됨) 또는 Debian·Ubuntu용 \`MetaCode-$VERSION-linux-amd64.deb\`
+          - **Linux (x64)**: \`MetaCode-$VERSION-linux-x86_64.AppImage\`(실행 권한을 주고 실행, 자동 업데이트됨) 또는 Debian·Ubuntu용 \`MetaCode-$VERSION-linux-amd64.deb\`
+          - **Linux (ARM64)**: \`MetaCode-$VERSION-linux-arm64.AppImage\` 또는 \`MetaCode-$VERSION-linux-arm64.deb\` (ARM 노트북, Apple Silicon Mac의 가상 머신 등. \`uname -m\`이 \`aarch64\`면 이쪽)
+
+          deb는 터미널에서 \`sudo apt install ./<파일 이름>.deb\`로 설치합니다 (Ubuntu 앱 센터는 받은 deb 설치가 멈추는 일이 있음).
 
           이미 설치한 Windows 앱(0.3.0 이상)과 Linux AppImage는 알아서 업데이트됩니다. macOS와 deb는 새 버전이 나오면 앱에 \"새 버전 받기\" 안내가 뜹니다.
 

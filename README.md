@@ -444,7 +444,7 @@ pnpm --filter @metacode/desktop dist:linux  # Linux: .AppImage, .deb
    ```bash
    git tag desktop-v0.3.1 && git push origin desktop-v0.3.1
    ```
-3. `Desktop Release` 워크플로가 Windows·macOS·Linux 러너에서 각각 설치 파일, `.blockmap`, `latest.yml`/`latest-mac.yml`/`latest-linux.yml`을 만들고, 모두 끝나면 Release 하나로 올립니다 (태그와 package.json 버전이 다르면 실패하고, 한 OS라도 실패하면 올리지 않습니다).
+3. `Desktop Release` 워크플로가 Windows·macOS·Linux 러너에서 각각 설치 파일, `.blockmap`, `latest.yml`/`latest-mac.yml`/`latest-linux.yml`(ARM64는 `latest-linux-arm64.yml`)을 만들고, 모두 끝나면 Release 하나로 올립니다 (태그와 package.json 버전이 다르면 실패하고, 한 OS라도 실패하면 올리지 않습니다).
 
 - 앱은 저장소의 **최신(Latest) Release**를 봅니다. 이 저장소에 데스크톱 외의 Release를 올리면 그것이 최신이 되어 업데이트 확인이 실패하므로, 다른 Release는 올리지 않거나 Latest로 표시하지 않습니다.
 - 앱 화면은 운영 사이트를 열기 때문에 웹만 바꾼 경우에는 새 버전을 낼 필요가 없습니다. 메인 프로세스나 preload(`apps/desktop/src`)를 바꿨을 때만 냅니다.
