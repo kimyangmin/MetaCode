@@ -812,6 +812,49 @@ a.button {
   background: var(--bg-hover);
 }
 
+/* 손가락으로 메시지를 오른쪽으로 밀어 답장 (features/chat/swipeReply.ts) */
+.message__swipe-reply {
+  display: none;
+}
+
+.message[data-swipe] {
+  position: relative;
+  /* 옆으로 민 내용이 목록을 가로로 늘리지 않게 자른다. overflow를 바꾸면 flex 항목의 최소 높이가 0이
+     되어 목록이 길 때 메시지가 납작해지므로 줄어들지 않게 둔다 */
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.message[data-swipe] > :not(.message__swipe-reply) {
+  transform: translateX(var(--swipe-x, 0px));
+}
+
+.message[data-swipe] > .message__swipe-reply {
+  position: absolute;
+  top: 50%;
+  left: 12px;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--bg-hover);
+  color: var(--muted);
+  opacity: var(--swipe-progress, 0);
+  transform: translateY(-50%) scale(calc(0.6 + 0.4 * var(--swipe-progress, 0)));
+}
+
+.message[data-swipe-ready] > .message__swipe-reply {
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+
+.message[data-swipe='release'] > * {
+  transition:
+    transform 0.18s ease,
+    opacity 0.18s ease;
+}
+
 .message__gutter {
   display: flex;
   /* 여러 줄 메시지에서 아바타가 가운데로 내려가지 않게 위에 붙인다 */
@@ -5462,6 +5505,12 @@ a {
     transition: none;
   }
 
+  /* 미는 동안 배경은 서랍이 나온 만큼 어둡다 (layout/drawerSwipe.ts) */
+  .app[data-dragging] .app__backdrop {
+    opacity: var(--drawer-progress, 1);
+    transition: none;
+  }
+
   .members-slot > .members,
   .members-slot[data-open='false'] > .members {
     width: 100%;
@@ -5508,11 +5557,16 @@ a {
     box-shadow: 8px 0 24px rgb(0 0 0 / 0.25);
   }
 
-  /* 서랍을 반대쪽으로 미는 동안은 손가락을 따라온다 (layout/drawerSwipe.ts) */
+  /* 서랍을 미는 동안은 손가락을 따라온다: 열린 것을 닫거나, 닫힌 것을 오른쪽으로 밀어 열기
+     (layout/drawerSwipe.ts) */
   .app[data-dragging='nav'] .rail,
   .app[data-dragging='nav'] .sidebar {
     transform: translateX(var(--drawer-drag, 0px));
     transition: none;
+  }
+
+  .app[data-dragging='nav'] .sidebar {
+    box-shadow: 8px 0 24px rgb(0 0 0 / 0.25);
   }
 
   /* 휴대폰은 채팅과 광장을 위아래로만 나눈다. 손가락으로 잡기 쉽게 구분선을 두껍게 */
