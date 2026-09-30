@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseInviteCode } from './invite';
+import { parseInviteCode } from './invite.js';
 
 describe('parseInviteCode', () => {
   it('코드만, 웹 링크, 데스크톱 해시 링크 모두에서 코드를 꺼낸다', () => {

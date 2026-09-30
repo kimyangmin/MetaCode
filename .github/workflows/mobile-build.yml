@@ -7,6 +7,7 @@ on:
     paths:
       - 'apps/mobile/**'
       - 'packages/shared/**'
+      - 'packages/client/**'
       - 'pnpm-lock.yaml'
       - '.github/workflows/mobile-build.yml'
   workflow_dispatch:
@@ -31,8 +32,8 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      # 앱이 불러오는 @metacode/shared는 dist를 쓴다
-      - run: pnpm --filter @metacode/shared build
+      # 앱이 불러오는 워크스페이스 패키지(@metacode/shared, @metacode/client)는 dist를 쓴다
+      - run: pnpm --filter "@metacode/mobile^..." build
 
       - uses: actions/setup-java@v4
         with:

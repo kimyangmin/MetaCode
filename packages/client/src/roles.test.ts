@@ -1,6 +1,6 @@
 import type { RoleDto } from '@metacode/shared';
 import { describe, expect, it } from 'vitest';
-import { memberColor, roleNames } from './roles';
+import { memberColor, roleNames } from './roles.js';
 
 const roles: RoleDto[] = [
   { id: 'b', name: '개발', color: '#3f8fdb', position: 1 },

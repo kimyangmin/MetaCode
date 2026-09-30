@@ -6,7 +6,7 @@ import { ApiError, apiFetch } from '../../api/client';
 import { jsonBody, queryKeys } from '../../api/queries';
 import { Dialog } from '../../ui/Dialog';
 import { upsertCommunity } from './hooks';
-import { parseInviteCode } from './invite';
+import { parseInviteCode } from '@metacode/client';
 
 export function CreateCommunityDialog({ onClose }: { onClose(): void }) {
   const queryClient = useQueryClient();
