@@ -754,6 +754,8 @@ a.button {
   flex: 1;
   flex-direction: column-reverse;
   padding: 8px 0 4px;
+  /* 휴대폰에서 메시지를 옆으로 밀 때 목록이 가로로 스크롤되지 않게 한다 (넘치는 내용은 각자 줄어듦) */
+  overflow-x: hidden;
   overflow-y: auto;
   overflow-anchor: auto;
 }
@@ -1195,6 +1197,8 @@ a.button {
 /* 메시지에 붙은 첨부 */
 .attachments {
   display: grid;
+  /* 이미지·파일 카드가 메시지 본문보다 넓으면 트랙을 늘리지 않고 줄어들게 한다 */
+  grid-template-columns: minmax(0, 1fr);
   gap: 6px;
   margin-top: 4px;
 }
@@ -1220,6 +1224,7 @@ a.button {
 
 .attachments__image {
   position: relative;
+  max-width: 100%;
   padding: 0;
   border: 0;
   border-radius: 8px;
