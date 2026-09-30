@@ -21,7 +21,7 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
 - 2026-09-29: 사진 위치 조정, 로그아웃 확인, 분할 화면 위아래 배치의 경계 조절, 광장 `/` → 보내면 광장으로, Ctrl+1~0 이동, 여닫는 애니메이션, 설정 → 기능(단축키·마크다운), 휴대폰 화면(반응형), 안드로이드 앱(Capacitor, `android-v*` 태그 → APK). 안드로이드 서명 키는 사용자가 저장소 비밀값에 넣어야 첫 Release가 나갑니다 (`docs/android.md`).
 - 개발용 GitHub OAuth App(`localhost` 콜백)으로 웹·데스크톱, 운영용 OAuth App으로 운영 웹의 실제 로그인을 확인했습니다 (2026-09-26).
 - 기술 스택은 README 표대로 확정되었습니다 (2026-09-26). 메타버스 렌더링은 Phaser 3 대신 Phaser 4로 정했습니다 (2026-09-27).
-- 2026-09-30: Phase 8(네이티브 안드로이드 앱, `apps/mobile`) 시작. 1단계: Expo 뼈대, 토큰 로그인(`POST /auth/android/token`), 로컬·Actions APK 빌드.
+- 2026-09-30: Phase 8(네이티브 안드로이드 앱, `apps/mobile`) 시작. 1단계: Expo 뼈대, 토큰 로그인(`POST /auth/android/token`), Actions APK 빌드 — 실제 기기에서 운영 서버 로그인 확인. 2단계: 화면 틀(서랍, 채널·DM·멤버 목록, 실시간 연결).
 - Phase를 진행하면 이 섹션과 README 로드맵 체크박스를 함께 갱신합니다.
 
 ## 기술 메모
@@ -280,6 +280,9 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
   - Expo 버전마다 API가 자주 바뀌므로 기억으로 쓰지 말고 `https://docs.expo.dev/versions/v57.0.0/`을 확인합니다. 패키지는 `npx expo install <이름>`으로 넣어 SDK에 맞는 버전을 받습니다 (pnpm 격리 설치 그대로, Metro 설정 없음).
   - `android/`는 커밋하지 않습니다. `app.config.ts`와 설정 플러그인으로 정하고 `expo prebuild`가 만듭니다. versionCode = 버전 1.2.3 → 10203, 패키지 이름 `me.kimyangmin.metacode`(예전 Capacitor 앱과 같음).
   - 인증은 데스크톱과 같은 토큰 방식입니다: Custom Tab(`expo-web-browser`의 `openAuthSessionAsync`) + PKCE → `metacode://auth?code=` → `POST /auth/android/token`. 액세스 토큰은 메모리, 리프레시 토큰은 `expo-secure-store`. 로그인 중 앱이 꺼져도 `app/auth.tsx`가 딥링크로 이어 받습니다 (verifier는 SecureStore, 같은 코드는 한 번만). 예전 앱의 `android/session`(쿠키)은 대체할 때까지 남깁니다.
+  - 화면 틀(`layout/AppShell.tsx`): 가운데 화면(`(main)` 라우트, `Slot`) + 왼쪽 서랍(`Rail` + `CommunitySidebar`/`DmSidebar` + `UserPanel`) + 오른쪽 멤버 서랍. 웹 휴대폰 화면과 같은 규칙: 서랍이 닫혀 있으면 어디서든 오른쪽으로 밀어 목록을 열고(메시지 답장은 왼쪽 밀기), 열린 서랍은 바깥쪽으로 밀기·어두운 곳 누르기·뒤로 가기로 닫습니다. 제스처는 react-native-gesture-handler의 Pan, 위치는 Reanimated 공유 값입니다. React Compiler 린트 때문에 공유 값은 `.value` 대신 `.get()`/`.set()`으로 읽고 씁니다.
+  - 라우트: `/c/<커뮤니티>/<채널>`, `/dm`, `/dm/<대화>` (웹과 같은 주소). 커뮤니티를 고르면 첫 텍스트 채널로, 없는 채널·커뮤니티면 처음으로 돌아갑니다.
+  - 실시간 연결(`realtime/RealtimeProvider.tsx`)은 웹과 같은 이벤트 규칙(`@metacode/client`의 캐시 함수)이고, 소켓 인증은 데스크톱처럼 `auth.token`(연결할 때마다 새 토큰)입니다. 앱이 다시 앞에 오면 끊긴 연결을 바로 되살립니다.
   - 서버 주소는 빌드할 때 `EXPO_PUBLIC_API_URL`(기본 운영). 색 토큰(`ui/theme.ts`)은 웹 `:root`와 같은 값입니다.
   - Skia는 설치 스크립트로 미리 빌드된 라이브러리를 받으므로 `onlyBuiltDependencies`에 있습니다.
   - Windows에서 로컬 Gradle 빌드는 C++ 단계(worklets, screens, skia)가 `ninja: manifest 'build.ninja' still dirty after 100 tries`로 실패했습니다 (pnpm 연결 폴더를 CMake가 계속 다시 확인함). APK는 Actions(`Mobile Build`, ubuntu)에서 만들고, 개발 빌드(dev client)를 기기에 설치한 뒤 JS만 로컬 Metro로 바꿔 끼웁니다.

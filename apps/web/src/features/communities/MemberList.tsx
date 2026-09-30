@@ -1,9 +1,8 @@
 import type { CommunityMember } from '@metacode/shared';
-import { usePresenceStore, displayName } from '@metacode/client';
+import { usePresenceStore, displayName, memberColor, roleNames } from '@metacode/client';
 import { openProfile } from '../../stores/profile';
 import { Avatar } from '../../ui/Avatar';
 import { useCommunities, useMembers } from './hooks';
-import { memberColor, roleNames } from './roles';
 
 const ROLE_LABEL = { OWNER: '소유자', ADMIN: '관리자', MEMBER: '' } as const;
 
