@@ -48,9 +48,12 @@ jobs:
           java-version: '21'
           cache: gradle
 
-      - uses: android-actions/setup-android@v3
-        with:
-          packages: platform-tools
+      # Android SDK는 ubuntu 러너에 이미 있다 (ANDROID_HOME). 모자란 플랫폼은 Gradle이 받아 온다.
+      # android-actions/setup-android@v3는 sdkmanager가 없어진 'tools' 패키지를 설치하려다 실패해서 쓰지 않는다.
+      - name: Check Android SDK
+        run: |
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          ls "$ANDROID_HOME/platforms" "$ANDROID_HOME/build-tools"
 
       # 네이티브 프로젝트에 설정(capacitor.config.json)과 플러그인(App, Browser)을 넣는다.
       - run: pnpm --filter @metacode/android exec cap sync android

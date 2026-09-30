@@ -35,6 +35,14 @@ interface VoiceState {
   watching: string | null;
   /** 보고 있는 화면 공유의 영상. 받기 전이거나 공유가 끝났으면 null */
   screen: MediaStream | null;
+  /** 보고 있는 화면 공유의 통화. 보려고 통화에 들어가는 동안에도 보기 창이 누구의 화면인지 안다 */
+  watchChannel: string | null;
+  /** 보려고 통화에 들어가지 못했을 때의 사유 (보기 창에 보여 준다) */
+  watchError: string | null;
+  /** 보려고 통화에 들어가는 중 */
+  watchJoining: boolean;
+  /** 보려고 통화에 들어가면서 마이크를 꺼 두었다 (보기 창에서 켤 수 있게 알린다) */
+  watchMutedOnJoin: boolean;
   /** 마우스를 올려 작게 미리 보는 화면 공유 (사용자 ID)와 그 영상 */
   previewing: string | null;
   previewScreen: MediaStream | null;
@@ -66,6 +74,10 @@ interface VoiceState {
         | 'sharing'
         | 'watching'
         | 'screen'
+        | 'watchChannel'
+        | 'watchError'
+        | 'watchJoining'
+        | 'watchMutedOnJoin'
         | 'previewing'
         | 'previewScreen'
       >
@@ -166,6 +178,10 @@ export const useVoiceStore = create<VoiceState>((set) => ({
   sharing: false,
   watching: null,
   screen: null,
+  watchChannel: null,
+  watchError: null,
+  watchJoining: false,
+  watchMutedOnJoin: false,
   previewing: null,
   previewScreen: null,
   inputDeviceId: readDevice('audioinput'),

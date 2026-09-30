@@ -22,7 +22,7 @@ import type { Env } from '../config/env.js';
 import { PlazaService } from '../plaza/plaza.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { RealtimeService, room } from '../realtime/realtime.service.js';
-import { toProfile } from '../users/users.service.js';
+import { UsersService, toProfile } from '../users/users.service.js';
 import { LiveKitService } from './livekit.service.js';
 
 interface Member extends VoiceMember {
@@ -71,9 +71,16 @@ export class VoiceService implements OnModuleDestroy {
     private readonly plaza: PlazaService,
     private readonly realtime: RealtimeService,
     private readonly livekit: LiveKitService,
+    users: UsersService,
     config: ConfigService<Env, true>,
   ) {
     this.graceMs = config.get('VOICE_DISCONNECT_GRACE_MS');
+    // 통화 중에 닉네임·사진이 바뀌면 들고 있는 프로필도 바꾼다. 그대로 두면 다음 voice:updated(말하는 중 등)가
+    // 들어올 때의 옛 프로필을 보내서, 클라이언트가 user:updated로 바꾼 새 사진을 다시 덮어썼다.
+    users.onProfileChanged((profile) => {
+      const member = this.memberOf(profile.id);
+      if (member) member.user = profile;
+    });
   }
 
   onModuleDestroy(): void {

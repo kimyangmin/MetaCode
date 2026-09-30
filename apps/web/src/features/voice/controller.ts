@@ -28,6 +28,8 @@ export class VoiceController {
   private connection: VoiceConnection | null = null;
   /** 내가 말하는 중 (이 기기의 마이크로 직접 감지한 값) */
   private speaking = false;
+  /** 화면 보기 요청 번호 (watch) */
+  private watchRequest = 0;
 
   constructor(private readonly meId: string) {}
 
@@ -107,9 +109,10 @@ export class VoiceController {
     }
   }
 
-  async join(channelId: string): Promise<void> {
+  /** keepWatch: 화면을 보려고 들어가는 중이라 보기 창을 닫지 않는다 (watch) */
+  async join(channelId: string, keepWatch = false): Promise<void> {
     if (store().session?.channelId === channelId) return;
-    await this.dropConnection();
+    await this.dropConnection(keepWatch);
     store().setSession({ channelId, status: 'connecting', listenOnly: false });
     store().patch({ error: null, gains: {} });
     try {
@@ -216,20 +219,78 @@ export class VoiceController {
     if (!store().sharing) return;
     store().patch({ sharing: false });
     await this.connection?.setScreenShareEnabled(false);
-    if (store().watching === this.meId) store().patch({ watching: null, screen: null });
+    if (store().watching === this.meId) {
+      store().patch({ watching: null, watchChannel: null, screen: null });
+    }
     this.sendState();
   }
 
   /**
    * 누군가의 화면 공유 보기. 그 통화에 없으면 먼저 들어간다 (Discord처럼 통화 참여자만 볼 수 있다).
+   * - 보기 창은 바로 띄운다 (들어가는 동안 "통화에 들어가는 중", 실패하면 그 사유).
+   * - 보려고 들어갈 때는 마이크를 끈 채로 들어간다 (말하려던 게 아니므로). 보기 창에서 바로 켤 수 있다.
    * null이면 보기를 닫는다 (영상 구독도 끊는다).
    */
   async watch(channelId: string | null, userId: string | null): Promise<void> {
-    if (channelId && userId && store().session?.channelId !== channelId) {
-      await this.join(channelId);
-      if (store().session?.channelId !== channelId) return;
+    // 들어가는 사이 사용자가 창을 닫았거나 다른 화면을 골랐는지 가리려고 요청마다 번호를 붙인다.
+    const request = ++this.watchRequest;
+    if (!channelId || !userId) {
+      store().patch({
+        watching: null,
+        watchChannel: null,
+        screen: null,
+        watchError: null,
+        watchJoining: false,
+        watchMutedOnJoin: false,
+      });
+      this.applyVolumes();
+      return;
     }
-    store().patch({ watching: userId, screen: this.currentScreen(userId) });
+    const joining = store().session?.channelId !== channelId;
+    store().patch({
+      watching: userId,
+      watchChannel: channelId,
+      screen: joining ? null : this.currentScreen(userId),
+      watchError: null,
+      watchJoining: joining,
+      ...(joining ? {} : { watchMutedOnJoin: false }),
+    });
+    if (joining) {
+      const wasMuted = store().muted;
+      store().patch({ muted: true, watchMutedOnJoin: !wasMuted });
+      await this.join(channelId, true);
+      // 기다리는 사이 다른 것을 보기로 했거나 닫았다.
+      if (request !== this.watchRequest) return;
+      if (store().session?.channelId !== channelId) {
+        // 들어가지 못했다: 마이크 상태를 되돌리고 보기 창에 사유를 보여 준다.
+        store().patch({
+          muted: wasMuted,
+          watching: userId,
+          watchChannel: channelId,
+          watchError: store().error ?? '통화에 들어가지 못했습니다.',
+          watchJoining: false,
+          watchMutedOnJoin: false,
+        });
+        return;
+      }
+      store().patch({ screen: this.currentScreen(userId), watchJoining: false });
+    }
+    this.applyVolumes();
+  }
+
+  /**
+   * 보기 창의 "다시 시도": 들어가지 못했으면 다시 들어가 보고, 영상이 오지 않으면 구독을 끊었다 다시 건다.
+   */
+  retryWatch(): void {
+    const { watching, watchChannel, watchError } = store();
+    if (!watching || !watchChannel) return;
+    if (watchError) {
+      void this.watch(watchChannel, watching);
+      return;
+    }
+    store().patch({ watching: null });
+    this.applyVolumes();
+    store().patch({ watching, screen: this.currentScreen(watching) });
     this.applyVolumes();
   }
 
@@ -301,6 +362,8 @@ export class VoiceController {
         if (this.connection !== conn) return;
         this.connection = null;
         store().setSession(null);
+        // 보던 화면 창도 닫는다 (남겨 두면 다음 통화에 들어갈 때 다시 떴다).
+        this.closeScreens();
         store().patch({
           gains: {},
           playbackBlocked: false,
@@ -319,7 +382,9 @@ export class VoiceController {
       onScreenShareEnded: () => {
         if (this.connection !== conn || !store().sharing) return;
         store().patch({ sharing: false });
-        if (store().watching === this.meId) store().patch({ watching: null, screen: null });
+        if (store().watching === this.meId) {
+          store().patch({ watching: null, watchChannel: null, screen: null });
+        }
         this.sendState();
       },
     });
@@ -346,22 +411,31 @@ export class VoiceController {
     }
   }
 
-  private async dropConnection(): Promise<void> {
+  private async dropConnection(keepWatch = false): Promise<void> {
     const current = this.connection;
     this.connection = null;
     this.speaking = false;
     store().patch({ playbackBlocked: false });
-    this.closeScreens();
+    this.closeScreens(keepWatch);
     await current?.disconnect();
   }
 
-  private closeScreens() {
+  /** keepWatch: 화면을 보려고 다른 통화로 옮기는 중이면 보기 창은 그대로 둔다 (영상만 비움) */
+  private closeScreens(keepWatch = false) {
     store().patch({
       sharing: false,
-      watching: null,
       screen: null,
       previewing: null,
       previewScreen: null,
+      ...(keepWatch
+        ? {}
+        : {
+            watching: null,
+            watchChannel: null,
+            watchError: null,
+            watchJoining: false,
+            watchMutedOnJoin: false,
+          }),
     });
   }
 

@@ -51,6 +51,13 @@ let publicServerUrl = 'http://localhost:3000';
 
 @Injectable()
 export class UsersService {
+  /** 프로필(닉네임, 사진, 캐릭터)이 바뀌면 부를 곳. 프로필을 따로 들고 있는 서비스(통화 상태)가 등록한다 */
+  private readonly profileListeners: ((profile: UserProfile) => void)[] = [];
+
+  onProfileChanged(listener: (profile: UserProfile) => void): void {
+    this.profileListeners.push(listener);
+  }
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly storage: StorageService,
@@ -237,6 +244,8 @@ export class UsersService {
 
   /** 닉네임, 사진, 캐릭터가 바뀌었다: 같은 커뮤니티·DM 사람, 친구(요청 포함)와 본인(다른 탭·기기)에게 알린다 */
   private async announce(user: User): Promise<void> {
+    const profile = toProfile(user);
+    for (const listener of this.profileListeners) listener(profile);
     const [communities, channels, friends] = await Promise.all([
       this.prisma.communityMember.findMany({
         where: { userId: user.id },
@@ -260,7 +269,7 @@ export class UsersService {
         ...friends.map((f) => `user:${f.requesterId === user.id ? f.addresseeId : f.requesterId}`),
       ],
       SocketEvent.UserUpdated,
-      toProfile(user),
+      profile,
     );
   }
 }

@@ -51,13 +51,15 @@ mac:
   artifactName: MetaCode-${version}-mac-${arch}.${ext}
 dmg:
   artifactName: MetaCode-${version}-mac-${arch}.${ext}
-# Linux: AppImage(자동 업데이트됨)와 deb(Debian·Ubuntu, 새 버전 알림만).
+# Linux: AppImage(자동 업데이트됨)와 deb(Debian·Ubuntu, 새 버전 알림만). x64와 arm64(ARM 노트북, Mac의
+# 가상 머신 등)를 x64 러너 하나에서 함께 만든다 (네이티브 모듈이 없어 교차 빌드가 됨). 업데이트 확인 파일은
+# latest-linux.yml(x64)과 latest-linux-arm64.yml로 나뉘고, electron-updater가 실행 중인 아키텍처에 맞는 것을 본다.
 linux:
   target:
     - target: AppImage
-      arch: [x64]
+      arch: [x64, arm64]
     - target: deb
-      arch: [x64]
+      arch: [x64, arm64]
   category: Network
   synopsis: 채팅과 메타버스를 한 화면에서
   executableName: metacode

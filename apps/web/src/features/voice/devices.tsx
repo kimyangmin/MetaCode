@@ -180,11 +180,12 @@ export function InputSensitivity({ preview = false }: { preview?: boolean }) {
   // 음량은 초당 50번 오므로 다시 그리지 않고 막대만 직접 옮긴다.
   useEffect(
     () =>
-      micReports.subscribe(({ level, threshold }) => {
+      micReports.subscribe(({ level, threshold, open }) => {
         const bar = barRef.current;
         if (bar) {
           bar.style.width = `${levelRatio(level) * 100}%`;
-          bar.dataset.open = String(level >= threshold);
+          // 초록 = 실제로 나가는 소리 (잡음 제거를 켜면 목소리가 아닌 소리는 문턱을 넘어도 회색)
+          bar.dataset.open = String(open);
         }
         if (markerRef.current) markerRef.current.style.left = `${levelRatio(threshold) * 100}%`;
         // 자동일 때만 알려 준 문턱을 적는다 (직접 정하면 정한 값을 그린다).

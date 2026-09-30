@@ -109,13 +109,14 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
   - 캐릭터(`characterSprite.ts`): 고른 캐릭터(없으면 `defaultCharacter(userId)`, 사용자 ID로 고른 기본 캐릭터와 색)를 `characterPalette`로 색을 바꿔 텍스처 하나로 만들고, 같은 모습이면 함께 쓴다(`char:<characterKey>`). 멈추면 `idle-<방향>`, 움직이면 `walk-<방향>`(120ms 동안 안 움직여야 멈춘 것으로 봄, 받은 위치 사이에서 걷기가 끊기지 않게), 첨부 메시지면 `emote`를 한 번. 애니메이션이 바뀔 때 처음 프레임부터 튼다.
 - **음성 통화 (Phase 5):** `apps/server/src/voice/`, `apps/web/src/features/voice/`, `packages/shared/src/voice/`
   - LiveKit(셀프 호스팅, WebRTC SFU)이 음성을 나르고, 서버는 입장권(JWT)을 만들고 통화 목록과 상태를 관리합니다. 채널 하나 = LiveKit 방 `channel-<channelId>`, 신원 = 사용자 ID (같은 사람이 다른 곳에서 들어오면 LiveKit이 앞의 연결을 끊음). 입장권은 마이크만 올릴 수 있습니다.
-  - 통화 상태는 서버 메모리에 둡니다 (Presence와 같이 서버 한 대 전제). 통화는 들어간 실시간 연결(socket)에 묶이고, 그 연결이 끊긴 뒤 `VOICE_DISCONNECT_GRACE_MS`(15초) 안에 다시 들어오지 않으면 빼고 LiveKit에서도 끊습니다. 서버가 다시 시작하면 웹 클라이언트가 `connect` 때 `voice:join`을 다시 보내 묶습니다 (이미 LiveKit에 붙어 있으면 새 입장권은 버림).
+  - 통화 상태는 서버 메모리에 둡니다 (Presence와 같이 서버 한 대 전제). 참여자의 프로필도 들고 있으므로, 통화 중에 닉네임·사진·캐릭터가 바뀌면 `UsersService.onProfileChanged`로 받아 바꿉니다 (예전엔 말하는 중 알림마다 들어올 때의 옛 사진을 보내 새 사진을 덮어썼음, 테스트 있음). 통화는 들어간 실시간 연결(socket)에 묶이고, 그 연결이 끊긴 뒤 `VOICE_DISCONNECT_GRACE_MS`(15초) 안에 다시 들어오지 않으면 빼고 LiveKit에서도 끊습니다. 서버가 다시 시작하면 웹 클라이언트가 `connect` 때 `voice:join`을 다시 보내 묶습니다 (이미 LiveKit에 붙어 있으면 새 입장권은 버림).
   - 한 사람은 통화 하나: 다른 통화에 들어가면 서버가 앞의 통화에서 빼고 `voice:left`를 본인 방에도 보냅니다. 다른 기기의 클라이언트는 이것을 받고 연결을 끊습니다.
   - 이벤트 대상: 통화 목록과 상태는 `channel:<id>` 방(음성 채널이면 커뮤니티 멤버 전원, DM이면 참여자)으로 보내므로, 통화에 없는 사람도 목록과 광장 표시를 봅니다.
   - 근접 음성: 서버가 광장 위치(Redis)로 참여자 쌍마다 음량을 계산해(`proximityGain`: 3타일 안 1, 10타일 밖 0, 0.1 단위) 바뀐 사람에게만 `voice:gains`로 보냅니다. 광장 이동(`plaza:move` 통과), 통화 참여/나감, 켜기 때 다시 계산합니다. 클라이언트는 LiveKit 자동 구독을 끄고, 0이면 구독을 끊고 아니면 그 음량으로 틉니다 (`volumeFor`). 구독 여부는 `isSubscribed`가 아니라 `isDesired`로 판단합니다 (구독 요청 중에 끊지 못하는 문제가 있었음). 설정은 `Channel.proximityVoice`에 저장합니다.
   - 마이크 처리(`micChain.ts`, LiveKit 오디오 처리기 `MicProcessor`): 마이크 → **RNNoise 잡음 제거**(`@sapphi-red/web-noise-suppressor`, 켰을 때만 WASM 약 150KB를 받음) → **소리 문턱 + 음량 측정**(`micGate.worklet.ts`) → 마이크 증폭 → 전송. 마이크가 켜져 있으면 늘 붙입니다. 붙이지 못하면(AudioWorklet 불가) 처리 없이 보냅니다.
     - AudioContext는 48kHz로 만듭니다 (RNNoise가 48kHz, 10ms 단위라 지연이 10ms 안팎 늘어남). RNNoise를 켜면 브라우저 잡음 억제(`noiseSuppression`)는 끕니다 (두 번 거르면 목소리가 뭉개짐). 켜고 끌 때는 처리 줄에서 RNNoise를 넣고 빼고, 마이크 트랙을 새 조건으로 다시 엽니다 (`restartTrack`).
     - 소리 문턱(`gate.ts`)은 **오디오 스레드**에서 판단합니다: 128샘플(약 2.7ms)마다 음량이 문턱을 넘으면 바로 열고(첫소리가 잘리지 않게), 문턱 아래로 250ms가 지나면 60ms에 걸쳐 닫습니다 (딱 끊으면 "틱" 소리). 화면이 바쁘거나 창이 가려져도 영향이 없습니다.
+    - **목소리만 통과** (잡음 제거를 켰을 때, `voiceActivity.ts`): RNNoise는 콧바람·숨소리·씹는 소리를 말소리로 보고 남겨서, 음량만 보는 문턱으로는 그대로 나갔습니다. 12kHz로 줄인 약 43ms 창의 정규화 자기상관으로 피치(70~400Hz) 주기성을 재서(`VoicingDetector`, 10.7ms마다), 음량이 문턱을 넘고 주기성이 0.5 이상일 때만 엽니다 (`VoiceGate`). 열린 뒤에는 조용해진 지 250ms 또는 목소리가 끊긴 지 400ms면 닫습니다. 무성 자음으로 시작하는 첫소리가 잘리지 않게 소리를 40ms 늦게 내보냅니다 (`DelayLine`, 지연 +40ms). 속삭임(성대가 울리지 않음)은 통과하지 못합니다. 말하는 중 표시와 감도 막대의 초록색도 문턱이 실제로 열렸을 때(`GateMessage.open`)만 켭니다.
     - 입력 감도: **자동**은 바닥 잡음(조용해지면 빨리 따라 내려가고 말소리에는 약 10초에 걸쳐 천천히 올라감) + 15dB를 -55~-35dB 안에서 문턱으로 쓰고, **직접 정하기**는 사용자가 막대에서 끈 값(-80~-10dB)을 씁니다.
     - worklet은 TypeScript로 쓰고 `?worker&url`로 불러와서 Vite가 `gate.ts`를 함께 묶은 파일 하나(IIFE)로 만듭니다 (`?url`만 쓰면 import가 묶이지 않음). 같은 계산을 화면과 테스트가 씁니다.
     - 처리기가 20ms마다 음량·쓰는 문턱·열림을 알리고(`GateMessage`), 설정 창 막대는 `micReports`로 받아 DOM을 직접 옮깁니다 (초당 50번이라 상태 저장소에 넣지 않음). 통화 중이 아니면 설정 창이 같은 처리로 마이크를 잠깐 열어(`MicPreview`, 보내지 않음) 막대를 보여 줍니다.
@@ -126,12 +127,15 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
   - 화면 공유: 통화 중인 사람이 음성 패널의 🖥️로 공유합니다 (영상 + 가능하면 시스템 소리). 상태는 `voice:update`의 `sharing`으로 알려 목록과 광장(`🖥️`)에 보이고, 목록의 LIVE를 누르면 보기 창이 뜹니다 (그 통화에 없으면 먼저 들어감). 영상과 공유 소리는 **보고 있는 동안에만** 구독합니다 (`trackVolume`). 입장권은 마이크, 화면 공유 영상, 화면 공유 소리만 올릴 수 있습니다.
   - 미리보기: 참여자 목록(과 DM 머리글)의 공유 중인 사람에게 마우스를 0.3초 올리면 옆에 작게 띄웁니다. 같은 통화에 있을 때만 그 사람의 화면 영상을 받고(소리는 안 받음), 마우스를 떼면 구독을 끊습니다 (`previewing`, `SharePreview.tsx`).
   - 화질(`screenQuality.ts`): 공유를 시작할 때 고릅니다 (부드럽게 720p60 / 선명하게 1080p30 / 최고 1080p60, 기본 최고, localStorage에 기억). 게임 공유가 끊기지 않게 H.264(하드웨어 인코딩), 시뮬캐스트 끔, `degradationPreference: maintain-framerate`(대역폭이 모자라면 해상도를 먼저 낮춤), `contentHint: motion`으로 보냅니다. 사용자가 적어(8명 안팎) 서버 부담보다 화질을 우선합니다.
+  - 보러 들어가기(`VoiceController.watch`): LIVE를 누르면 보기 창을 바로 띄우고(`watchChannel`, `watchJoining`), 통화에 없으면 **마이크를 끈 채로** 들어갑니다 (보기 창에 "마이크 켜기" 알림, `watchMutedOnJoin`). 다른 통화 중이면 옮길지 먼저 묻습니다 (`LiveButton`의 확인 창). 창의 상태는 `viewerStatus`: 들어가는 중 → 불러오는 중(10초가 지나면 다시 시도) → 보는 중, 또는 실패(사유 + 다시 시도, `retryWatch`)·공유 끝남(닫기). `join(…, keepWatch)`는 통화를 옮기는 동안 보기 창을 닫지 않고, 요청 번호(`watchRequest`)로 그 사이 창을 닫았는지 가립니다.
   - 받고 있는 화면 영상은 `VoiceConnection.screens`에 사람별로 기억합니다. 미리보기로 받던 영상을 LIVE로 크게 볼 때는 구독이 새로 생기지 않아 `TrackSubscribed`가 오지 않으므로, `watch`/`preview`가 기억한 영상을 바로 넘깁니다 (예전엔 "불러오는 중"에서 멈췄음).
   - 보기 창(`ScreenViewer.tsx`)은 떠 있는 창입니다: 머리글을 끌어 옮기고 가장자리·모서리를 끌어 크기를 바꿉니다(위치·크기는 localStorage, `floatingFrame.ts`). 크게 보기(머리글 두 번 누르기), 전체 화면(⛶ 또는 영상 두 번 누르기, `useFullscreen.ts`), ⧉로 새 창 분리. 전체 화면은 영상 영역(`.screen-viewer__stage`)을 `requestFullscreen`하고, 거절되면 창 안을 꽉 채웁니다(Esc로 끝냄). 데스크톱 0.4.0까지는 권한 처리기에 `fullscreen`이 빠져 있어 늘 거절되었고 0.4.1부터 허락합니다. 분리한 창은 같은 출처의 빈 창(`openPopupWindow`, 이름 `metacode-screen`)에 메인 창이 React 포털로 그리는 것이라 통화 연결을 새로 만들지 않습니다 (같은 신원으로 두 번 들어가면 LiveKit이 앞의 연결을 끊음). 데스크톱은 이 빈 창을 `isScreenPopup`으로 허락합니다 (0.4.0부터, 이전 앱은 안내만).
   - 데스크톱 화면 공유: Electron의 getDisplayMedia는 고르는 창이 없어서, 웹이 브리지(`screen.getSources`)로 받은 목록을 보여 주고 고른 것(`screen.select`, 30초 유효)을 메인 프로세스의 `setDisplayMediaRequestHandler`가 넘겨줍니다. 고르지 않은 요청과 앱 화면이 아닌 요청은 거절합니다. 시스템 소리(loopback)는 Windows에서만 됩니다. 데스크톱 0.1.0에는 이 브리지가 없어서 "새 버전 설치" 안내가 뜹니다.
   - 데스크톱: Electron은 권한 처리기가 없으면 모든 권한을 허락하므로, 앱 화면에만 마이크·스피커 선택·클립보드 쓰기·전체 화면을 허락하고 나머지(카메라 포함)는 거절합니다 (`apps/desktop/src/main/permissions.ts`).
   - 로컬에서 두 사람 음성 확인: 브라우저 패널은 마이크를 막으므로, 두 번째 사용자는 `@livekit/rtc-node`로 음을 보내는 스크립트로 확인했습니다. 실제 마이크로 말하는 확인은 사람이 해야 합니다.
-- **데스크톱 설치 파일:** `apps/desktop/electron-builder.yml`, `pnpm --filter @metacode/desktop dist:win` (NSIS, 현재 사용자에 설치, 서명 없음), `dist:mac`(dmg+zip, arm64·x64), `dist:linux`(AppImage+deb, x64). 배포용은 자동 업데이트 항목의 워크플로가 만듭니다.
+- **데스크톱 설치 파일:** `apps/desktop/electron-builder.yml`, `pnpm --filter @metacode/desktop dist:win` (NSIS, 현재 사용자에 설치, 서명 없음), `dist:mac`(dmg+zip, arm64·x64), `dist:linux`(AppImage+deb, x64·arm64). 배포용은 자동 업데이트 항목의 워크플로가 만듭니다.
+  - Linux arm64(ARM 노트북, Apple Silicon Mac의 가상 머신)는 0.5.1부터 x64 러너에서 함께 교차 빌드합니다 (네이티브 모듈이 없어서 됨). 예전엔 x64만 있어서 ARM Ubuntu의 `apt install`이 의존성 전부를 "not installable"로 거절했습니다. 업데이트 확인 파일은 `latest-linux-arm64.yml`로 따로 나옵니다.
+  - `Desktop Release`를 손으로 실행(workflow_dispatch)하면 Release 없이 아티팩트만 만듭니다 (빌드 확인용).
   - macOS는 Apple 개발자 서명 없이 임시 서명(`identity: '-'`)만 합니다. Apple Silicon은 서명이 아예 없으면 실행되지 않고, 서명 없이 hardened runtime을 켜면 JIT 권한이 없어 뜨지 않으므로 `hardenedRuntime: false`입니다. 받은 앱을 처음 열 때 "확인되지 않은 개발자" 경고가 뜹니다 (시스템 설정 → 개인정보 보호 및 보안 → 그래도 열기).
   - deb는 `homepage`(package.json)와 `maintainer`가 있어야 만들어집니다. Linux 실행 파일 이름은 `metacode`, 창과 `.desktop`을 묶으려고 `desktopName`을 둡니다.
   - 설치한 앱은 운영 사이트(`https://metacode.kimyangmin.me`)를 앱 창에서 엽니다 (웹 빌드를 앱에 넣지 않음). 개발 중(`app.isPackaged`가 아님)에는 `localhost:5173`, 둘 다 `METACODE_WEB_URL`/`METACODE_API_URL`로 바꿀 수 있습니다. 앱 안에는 메인 프로세스와 preload만 들어갑니다.
@@ -258,6 +262,7 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
   - 서랍은 반대쪽으로 밀어 닫습니다 (`useDrawerSwipe`: 처음 10px로 가로·세로를 가르고, 미는 동안 `.app`의 `--drawer-drag`로 손가락을 따라오고, 60px 넘게 밀면 닫음).
   - 채팅과 광장은 위아래로만 나눕니다 (`SplitPanels`의 `phone`: 세로 고정, 최소 140px, 크기는 `metacode-split-phone`으로 따로 기억, ⇅로 위아래 바꾸기 = `phoneFirst`, 처음엔 광장이 위). 옮기기(⠿)·분리는 없고, 구분선은 손가락으로 잡기 쉽게 두껍습니다. 광장 아래의 방향키·/ 안내는 숨깁니다.
   - 손가락으로 쓰는 기기(`pointer: coarse`)에서는 Enter가 줄 바꾸기이고 보내기 버튼으로 보냅니다.
+  - 설정 창은 앱처럼 두 화면입니다 (`SettingsWindow`의 `data-page`): 목록(내 프로필 카드, 묶음별 카드, 로그아웃) → 항목을 누르면 내용(← 뒤로). ⚙로 열면 목록부터, 항목을 정해 열면(도움말, "음성 설정 열기") 그 내용부터 (`useSettingsStore.listFirst`). 내용에서 Esc(안드로이드 뒤로 가기)는 목록으로 돌아갑니다.
   - 휴대폰 브라우저와 안드로이드 WebView는 `getDisplayMedia`가 없어 화면 공유 버튼을 숨깁니다 (`canShareScreen`). 보기는 됩니다.
   - 브라우저 패널의 모바일 크기 에뮬레이션에서는 화면이 그려지지 않을 때가 있어(전환 애니메이션이 멈춰 보임) DOM 크기로 확인했습니다.
 - **안드로이드 앱:** `apps/android`(Capacitor 8), 웹 `platform/android.ts`, `platform/appLinks.ts`, 자세한 것은 `docs/android.md`
