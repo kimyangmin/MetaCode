@@ -11,6 +11,7 @@ COPY apps/server/package.json apps/server/
 COPY apps/web/package.json apps/web/
 COPY apps/desktop/package.json apps/desktop/
 COPY packages/shared/package.json packages/shared/
+COPY packages/client/package.json packages/client/
 RUN pnpm install --frozen-lockfile --filter "@metacode/server..."
 
 COPY packages/shared packages/shared
