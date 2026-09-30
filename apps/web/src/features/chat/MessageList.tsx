@@ -23,6 +23,7 @@ import { copyText } from '../../ui/clipboard';
 import { Markdown } from '../../ui/Markdown';
 import { markdownToPlain } from '../../ui/markdownParser';
 import { MessageAttachments } from './MessageAttachments';
+import { useSwipeToReply } from './swipeReply';
 import { type MenuTarget, MessageMenu } from './MessageMenu';
 import {
   type MessageRange,
@@ -91,6 +92,12 @@ export function MessageList(props: MessageListProps) {
   });
   const selected = useMemo(() => (range ? rangeMessages(messages, range) : []), [messages, range]);
   const selectedIds = useMemo(() => new Set(selected.map((m) => m.id)), [selected]);
+
+  // 휴대폰: 메시지를 오른쪽으로 밀어 답장
+  useSwipeToReply(listRef, (id) => {
+    const message = messagesRef.current.find((m) => m.id === id);
+    if (message) props.onReply(message);
+  });
 
   const showToast = (text: string) => {
     setToast(text);
@@ -438,6 +445,10 @@ function MessageItem({
       onContextMenu={onContextMenu}
       {...selectProps}
     >
+      {/* 손가락으로 오른쪽으로 밀 때 왼쪽에 나오는 답장 표시 (swipeReply.ts) */}
+      <span className="message__swipe-reply" aria-hidden>
+        <Reply />
+      </span>
       {message.replyTo && <ReplyPreview reply={message.replyTo} />}
       <div className="message__gutter">
         {grouped && !message.replyTo ? (
