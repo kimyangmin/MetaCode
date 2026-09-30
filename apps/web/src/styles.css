@@ -812,7 +812,7 @@ a.button {
   background: var(--bg-hover);
 }
 
-/* 손가락으로 메시지를 오른쪽으로 밀어 답장 (features/chat/swipeReply.ts) */
+/* 손가락으로 메시지를 왼쪽으로 밀어 답장 (features/chat/swipeReply.ts) */
 .message__swipe-reply {
   display: none;
 }
@@ -832,7 +832,7 @@ a.button {
 .message[data-swipe] > .message__swipe-reply {
   position: absolute;
   top: 50%;
-  left: 12px;
+  right: 12px;
   display: grid;
   place-items: center;
   width: 32px;
