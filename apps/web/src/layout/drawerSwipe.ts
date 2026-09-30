@@ -11,12 +11,11 @@ export const CLOSE_DISTANCE = 60;
 export const OPEN_DISTANCE = 60;
 
 /**
- * 오른쪽으로 밀어도 목록 서랍을 열지 않는 곳: 글 입력칸, 메시지(밀면 답장, features/chat/swipeReply.ts),
- * 떠 있는 창, 분할 화면 구분선.
+ * 오른쪽으로 밀어도 목록 서랍을 열지 않는 곳: 글 입력칸, 떠 있는 창, 분할 화면 구분선.
+ * 메시지 위에서도 열린다 (메시지 답장은 왼쪽으로 밀기, features/chat/swipeReply.ts).
  */
 const NO_OPEN_SELECTOR = [
   TEXT_INPUT_SELECTOR,
-  '[data-message-id]',
   '[role="dialog"]',
   '.screen-viewer',
   '.split__separator',
@@ -109,8 +108,8 @@ export function useDrawerSwipe(appRef: RefObject<HTMLElement | null>): void {
       gesture.axis ??= gestureAxis(dx, touch.clientY - gesture.y);
       if (gesture.axis === 'y') return reset();
       if (gesture.axis !== 'x') return;
-      // 여는 중에 왼쪽으로 먼저 민 것은 서랍과 상관없다 (메시지 목록 등 그대로)
-      if (gesture.opening !== null && dx <= 0 && !app.dataset.dragging) return;
+      // 여는 중에 왼쪽으로 먼저 민 것은 서랍과 상관없다 (메시지 답장 등)
+      if (gesture.opening !== null && dx <= 0 && !app.dataset.dragging) return reset();
       const offset =
         gesture.opening !== null
           ? openDragOffset(dx, gesture.opening)

@@ -1,7 +1,7 @@
 import { type RefObject, useEffect, useRef } from 'react';
 import { TEXT_INPUT_SELECTOR, gestureAxis, inHorizontalScroller } from '../../ui/swipe';
 
-/** 메시지를 이만큼 넘게 오른쪽으로 밀었다 놓으면 답장한다 (px) */
+/** 메시지를 이만큼 넘게 왼쪽으로 밀었다 놓으면 답장한다 (px) */
 export const REPLY_DISTANCE = 56;
 /** 메시지가 손가락을 따라 나오는 최대 거리 (px) */
 const MAX_PULL = 96;
@@ -10,21 +10,22 @@ const RELEASE_MS = 180;
 
 /**
  * 민 거리 → 메시지가 옮겨 그려지는 거리. 답장 거리까지는 손가락을 그대로 따라오고,
- * 그 뒤로는 덜 따라오다 MAX_PULL에서 멈춘다. 왼쪽으로 민 것은 0이다.
+ * 그 뒤로는 덜 따라오다 MAX_PULL에서 멈춘다. 왼쪽으로 밀므로 0 이하이고, 오른쪽으로 민 것은 0이다.
  */
 export function replyPull(dx: number): number {
-  if (dx <= 0) return 0;
-  if (dx <= REPLY_DISTANCE) return dx;
-  return Math.min(MAX_PULL, REPLY_DISTANCE + (dx - REPLY_DISTANCE) * 0.35);
+  const distance = -dx;
+  if (distance <= 0) return 0;
+  if (distance <= REPLY_DISTANCE) return -distance;
+  return -Math.min(MAX_PULL, REPLY_DISTANCE + (distance - REPLY_DISTANCE) * 0.35);
 }
 
-export const shouldReply = (dx: number): boolean => dx >= REPLY_DISTANCE;
+export const shouldReply = (dx: number): boolean => -dx >= REPLY_DISTANCE;
 
 /**
- * 손가락으로 메시지를 오른쪽으로 밀어 답장하기 (휴대폰, 태블릿).
- * 미는 동안 메시지가 손가락을 따라오고 왼쪽에 답장 표시가 나온다(.message의 data-swipe, --swipe-x,
+ * 손가락으로 메시지를 왼쪽으로 밀어 답장하기 (휴대폰, 태블릿).
+ * 미는 동안 메시지가 손가락을 따라오고 오른쪽에 답장 표시가 나온다(.message의 data-swipe, --swipe-x,
  * --swipe-progress, data-swipe-ready). 세로로 움직이면 목록 스크롤로 보고 그만 본다.
- * 목록 서랍 열기(layout/drawerSwipe.ts)는 메시지 위에서 시작한 밀기를 건너뛴다.
+ * 오른쪽으로 밀기는 목록 서랍 열기(layout/drawerSwipe.ts)라서, 처음 오른쪽으로 움직였으면 그만 본다.
  */
 export function useSwipeToReply(
   listRef: RefObject<HTMLElement | null>,
@@ -78,11 +79,12 @@ export function useSwipeToReply(
       if (gesture.axis === 'y') return release();
       if (gesture.axis !== 'x') return;
       const { el } = gesture;
+      if (!el.dataset.swipe && dx > 0) return release();
       el.dataset.swipe = 'drag';
       el.style.setProperty('--swipe-x', `${replyPull(dx)}px`);
       el.style.setProperty(
         '--swipe-progress',
-        String(Math.min(1, Math.max(0, dx) / REPLY_DISTANCE)),
+        String(Math.min(1, Math.max(0, -dx) / REPLY_DISTANCE)),
       );
       if (shouldReply(dx)) el.dataset.swipeReady = '';
       else delete el.dataset.swipeReady;
