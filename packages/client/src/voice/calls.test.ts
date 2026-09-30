@@ -7,7 +7,7 @@ import {
   withMember,
   withProximity,
   withoutMember,
-} from './calls';
+} from './calls.js';
 
 const user = (id: string): UserProfile => ({
   id,

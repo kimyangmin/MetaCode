@@ -2,7 +2,7 @@ import type { UserProfile } from '@metacode/shared';
 import { type RealtimeStatus, useRealtime } from '../../realtime/RealtimeProvider';
 import { useSettingsStore } from '../../stores/settings';
 import { Avatar } from '../../ui/Avatar';
-import { displayName } from '../../ui/format';
+import { displayName } from '@metacode/client';
 import { VoicePanel } from '../voice/VoicePanel';
 import { Settings } from 'lucide-react';
 

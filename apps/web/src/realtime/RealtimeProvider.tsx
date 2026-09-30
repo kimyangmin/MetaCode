@@ -18,11 +18,9 @@ import {
 import { API_URL } from '../config';
 import { getDesktopBridge } from '../platform';
 import { friendsKey } from '../features/friends/api';
-import { usePresenceStore } from '../stores/presence';
+import { usePresenceStore, useTypingStore, withUserProfile } from '@metacode/client';
 import { useProfileStore } from '../stores/profile';
-import { useTypingStore } from '../stores/typing';
 import { useVoiceStore } from '../features/voice/store';
-import { withUserProfile } from './userUpdates';
 
 export type AppSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
 export type RealtimeStatus = 'connecting' | 'connected' | 'disconnected';

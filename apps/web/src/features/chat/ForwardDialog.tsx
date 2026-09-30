@@ -2,7 +2,7 @@ import { type MessageDto, SocketEvent } from '@metacode/shared';
 import { useMemo, useState } from 'react';
 import { useRealtime } from '../../realtime/RealtimeProvider';
 import { Dialog } from '../../ui/Dialog';
-import { dmTitle } from '../../ui/format';
+import { dmTitle } from '@metacode/client';
 import { useCommunities, useDms, useMeRequired } from '../communities/hooks';
 import { FileCount } from '../../ui/icons';
 

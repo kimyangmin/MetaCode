@@ -84,6 +84,35 @@ describe('안드로이드 GitHub 로그인 (딥링크 + PKCE)', () => {
     expect(readSetCookies(refreshed).mc_refresh).toBeDefined();
   });
 
+  it('네이티브 앱은 같은 코드로 토큰을 받아 Bearer로 쓰고, 본문으로 갱신한다', async () => {
+    const { verifier, challenge } = pkcePair();
+    const code = await androidCode(challenge);
+    const res = await t.fetch('/auth/android/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code, codeVerifier: verifier }),
+    });
+    expect(res.status).toBe(200);
+    expect(readSetCookies(res)).toEqual({});
+    const tokens = (await res.json()) as AuthTokens;
+
+    const me = await t.fetch('/users/me', {
+      headers: { authorization: `Bearer ${tokens.accessToken}` },
+    });
+    expect(me.status).toBe(200);
+
+    const refreshed = await t.fetch('/auth/refresh', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refreshToken: tokens.refreshToken }),
+    });
+    expect(refreshed.status).toBe(200);
+    expect(((await refreshed.json()) as AuthTokens).refreshToken).not.toBe(tokens.refreshToken);
+
+    // 코드는 한 번만 쓸 수 있다 (쿠키 쪽으로도 다시 못 씀).
+    expect((await session(code, verifier)).status).toBe(401);
+  });
+
   it('verifier가 틀리거나 코드를 다시 쓰면 거절한다', async () => {
     const { verifier, challenge } = pkcePair();
     const code = await androidCode(challenge);

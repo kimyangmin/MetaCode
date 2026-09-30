@@ -1,7 +1,6 @@
 import type { UserProfile } from '@metacode/shared';
 import { useEffect, useState } from 'react';
-import { useIsOnline } from '../stores/presence';
-import { displayName } from './format';
+import { useIsOnline, displayName } from '@metacode/client';
 
 interface AvatarProps {
   user: UserProfile;

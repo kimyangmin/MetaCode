@@ -1,5 +1,5 @@
 import type { MessageDto } from '@metacode/shared';
-import { displayName, formatDay, formatTime, sameDay } from '../../ui/format';
+import { displayName, formatDay, formatTime, sameDay } from '@metacode/client';
 
 /**
  * 채팅 영역 잡기(Ctrl+Shift). 목록은 최신 메시지부터이므로 위(↑)로 가면 번호가 커진다.

@@ -1,4 +1,4 @@
-import { splitLinks } from './links';
+import { splitLinks } from './links.js';
 
 /**
  * 채팅 메시지의 마크다운 (Discord와 비슷한 범위). 결과는 트리이고 화면은 이것을 React 요소로 그리므로

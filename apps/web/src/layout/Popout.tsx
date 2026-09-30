@@ -6,7 +6,7 @@ import { ProfilePopup } from '../features/communities/ProfilePopup';
 import { useCommunities, useDms, useMeRequired, useMembers } from '../features/communities/hooks';
 import { PlazaPanel } from '../features/metaverse/PlazaPanel';
 import { textChannelLabels, voiceChannelLabels } from '../pages';
-import { dmTitle } from '../ui/format';
+import { dmTitle } from '@metacode/client';
 import { Flame } from 'lucide-react';
 import { Fountain } from '../ui/icons';
 

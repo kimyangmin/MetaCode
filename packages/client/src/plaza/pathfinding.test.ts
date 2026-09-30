@@ -1,7 +1,7 @@
 import { PlazaMap, TILE_SIZE, isValidMove, isWalkable } from '@metacode/shared';
 import { BUILTIN_LAYOUTS, BUILTIN_MAPS } from '@metacode/shared/builtin-assets';
 import { describe, expect, it } from 'vitest';
-import { findPath, tileCenter } from './pathfinding';
+import { findPath, tileCenter } from './pathfinding.js';
 
 const square = BUILTIN_LAYOUTS[PlazaMap.FountainSquare];
 // 분수(3×4타일)는 놓은 칸(왼쪽 아래)과 그 위 한 줄이 막혀 있다.

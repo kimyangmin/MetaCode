@@ -21,7 +21,7 @@ import { ApiError, apiFetch } from '../../api/client';
 import { jsonBody } from '../../api/queries';
 import { type SettingsSection, useSettingsStore } from '../../stores/settings';
 import { Avatar } from '../../ui/Avatar';
-import { displayName } from '../../ui/format';
+import { displayName } from '@metacode/client';
 import { ConfirmDialog } from '../../ui/ConfirmDialog';
 import {
   type CropSource,

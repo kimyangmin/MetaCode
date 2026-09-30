@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { splitLinks } from './links';
+import { splitLinks } from './links.js';
 
 describe('splitLinks', () => {
   it('글 사이의 주소를 링크로 나눈다', () => {

@@ -3,7 +3,7 @@ import { type QueryClient, useQuery } from '@tanstack/react-query';
 import { useEffect } from 'react';
 import { apiFetch } from '../../api/client';
 import { jsonBody } from '../../api/queries';
-import { usePresenceStore } from '../../stores/presence';
+import { usePresenceStore } from '@metacode/client';
 
 export const friendsKey = ['friends'] as const;
 

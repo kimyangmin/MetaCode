@@ -21,6 +21,7 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
 - 2026-09-29: 사진 위치 조정, 로그아웃 확인, 분할 화면 위아래 배치의 경계 조절, 광장 `/` → 보내면 광장으로, Ctrl+1~0 이동, 여닫는 애니메이션, 설정 → 기능(단축키·마크다운), 휴대폰 화면(반응형), 안드로이드 앱(Capacitor, `android-v*` 태그 → APK). 안드로이드 서명 키는 사용자가 저장소 비밀값에 넣어야 첫 Release가 나갑니다 (`docs/android.md`).
 - 개발용 GitHub OAuth App(`localhost` 콜백)으로 웹·데스크톱, 운영용 OAuth App으로 운영 웹의 실제 로그인을 확인했습니다 (2026-09-26).
 - 기술 스택은 README 표대로 확정되었습니다 (2026-09-26). 메타버스 렌더링은 Phaser 3 대신 Phaser 4로 정했습니다 (2026-09-27).
+- 2026-09-30: Phase 8(네이티브 안드로이드 앱, `apps/mobile`) 시작. 1단계: Expo 뼈대, 토큰 로그인(`POST /auth/android/token`), 로컬·Actions APK 빌드.
 - Phase를 진행하면 이 섹션과 README 로드맵 체크박스를 함께 갱신합니다.
 
 ## 기술 메모
@@ -29,6 +30,7 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
 
 - **전 패키지 ESM:** NestJS 12가 ESM 전용이라 `apps/server`도 `"type": "module"`입니다. `web`, `server`, `shared`에서 상대 경로 import는 `.js` 확장자를 붙입니다 (`./app.module.js`). 예외는 `apps/desktop`으로, Electron의 sandbox preload가 CommonJS만 되므로 CommonJS로 빌드합니다.
 - **shared는 빌드해서 쓴다:** `packages/shared`는 `tsc`로 `dist`에 ESM + 타입 선언을 내보내고, 다른 패키지는 `dist`를 import합니다. turbo의 `dependsOn: ["^build"]`가 먼저 빌드해 주고, `pnpm dev`에서는 `tsc --watch`가 돕니다. tsup은 TypeScript 6과 맞지 않아 쓰지 않습니다.
+- **client는 웹과 네이티브 앱이 함께 쓴다:** `packages/client`(`@metacode/client`)에는 DOM·React Native 어느 쪽에도 기대지 않는 클라이언트 로직을 둡니다: 쿼리 캐시 키와 서버 이벤트 반영(`cache.ts`), `withUserProfile`, 이름·시각 표시(`format.ts`), 링크·마크다운 파서, 광장 이동·경로·카메라·말풍선(`plaza/`), 통화 목록(`voice/calls.ts`), 온라인·입력 중 스토어. shared처럼 `tsc`로 `dist`를 만들어 씁니다. 화면을 그리는 코드는 각 앱에 둡니다. 운영 웹 이미지(`infra/caddy/Dockerfile`)가 패키지를 하나씩 복사하므로 새 패키지를 쓰면 거기에도 넣습니다.
 - **TypeScript는 6.0으로 고정:** TypeScript 7(Go 네이티브 버전)은 typescript-eslint와 Nest CLI가 아직 지원하지 않습니다. 이 도구들이 지원하기 전에는 올리지 않습니다.
 - **desktop은 shared의 타입만 쓴다:** sandbox preload는 `electron` 일부 모듈 외에는 require할 수 없으므로, `@metacode/shared`는 `import type`으로만 가져옵니다.
 - **서버 테스트:** 지금은 컨트롤러를 직접 생성해서 테스트합니다. Nest DI(`Test.createTestingModule`)를 Vitest에서 쓰게 되면 데코레이터 메타데이터를 위해 `unplugin-swc`를 추가해야 합니다.
@@ -160,8 +162,8 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
   - 메시지 우클릭 메뉴(답장, 전달, 텍스트 복사, 링크 복사). 글을 골라 둔 상태면 브라우저 기본 메뉴를 씁니다.
   - 메시지 목록은 가로로 스크롤되지 않습니다 (`overflow-x: hidden`). 예전엔 이미지 첨부(최대 320px 고정 폭)가 휴대폰의 메시지 본문(375px 화면에서 303px)보다 넓어 목록이 넘쳤고, 왼쪽으로 밀면 살짝 가로 스크롤되었습니다. 이미지는 폭 + `aspect-ratio`로 자리를 잡고 `max-width: 100%`로 비율대로 줄어들며, `.attachments`는 트랙이 내용 폭만큼 늘지 않게 `minmax(0, 1fr)`입니다.
   - 손가락으로 메시지를 **왼쪽으로** 56px 넘게 밀었다 놓으면 답장합니다 (`features/chat/swipeReply.ts`). 처음엔 오른쪽 밀기였지만 목록 서랍 열기와 겹쳐 메시지 위에서 목록을 열 수 없었습니다. 처음 오른쪽으로 움직이면 답장은 그만 보고 서랍이 받습니다. 미는 동안 메시지가 따라오고(그 뒤로는 덜 따라오다 96px에서 멈춤) 오른쪽에 답장 표시가 나오며, 넘으면 accent색이 됩니다. 채팅 영역 잡기 중, 수정 중인 메시지, 가로로 스크롤되는 곳에서는 밀지 않습니다. 미는 동안 `.message`에 `overflow: hidden`을 거는데, flex 항목의 최소 높이가 0이 되어 긴 목록에서 메시지가 납작해졌으므로 `flex-shrink: 0`을 같이 둡니다.
-  - 마크다운(`ui/markdownParser.ts` → `ui/Markdown.tsx`): Discord와 비슷한 범위. 블록은 ```코드 블록```, `>` 인용, `>>>` 끝까지 인용, `#`~`###` 제목, `-`/`*`/`1.` 목록, 나머지는 문단(줄바꿈 유지). 글자는 `**굵게**`, `*기울임*`/`_기울임_`(단어 속 `_`는 제외), `__밑줄__`, `~~취소선~~`, `||스포일러||`(누르면 보임), `` `코드` ``, `[글](https://…)`, `\`로 기호 그대로. 파서가 트리를 만들고 React 요소로 그리므로 HTML을 해석하지 않습니다.
-  - 링크: http(s) 주소만 링크로 만듭니다 (`ui/links.ts`의 `splitLinks`, `[글](주소)`도 http(s)만. javascript: 주소는 글자로 남음). 새 창으로 열리고, 데스크톱은 setWindowOpenHandler가 시스템 브라우저로 엽니다.
+  - 마크다운(`packages/client`의 `markdownParser.ts` → 웹 `ui/Markdown.tsx`): Discord와 비슷한 범위. 블록은 ```코드 블록```, `>` 인용, `>>>` 끝까지 인용, `#`~`###` 제목, `-`/`*`/`1.` 목록, 나머지는 문단(줄바꿈 유지). 글자는 `**굵게**`, `*기울임*`/`_기울임_`(단어 속 `_`는 제외), `__밑줄__`, `~~취소선~~`, `||스포일러||`(누르면 보임), `` `코드` ``, `[글](https://…)`, `\`로 기호 그대로. 파서가 트리를 만들고 React 요소로 그리므로 HTML을 해석하지 않습니다.
+  - 링크: http(s) 주소만 링크로 만듭니다 (`packages/client`의 `splitLinks`, `[글](주소)`도 http(s)만. javascript: 주소는 글자로 남음). 새 창으로 열리고, 데스크톱은 setWindowOpenHandler가 시스템 브라우저로 엽니다.
   - 광장 말풍선과 답장 미리보기는 `markdownToPlain`으로 기호를 뺀 글을 씁니다 (스포일러는 `▒`로 가림).
   - GIF(`image/gif`, 15MB 이하)는 목록에서 썸네일(첫 장면만 담긴 WebP) 대신 원본을 틀어 움직이게 합니다. 더 크면 썸네일에 GIF 표시만 하고 크게 보기에서 움직입니다.
   - 목록을 맨 아래에서 400px 넘게 올리면 "맨 아래로" 버튼이 뜨고, 그 사이 온 메시지 수를 함께 보여 줍니다.
@@ -197,7 +199,7 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
   - 음성 패널의 버튼은 마이크, 헤드셋, 화면 세 개입니다 (나가기 ✕는 머리글). 마이크·헤드셋은 우클릭하거나 옆의 ˄를 누르면 버튼 위에 팝업이 뜹니다: 마이크 = 입력 장치·증폭, 헤드셋 = 출력 장치·음량·근접 음성. 팝업의 "음성 설정 열기"는 설정 창의 음성 항목으로 갑니다.
   - 출력 음량(0~100%)은 참여자별 음량(`trackVolume`)에 곱합니다. LiveKit의 `setVolume`은 WebAudio를 쓰지 않으면 1을 넘길 수 없어 100%까지입니다.
   - 마이크 증폭(0~200%)은 마이크 처리 줄(`micChain.ts`)의 마지막 GainNode로 바꿉니다. 설정 → 음성과 마이크 팝업에 잡음 제거(켜기/끄기, 기본 켬)와 입력 감도(자동 / 직접 정하기 + 실시간 막대)도 있습니다. 장치·증폭·음량·잡음 제거·입력 감도는 localStorage에 기억합니다.
-  - 닉네임·사진이 바뀌면(`user:updated`) `realtime/userUpdates.ts`의 `withUserProfile`로 모든 쿼리 캐시와 통화 목록, 정보 팝업의 사용자 정보를 바꾸고, 광장은 이름표를 고칩니다. 자기소개는 메시지·멤버 목록에 싣지 않고 정보 팝업을 열 때 `GET /users/:id`로 받습니다.
+  - 닉네임·사진이 바뀌면(`user:updated`) `packages/client`의 `withUserProfile`로 모든 쿼리 캐시와 통화 목록, 정보 팝업의 사용자 정보를 바꾸고, 광장은 이름표를 고칩니다. 자기소개는 메시지·멤버 목록에 싣지 않고 정보 팝업을 열 때 `GET /users/:id`로 받습니다.
 - **데스크톱 로그인 유지:** 앱을 켤 때 네트워크가 아직 없거나 서버가 잠깐 응답하지 않으면, 예전에는 메인 프로세스가 토큰은 남긴 채 렌더러에 null을 줘서 로그인 화면이 떴습니다 (로그아웃처럼 보임). 지금은 1초, 2초 뒤 두 번 더 시도하고, 그래도 안 되면 `SessionUnavailableError`로 거절합니다 (토큰 유지). 웹은 이것을 "서버에 연결하지 못했습니다 + 다시 시도"로 보여 주고, `me` 조회도 401이 아니면 몇 번 더 시도합니다. 401(세션 끊김)일 때만 로그인 화면입니다. 이 변경은 데스크톱 0.3.1부터입니다.
 - **에셋 형식 (Phase 6):** `packages/shared/src/assets/`
   - 에셋 = JSON 하나(`AssetManifest`): kind(`tile`|`object`|`character`), 크기, 팔레트(최대 64색, `#rrggbb`), 프레임(팔레트 인덱스 바이트를 base64로, 0 = 투명, v = palette[v-1]), 애니메이션(프레임 번호 + frameMs). PNG 대신 이 형식이라 DB에 그대로 넣고 서버가 zod로 검증합니다 (캐릭터 한 벌 약 20KB).
@@ -274,6 +276,13 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
   - 첨부 받기: `GET /attachments/:id/link`(권한 확인 후 `{url}`, no-store) → 시스템 브라우저. 뒤로 가기: 서랍 → 떠 있는 창(Esc를 보냄) → 앞 화면 → 앱 내리기. 분리 창(⧉)은 만들지 않습니다.
   - Release는 `android-v*` 태그, **Latest로 올리지 않습니다** (데스크톱 업데이트가 `/releases/latest`를 봄). 서명 키는 저장소 비밀값(`ANDROID_KEYSTORE_BASE64` 등)에서 꺼냅니다. 아이콘·시작 화면은 `scripts/icons.mjs`가 만든 도트 모닥불입니다.
   - PC에 Android SDK가 없어 APK는 GitHub Actions에서만 빌드했습니다. 실제 기기에서의 로그인·통화·딥링크 확인은 사람이 해야 합니다.
+- **네이티브 안드로이드 앱 (Phase 8):** `apps/mobile`(Expo SDK 57, RN 0.86, Expo Router), 자세한 것은 `docs/mobile.md`
+  - Expo 버전마다 API가 자주 바뀌므로 기억으로 쓰지 말고 `https://docs.expo.dev/versions/v57.0.0/`을 확인합니다. 패키지는 `npx expo install <이름>`으로 넣어 SDK에 맞는 버전을 받습니다 (pnpm 격리 설치 그대로, Metro 설정 없음).
+  - `android/`는 커밋하지 않습니다. `app.config.ts`와 설정 플러그인으로 정하고 `expo prebuild`가 만듭니다. versionCode = 버전 1.2.3 → 10203, 패키지 이름 `me.kimyangmin.metacode`(예전 Capacitor 앱과 같음).
+  - 인증은 데스크톱과 같은 토큰 방식입니다: Custom Tab(`expo-web-browser`의 `openAuthSessionAsync`) + PKCE → `metacode://auth?code=` → `POST /auth/android/token`. 액세스 토큰은 메모리, 리프레시 토큰은 `expo-secure-store`. 로그인 중 앱이 꺼져도 `app/auth.tsx`가 딥링크로 이어 받습니다 (verifier는 SecureStore, 같은 코드는 한 번만). 예전 앱의 `android/session`(쿠키)은 대체할 때까지 남깁니다.
+  - 서버 주소는 빌드할 때 `EXPO_PUBLIC_API_URL`(기본 운영). 색 토큰(`ui/theme.ts`)은 웹 `:root`와 같은 값입니다.
+  - Skia는 설치 스크립트로 미리 빌드된 라이브러리를 받으므로 `onlyBuiltDependencies`에 있습니다.
+  - Windows에서 로컬 Gradle 빌드는 C++ 단계(worklets, screens, skia)가 `ninja: manifest 'build.ninja' still dirty after 100 tries`로 실패했습니다 (pnpm 연결 폴더를 CMake가 계속 다시 확인함). APK는 Actions(`Mobile Build`, ubuntu)에서 만들고, 개발 빌드(dev client)를 기기에 설치한 뒤 JS만 로컬 Metro로 바꿔 끼웁니다.
 - **Windows에서 파일 수정:** Windows PowerShell 5.1의 `Get-Content`/`Set-Content`는 UTF-8 한글을 깨뜨립니다. 파일 수정은 편집 도구나 bash를 씁니다. Windows용 Python으로 고칠 때는 `newline=''`로 열어야 줄바꿈이 CRLF로 바뀌지 않습니다 (Prettier가 LF를 요구함).
 
 ## 확정된 결정
@@ -303,6 +312,7 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
 | 데스크톱 코드 서명 | 당분간 하지 않음 (테스트 단계). 설치 때 "Windows의 PC 보호" 경고는 추가 정보 → 실행으로 넘김. 정식 공개 때 다시 정함 (2026-09-27) |
 | 모니터링 | 셀프 호스팅 (같은 서버에 Uptime Kuma). 외부 서비스는 쓰지 않음 (2026-09-27) |
 | 안드로이드 앱 | Capacitor로 운영 웹을 감싼 앱. GitHub Releases에 서명한 APK로 배포 (Play 스토어는 쓰지 않음) (2026-09-29) |
+| 네이티브 안드로이드 앱 | 웹 티가 나는 Capacitor 앱을 React Native로 새로 만듦: Expo(prebuild, EAS 등 외부 빌드 서비스는 안 씀) + Expo Router, 광장은 react-native-skia로 새로 그림, 안드로이드만. 에디터·커뮤니티 관리까지 **모두 네이티브**로 만든 뒤 Capacitor 앱을 대신함 (같은 패키지 이름·서명 키로 덮어 설치) (2026-09-30) |
 | 채널 권한 | Discord식 사용자 정의 역할. 역할을 만들고 채널마다 역할별로 허용 (2026-09-27) |
 
 ## 용어
@@ -493,6 +503,7 @@ tools/
 | `pnpm --filter @metacode/<패키지> <스크립트>` | 패키지 하나만 실행 (예: `pnpm --filter @metacode/shared test`) |
 | `pnpm infra:up` / `pnpm infra:down` | 로컬 PostgreSQL, Redis, SeaweedFS(S3) |
 | `pnpm assets:build` | 내장 에셋 다시 만들기 (`--preview <폴더>`로 확대 PNG) |
+| `pnpm --filter @metacode/mobile start` / `android` | 네이티브 앱 개발 서버(Metro) / 에뮬레이터·기기에 빌드해 설치 (`docs/mobile.md`) |
 | `pnpm --filter @metacode/android sync` | 안드로이드 네이티브 프로젝트에 설정·플러그인 넣기 (`open`으로 Android Studio) |
 | `pnpm --filter @metacode/server db:migrate` | 스키마 변경 → 마이그레이션 생성 + 로컬 DB 적용 (`--name <이름>`) |
 | `pnpm --filter @metacode/server db:deploy` | 만들어 둔 마이그레이션만 적용 (운영, CI) |

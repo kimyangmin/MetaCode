@@ -5,7 +5,7 @@ import { NavLink } from 'react-router';
 import { apiFetch } from '../../api/client';
 import { Avatar } from '../../ui/Avatar';
 import { Dialog } from '../../ui/Dialog';
-import { displayName, dmTitle } from '../../ui/format';
+import { displayName, dmTitle } from '@metacode/client';
 import { UserPanel } from '../auth/UserPanel';
 import { useDms, useMeRequired, useOpenDm } from '../communities/hooks';
 import { useFriends } from '../friends/api';

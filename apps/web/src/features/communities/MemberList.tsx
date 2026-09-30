@@ -1,8 +1,7 @@
 import type { CommunityMember } from '@metacode/shared';
-import { usePresenceStore } from '../../stores/presence';
+import { usePresenceStore, displayName } from '@metacode/client';
 import { openProfile } from '../../stores/profile';
 import { Avatar } from '../../ui/Avatar';
-import { displayName } from '../../ui/format';
 import { useCommunities, useMembers } from './hooks';
 import { memberColor, roleNames } from './roles';
 
