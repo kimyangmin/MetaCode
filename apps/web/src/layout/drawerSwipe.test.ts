@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { dragOffset, gestureAxis, shouldClose } from './drawerSwipe';
+import { dragOffset, openDragOffset, shouldClose, shouldOpen } from './drawerSwipe';
 
-describe('서랍 밀어 닫기', () => {
+describe('서랍 밀어 여닫기', () => {
   it('왼쪽 목록은 왼쪽으로, 멤버 목록은 오른쪽으로 밀어야 따라오고 닫힌다', () => {
     expect(dragOffset('nav', -40)).toBe(-40);
     expect(dragOffset('nav', 40)).toBe(0);
@@ -15,9 +15,14 @@ describe('서랍 밀어 닫기', () => {
     expect(shouldClose('members', -200)).toBe(false);
   });
 
-  it('처음 움직인 방향으로 가로 밀기와 세로 스크롤을 가른다', () => {
-    expect(gestureAxis(3, 4)).toBeNull();
-    expect(gestureAxis(-20, 5)).toBe('x');
-    expect(gestureAxis(5, 20)).toBe('y');
+  it('닫힌 목록 서랍은 오른쪽으로 미는 만큼 나오고, 서랍 폭보다 더 나오지 않는다', () => {
+    expect(openDragOffset(0, 300)).toBe(-300);
+    expect(openDragOffset(100, 300)).toBe(-200);
+    expect(openDragOffset(400, 300)).toBe(0);
+    expect(openDragOffset(-50, 300)).toBe(-300);
+
+    expect(shouldOpen(80)).toBe(true);
+    expect(shouldOpen(30)).toBe(false);
+    expect(shouldOpen(-80)).toBe(false);
   });
 });
