@@ -52,7 +52,7 @@ export class CommunitiesService {
     private readonly roles: RolesService,
   ) {}
 
-  /** 커뮤니티를 만들고 만든 사람을 OWNER로, 기본 텍스트 채널 하나를 함께 만든다. */
+  /** 커뮤니티를 만들고 만든 사람을 OWNER로, 기본 텍스트 채널과 음성 채널(둘 다 "일반")을 함께 만든다. */
   async create(userId: string, name: string, plazaStyle: PlazaStyle): Promise<CommunitySummary> {
     const community = await this.prisma.community.create({
       data: {
@@ -60,9 +60,14 @@ export class CommunitiesService {
         plazaStyle,
         ownerId: userId,
         members: { create: { userId, role: CommunityRole.Owner } },
-        channels: { create: { type: 'TEXT', name: DEFAULT_CHANNEL_NAME } },
+        channels: {
+          create: [
+            { type: 'TEXT', name: DEFAULT_CHANNEL_NAME, position: 0 },
+            { type: 'VOICE', name: DEFAULT_CHANNEL_NAME, position: 1 },
+          ],
+        },
       },
-      include: { channels: true },
+      include: { channels: { orderBy: { position: 'asc' } } },
     });
     this.realtime.joinUser(userId, [
       room.community(community.id),

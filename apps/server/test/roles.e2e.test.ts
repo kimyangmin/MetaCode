@@ -299,7 +299,7 @@ describe('채널 삭제', () => {
 
     await alice.fetch(`/channels/${secret.id}`, send('DELETE'));
     expect((await alice.fetch(`/channels/${secret.id}/messages`)).status).toBe(404);
-    expect(await channelIds(alice, community.id)).toEqual([community.channels[0]!.id]);
+    expect(await channelIds(alice, community.id)).toEqual(community.channels.map((c) => c.id));
   });
 
   it('마지막 텍스트 채널은 지울 수 없다', async () => {
@@ -372,16 +372,16 @@ describe('순서 바꾸기', () => {
       ).status,
     ).toBe(204);
 
-    const general = community.channels[0]!.id;
+    const [general, generalVoice] = community.channels.map((c) => c.id);
     await alice.fetch(
       `/communities/${community.id}/channels/order`,
-      send('PUT', { ids: [secret.id, general] }),
+      send('PUT', { ids: [secret.id, generalVoice, general] }),
     );
     const summary = (await alice.json<CommunitySummary[]>('/communities')).find(
       (c) => c.id === community.id,
     )!;
     expect(summary.roles.map((r) => r.name)).toEqual(['운영', '디자인']);
-    expect(summary.channels.map((c) => c.id)).toEqual([secret.id, general]);
+    expect(summary.channels.map((c) => c.id)).toEqual([secret.id, generalVoice, general]);
   });
 
   it('빠지거나 남는 항목이 있으면 거절하고, 멤버는 바꿀 수 없다', async () => {
