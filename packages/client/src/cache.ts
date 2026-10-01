@@ -40,8 +40,16 @@ export function updateChannelInCaches(
   );
 }
 
-/** 새 메시지를 기록 캐시 맨 앞(최신)에 넣는다. 이미 있으면(내가 보낸 것의 중복 수신) 그대로 둔다. */
-export function addMessageToCache(queryClient: QueryClient, message: MessageDto): void {
+/**
+ * 새 메시지를 기록 캐시 맨 앞(최신)에 넣는다. 이미 있으면(내가 보낸 것의 중복 수신) 그대로 둔다.
+ * meId를 주면 내가 보낸 메시지는 읽은 것으로 둔다 (서버도 보낼 때 읽음 위치를 옮긴다). 그러지 않으면
+ * 읽음 표시를 보내기 전까지 그 채널이 잠깐 안 읽음이 되어 휴대폰 ☰에 점이 찍혔다.
+ */
+export function addMessageToCache(
+  queryClient: QueryClient,
+  message: MessageDto,
+  meId?: string,
+): void {
   queryClient.setQueryData<MessagesData>(queryKeys.messages(message.channelId), (data) => {
     if (!data) return data;
     if (data.pages.some((p) => p.messages.some((m) => m.id === message.id))) return data;
@@ -51,9 +59,17 @@ export function addMessageToCache(queryClient: QueryClient, message: MessageDto)
       pages: [{ ...first!, messages: [message, ...first!.messages] }, ...rest],
     };
   });
-  updateChannelInCaches(queryClient, message.channelId, (ch) =>
-    !ch.lastMessageId || message.id > ch.lastMessageId ? { ...ch, lastMessageId: message.id } : ch,
-  );
+  const mine = message.author.id === meId;
+  updateChannelInCaches(queryClient, message.channelId, (ch) => {
+    const latest = !ch.lastMessageId || message.id > ch.lastMessageId;
+    const read = mine && (!ch.lastReadMessageId || message.id > ch.lastReadMessageId);
+    if (!latest && !read) return ch;
+    return {
+      ...ch,
+      ...(latest && { lastMessageId: message.id }),
+      ...(read && { lastReadMessageId: message.id }),
+    };
+  });
 }
 
 /** 한 채널의 메시지 기록 캐시를 메시지마다 바꾼다 (같은 객체를 돌려주면 그대로 둔다) */

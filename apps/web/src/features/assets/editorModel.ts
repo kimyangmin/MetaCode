@@ -7,6 +7,7 @@ import {
   CHARACTER_MAX_SIZE,
   CHARACTER_MIN_SIZE,
   DEFAULT_ANIMATION,
+  EMOTE_ANIMATION,
   FRAME_LIMIT,
   JUMP_ANIMATIONS,
   MOTION_KEYS,
@@ -42,7 +43,7 @@ export function requiredOf(doc: Pick<EditorDoc, 'kind' | 'style'>): readonly Req
   return doc.kind === 'character' ? REQUIRED_CHARACTER_ANIMATIONS[doc.style] : [];
 }
 /** 한 캐릭터에 둘 수 있는 애니메이션 수 (매니페스트 검증과 같게) */
-const ANIMATION_LIMIT = 32;
+export const ANIMATION_LIMIT = 32;
 
 export const isMotion = (animation: EditorAnimation) => animation.key !== undefined;
 
@@ -103,6 +104,30 @@ export const STARTER_PALETTE = [
 ];
 
 const blank = (width: number, height: number) => new Uint8Array(width * height);
+
+/**
+ * 파일 이름 등에서 애니메이션 이름(영문 소문자로 시작, 소문자·숫자·-, 32자까지)을 만든다.
+ * 쓸 글자가 없으면(한글 이름 등) `anim`.
+ */
+export function animationNameFrom(text: string): string {
+  const cleaned = text
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^[^a-z]+/, '')
+    .replace(/-+$/, '')
+    .slice(0, 24)
+    .replace(/-+$/, '');
+  return cleaned || 'anim';
+}
+
+/** 쓰지 않은 이름 (name, name-2, name-3 …) */
+export function freeAnimationName(name: string, used: ReadonlySet<string>): string {
+  if (!used.has(name)) return name;
+  let n = 2;
+  while (used.has(`${name}-${n}`)) n++;
+  return `${name}-${n}`;
+}
 
 /** 오브젝트의 기본 막힌 칸: 아래 줄만 (위쪽은 캐릭터가 뒤로 지나갈 수 있게) */
 function defaultFootprint(width: number, height: number): number[] {
@@ -572,6 +597,32 @@ export class PixelDocument {
   }
 
   /** 횡스크롤 점프 애니메이션이 모두 있는지 */
+  hasEmote(): boolean {
+    return this.doc.animations.some((a) => a.name === EMOTE_ANIMATION.name);
+  }
+
+  /**
+   * 첨부 모션(첨부 메시지를 보냈을 때 한 번 트는 애니메이션)을 더한다. 필수가 아니라서 새 캐릭터에는 없다
+   * (없으면 광장에서 제자리에서 뛰기만 한다). 대기의 첫 프레임을 복사해 시작한다. 더한 번호, 못 더하면 null.
+   */
+  addEmote(): number | null {
+    if (this.hasEmote() || !this.canAddAnimation()) return null;
+    const at = this.doc.animations.length;
+    this.edit((doc) => {
+      const idle =
+        doc.animations.find(
+          (a) => a.name === (doc.style === PlazaStyle.SideScroll ? 'idle-right' : 'idle-down'),
+        ) ?? doc.animations.find((a) => a.name.startsWith('idle-'));
+      const source = idle?.frames[0];
+      doc.animations.push({
+        name: EMOTE_ANIMATION.name,
+        frames: [source ? Uint8Array.from(source) : blank(doc.width, doc.height)],
+        frameMs: 150,
+      });
+    });
+    return at;
+  }
+
   hasJump(): boolean {
     return JUMP_ANIMATIONS.every((name) => this.doc.animations.some((a) => a.name === name));
   }
@@ -602,12 +653,13 @@ export class PixelDocument {
 
   /**
    * 가져온 그림(GIF)들로 애니메이션을 한 번에 채운다 (되돌리기 한 단계). target이 번호면 그 애니메이션의
-   * 프레임을 바꾸고, motion이면 남은 숫자 키로 새 모션을 만든다. mirror면 왼쪽·오른쪽 애니메이션의
-   * 반대쪽도 좌우 반전한 그림으로 채운다. 채운 첫 애니메이션의 번호를 돌려준다 (없으면 null).
+   * 프레임을 바꾸고, motion이면 남은 숫자 키로 새 모션을 만들고, animation이면 숫자 키 없는 새 애니메이션을
+   * 만든다 (애니메이터의 상태가 틀 것: 이름은 파일 이름에서, 겹치면 -2, -3 …). mirror면 왼쪽·오른쪽
+   * 애니메이션의 반대쪽도 좌우 반전한 그림으로 채운다. 채운 첫 애니메이션의 번호를 돌려준다 (없으면 null).
    */
   importAnimations(
     entries: {
-      target: number | { motion: string };
+      target: number | { motion: string } | { animation: string };
       frames: Uint8Array[];
       frameMs: number;
       mirror: boolean;
@@ -626,6 +678,15 @@ export class PixelDocument {
           if (!animation) continue;
           animation.frames = entry.frames;
           animation.frameMs = entry.frameMs;
+        } else if ('animation' in entry.target) {
+          if (doc.kind !== 'character' || doc.animations.length >= ANIMATION_LIMIT) continue;
+          const used = new Set(doc.animations.map((a) => a.name));
+          index =
+            doc.animations.push({
+              name: freeAnimationName(animationNameFrom(entry.target.animation), used),
+              frames: entry.frames,
+              frameMs: entry.frameMs,
+            }) - 1;
         } else {
           const used = new Set(doc.animations.map((a) => a.key).filter(Boolean));
           const key = MOTION_KEYS.find((k) => !used.has(k));

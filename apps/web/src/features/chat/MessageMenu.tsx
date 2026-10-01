@@ -1,6 +1,7 @@
 import type { MessageDto } from '@metacode/shared';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { copyText } from '../../ui/clipboard';
+import { isTouchDevice } from '../../ui/useMediaQuery';
 import { Copy, Forward, Link as LinkIcon, Pencil, Reply, Trash2 } from 'lucide-react';
 
 export interface MenuTarget {
@@ -51,28 +52,39 @@ export function MessageMenu({
       left: Math.max(MARGIN, Math.min(target.x, window.innerWidth - width - MARGIN)),
       top: Math.max(MARGIN, Math.min(target.y, window.innerHeight - height - MARGIN)),
     });
-    el.querySelector<HTMLButtonElement>('button')?.focus({ preventScroll: true });
+    // 키보드로 고르게 첫 항목에 포커스를 준다. 손가락으로 쓰는 기기에서는 주지 않는다: 입력창의 화면
+    // 자판이 내려가면서 창 크기가 바뀌고 목록이 움직여, 그 resize·scroll로 메뉴가 바로 닫혔다
+    // (메시지를 보낸 직후 자판이 떠 있을 때 길게 눌러도 메뉴가 보이지 않았음).
+    if (!isTouchDevice())
+      el.querySelector<HTMLButtonElement>('button')?.focus({ preventScroll: true });
   }, [target]);
 
   useEffect(() => {
     const close = () => onClose();
-    const onDown = (e: MouseEvent) => {
+    // 바깥을 누르면 닫는다. 손가락이면 누르기 시작할 때(목록을 밀어 스크롤하는 것도 여기서 닫힌다).
+    const onDown = (e: PointerEvent) => {
       if (!ref.current?.contains(e.target as Node)) onClose();
     };
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
-    window.addEventListener('mousedown', onDown);
+    window.addEventListener('pointerdown', onDown);
     window.addEventListener('keydown', onKey);
-    window.addEventListener('resize', close);
-    // 목록을 스크롤하면 메뉴가 엉뚱한 곳에 남지 않게 닫는다. 휠뿐 아니라 손가락·스크롤바·키보드로
-    // 스크롤해도 닫히도록 어느 요소의 scroll이든 캡처 단계에서 받는다 (scroll은 버블되지 않음).
     window.addEventListener('wheel', close, { passive: true });
-    window.addEventListener('scroll', close, { capture: true, passive: true });
+    // 목록을 스크롤하면 메뉴가 엉뚱한 곳에 남지 않게 닫는다. 휠뿐 아니라 스크롤바·키보드로 스크롤해도
+    // 닫히도록 어느 요소의 scroll이든 캡처 단계에서 받는다 (scroll은 버블되지 않음). 손가락으로 쓰는
+    // 기기에서는 화면 자판이 오르내릴 때도 resize·scroll이 와서 보지 않는다 (손가락 스크롤은 pointerdown).
+    const touch = isTouchDevice();
+    if (!touch) {
+      window.addEventListener('resize', close);
+      window.addEventListener('scroll', close, { capture: true, passive: true });
+    }
     return () => {
-      window.removeEventListener('mousedown', onDown);
+      window.removeEventListener('pointerdown', onDown);
       window.removeEventListener('keydown', onKey);
-      window.removeEventListener('resize', close);
       window.removeEventListener('wheel', close);
-      window.removeEventListener('scroll', close, { capture: true });
+      if (!touch) {
+        window.removeEventListener('resize', close);
+        window.removeEventListener('scroll', close, { capture: true });
+      }
     };
   }, [onClose]);
 

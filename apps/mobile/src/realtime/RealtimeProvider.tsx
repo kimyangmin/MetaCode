@@ -65,7 +65,7 @@ export function RealtimeProvider({ meId, children }: { meId: string; children: R
     socket.io.on('reconnect_attempt', () => setStatus('connecting'));
 
     socket.on(SocketEvent.MessageCreated, (message) => {
-      addMessageToCache(queryClient, message);
+      addMessageToCache(queryClient, message, meId);
       useTypingStore.getState().stop(message.channelId, message.author.id);
       const dms = queryClient.getQueryData<DmSummary[]>(queryKeys.dms);
       const communities = queryClient.getQueryData<CommunitySummary[]>(queryKeys.communities);

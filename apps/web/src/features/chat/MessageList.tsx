@@ -18,7 +18,7 @@ import {
 import { type AppSocket, useRealtime } from '../../realtime/RealtimeProvider';
 import { openProfile } from '../../stores/profile';
 import { Avatar } from '../../ui/Avatar';
-import { isTouchDevice } from '../../ui/useMediaQuery';
+import { PHONE_QUERY, isTouchDevice } from '../../ui/useMediaQuery';
 import { ConfirmDialog } from '../../ui/ConfirmDialog';
 import { isManager } from '@metacode/shared';
 import { useCommunities } from '../communities/hooks';
@@ -327,6 +327,7 @@ export function MessageList(props: MessageListProps) {
                 mine={message.author.id === me.id}
                 communityId={props.communityId}
                 onMenu={setMenu}
+                menuOpen={menu?.message.id === message.id}
                 editing={editing === message.id}
                 onEditDone={() => setEditing(null)}
                 selected={selectedIds.has(message.id)}
@@ -488,6 +489,7 @@ function MessageItem({
   mine,
   communityId,
   onMenu,
+  menuOpen,
   editing,
   onEditDone,
   selected,
@@ -498,6 +500,8 @@ function MessageItem({
   mine: boolean;
   communityId?: string;
   onMenu(target: MenuTarget): void;
+  /** 이 메시지의 메뉴가 떠 있는지 (손가락으로 쓰는 기기에서 밝게 보여 준다) */
+  menuOpen: boolean;
   editing: boolean;
   onEditDone(): void;
   /** 채팅 영역 잡기로 잡혔는지 */
@@ -507,9 +511,17 @@ function MessageItem({
 }) {
   const [avatarHovered, setAvatarHovered] = useState(false);
   const showProfile = (e: MouseEvent) => openProfile(message.author, e, communityId);
-  const onContextMenu = (e: MouseEvent) => {
-    // 글을 골라 둔 상태면 브라우저 기본 메뉴(복사 등)를 그대로 쓴다.
-    if (window.getSelection()?.toString()) return;
+  const onContextMenu = (e: MouseEvent<HTMLElement>) => {
+    // 이 메시지의 글을 골라 둔 상태면 브라우저 기본 메뉴(복사 등)를 그대로 쓴다. 다른 곳에 남은
+    // 선택은 보지 않는다 (예전엔 남은 선택 때문에 메뉴가 뜨지 않아 삭제할 수 없었다).
+    const selection = window.getSelection();
+    if (
+      selection?.toString() &&
+      selection.anchorNode &&
+      e.currentTarget.contains(selection.anchorNode)
+    ) {
+      return;
+    }
     e.preventDefault();
     const link = (e.target as HTMLElement).closest('a')?.href ?? null;
     onMenu({ message, x: e.clientX, y: e.clientY, link });
@@ -522,6 +534,7 @@ function MessageItem({
       data-mine={mine}
       data-message-id={message.id}
       data-selected={selected}
+      data-menu-open={menuOpen || undefined}
       onContextMenu={onContextMenu}
       {...selectProps}
     >
@@ -588,7 +601,9 @@ function MessageItem({
 
 /**
  * 내가 보낸 메시지 고치기: Enter 저장, Shift+Enter 줄바꿈, Esc 취소 (한글 조합 중 Enter는 무시).
- * 손가락으로 쓰는 기기에서는 입력창과 같이 Enter가 줄바꿈이고 저장 버튼으로 저장한다.
+ * 손가락으로 쓰는 기기와 휴대폰 화면에서는 Enter가 줄바꿈이고 저장 버튼으로 저장한다. 휴대폰 화면도 보는 이유:
+ * 손가락 기기인지(pointer: coarse)만 보면, 그렇게 알리지 않는 환경(마우스·펜을 알리는 휴대폰, 개발자 도구의
+ * 휴대폰 크기 보기)에서 줄을 바꾸려던 Enter가 바로 저장해 버렸다.
  */
 function MessageEditor({ message, onDone }: { message: MessageDto; onDone(): void }) {
   const { socket } = useRealtime();
@@ -596,7 +611,7 @@ function MessageEditor({ message, onDone }: { message: MessageDto; onDone(): voi
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const input = useRef<HTMLTextAreaElement>(null);
-  const [touch] = useState(isTouchDevice);
+  const [touch] = useState(() => isTouchDevice() || window.matchMedia(PHONE_QUERY).matches);
 
   // 열면 커서를 글 끝에 둔다 (이어서 고치기 쉽게).
   useEffect(() => {

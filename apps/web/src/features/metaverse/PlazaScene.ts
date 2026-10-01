@@ -74,6 +74,7 @@ import {
   animationName,
   characterPose,
   characterLook,
+  ATTACHMENT_HOP_MS,
   emoteDurationMs,
   fitCharacter,
   motionDurationMs,
@@ -153,6 +154,8 @@ interface Actor {
   bubblesWidth: number;
   /** 첨부 모션이 끝나는 시각 */
   emoteUntil: number;
+  /** 첨부 모션이 없는 캐릭터가 첨부 메시지를 보내 제자리에서 뛰는 것이 끝나는 시각 */
+  hopUntil: number;
   /** 틀고 있는 캐릭터 모션 (숫자 키). 움직이면 멈춘다 */
   motion: (PlayingMotion & { start: number }) | null;
   /** 캐릭터에 애니메이터가 있으면 그 상태 (없으면 정해진 규칙대로 튼다) */
@@ -309,6 +312,7 @@ export class PlazaScene extends Phaser.Scene {
       renderedBubbles: '',
       bubblesWidth: 0,
       emoteUntil: 0,
+      hopUntil: 0,
       // 반복 중이던 모션은 나중에 연 사람에게도 보인다
       motion: null,
       animator: look.manifest.animator
@@ -474,10 +478,15 @@ export class PlazaScene extends Phaser.Scene {
     if (!actor) return;
     const now = performance.now();
     actor.bubbles = pushBubble(actor.bubbles, bubble, now);
-    // 첨부 메시지: 캐릭터의 첨부 모션(emote)을 처음부터 한 번 튼다.
+    // 첨부 메시지: 첨부 모션(emote)이 있으면 그것만 처음부터 한 번 틀고, 없으면 제자리에서 뛴다.
     if (bubble.kind === 'attachment-emote') {
-      actor.emoteUntil = now + emoteDurationMs(actor.look.manifest);
-      actor.animation = { name: 'emote', start: now };
+      const duration = emoteDurationMs(actor.look.manifest);
+      if (duration > 0) {
+        actor.emoteUntil = now + duration;
+        actor.animation = { name: 'emote', start: now };
+      } else {
+        actor.hopUntil = now + ATTACHMENT_HOP_MS;
+      }
       // 애니메이터가 있으면 첨부 보냄 트리거로 알린다 (어떤 상태로 갈지는 그래프가 정함)
       if (actor.animator) fireTrigger(actor.animator, 'emote', now);
     }
@@ -715,11 +724,9 @@ export class PlazaScene extends Phaser.Scene {
     } else {
       this.renderRulePose(actor, now);
     }
-    // 첨부 모션 동안에는 제자리에서 뛴다.
+    // 첨부 모션이 없는 캐릭터는 첨부 메시지를 보내면 잠깐 제자리에서 뛴다.
     const lift =
-      actor.emoteUntil > now
-        ? Math.round(Math.abs(Math.sin((actor.emoteUntil - now) / 60)) * 4)
-        : 0;
+      actor.hopUntil > now ? Math.round(Math.abs(Math.sin((actor.hopUntil - now) / 60)) * 4) : 0;
     this.placeActor(actor, now, lift);
   }
 

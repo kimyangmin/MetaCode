@@ -7,7 +7,7 @@ import {
   PALETTE_MAX_COLORS,
 } from '@metacode/shared';
 import { useEffect, useMemo, useState } from 'react';
-import type { PixelDocument } from './editorModel';
+import { ANIMATION_LIMIT, type PixelDocument } from './editorModel';
 import {
   type Anchor,
   type DecodedGif,
@@ -27,6 +27,8 @@ export interface GifFile {
 
 /** 새 모션으로 넣기 (select의 값) */
 const NEW_MOTION = 'new-motion';
+/** 숫자 키 없는 새 애니메이션으로 넣기 (애니메이터의 상태가 틀 것, select의 값) */
+const NEW_ANIMATION = 'new-animation';
 
 /** 파일 이름에서 확장자를 뺀 것 (walk-left.gif → walk-left) */
 const baseName = (name: string) => name.replace(/\.[^.]+$/, '');
@@ -72,6 +74,7 @@ export function GifImportDialog({
   onClose,
   onDone,
   source = 'GIF',
+  forAnimator = false,
 }: {
   editor: PixelDocument;
   files: GifFile[];
@@ -81,6 +84,8 @@ export function GifImportDialog({
   onDone(first: number | null, message: string): void;
   /** 어디서 가져오는지 (제목과 안내에 씀): GIF 또는 유니티 클립 */
   source?: 'GIF' | '유니티 클립';
+  /** 애니메이터에서 상태를 만들려고 연 것: 처음부터 새 애니메이션으로 넣게 골라 둔다 */
+  forAnimator?: boolean;
 }) {
   const { doc } = editor;
   const character = doc.kind === 'character';
@@ -89,6 +94,7 @@ export function GifImportDialog({
   const freeKeys = character ? editor.freeMotionKeys().length : 0;
 
   const defaultTarget = (name: string): string => {
+    if (forAnimator && character) return NEW_ANIMATION;
     const base = baseName(name).toLowerCase();
     const match = doc.animations.findIndex(
       (a) => a.name === base || a.label?.toLowerCase() === base,
@@ -117,6 +123,8 @@ export function GifImportDialog({
   const tooBig = !character && prepared.some((p) => p.width > doc.width || p.height > doc.height);
   const newMotions = targets.filter((t) => t === NEW_MOTION).length;
   const tooManyMotions = newMotions > freeKeys;
+  const newAnimations = targets.filter((t) => t === NEW_MOTION || t === NEW_ANIMATION).length;
+  const tooManyAnimations = doc.animations.length + newAnimations > ANIMATION_LIMIT;
   const frameTotal = prepared.reduce((sum, p) => sum + p.scenes, 0);
   const tooManyFrames = frameTotal > FRAME_LIMIT[doc.kind];
 
@@ -165,7 +173,12 @@ export function GifImportDialog({
       const own = frames.slice(offset, offset + p.frames.length);
       offset += p.frames.length;
       return {
-        target: targets[i] === NEW_MOTION ? { motion: baseName(p.name) } : Number(targets[i]),
+        target:
+          targets[i] === NEW_MOTION
+            ? { motion: baseName(p.name) }
+            : targets[i] === NEW_ANIMATION
+              ? { animation: baseName(p.name) }
+              : Number(targets[i]),
         frames: own,
         frameMs: p.frameMs,
         mirror,
@@ -216,7 +229,10 @@ export function GifImportDialog({
                   </option>
                 ))}
                 {character && freeKeys > 0 && (
-                  <option value={NEW_MOTION}>+ 새 모션으로 추가</option>
+                  <option value={NEW_MOTION}>+ 새 모션으로 추가 (숫자 키)</option>
+                )}
+                {character && (
+                  <option value={NEW_ANIMATION}>+ 새 애니메이션으로 추가 (애니메이터용)</option>
                 )}
               </select>
             </li>
@@ -260,6 +276,12 @@ export function GifImportDialog({
             {` ${MOTION_KEYS.length}`}개까지).
           </p>
         )}
+        {tooManyAnimations && (
+          <p className="form__error">
+            애니메이션은 {ANIMATION_LIMIT}개까지라 새로 {newAnimations}개를 더할 수 없습니다 (지금{' '}
+            {doc.animations.length}개).
+          </p>
+        )}
         {tooManyFrames && (
           <p className="form__error">
             프레임이 너무 많습니다 ({frameTotal}장, {FRAME_LIMIT[doc.kind]}장까지).
@@ -272,7 +294,7 @@ export function GifImportDialog({
           <button
             type="button"
             className="button button--primary"
-            disabled={tooBig || tooManyMotions || tooManyFrames}
+            disabled={tooBig || tooManyMotions || tooManyAnimations || tooManyFrames}
             onClick={apply}
           >
             가져오기

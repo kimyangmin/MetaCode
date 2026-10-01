@@ -91,6 +91,31 @@ async function setup() {
   return { alice, bob, community, general: community.channels[0]!.id, other: other.id };
 }
 
+describe('읽음 위치', () => {
+  it('내가 보낸(전달한) 메시지는 읽은 것으로 남고, 다른 사람에게는 안 읽음이다', async () => {
+    const { alice, bob, community, general, other } = await setup();
+    const aliceSocket = await connect(alice);
+    const sent = await sendOk(aliceSocket, { channelId: general, content: '보냄' });
+    const forwarded = await forward(aliceSocket, sent.id, other);
+    if (!forwarded.ok) throw new Error(forwarded.error);
+
+    const channels = async (user: TestUser) =>
+      (await user.json<CommunitySummary[]>('/communities')).find((c) => c.id === community.id)!
+        .channels;
+    const mine = await channels(alice);
+    expect(mine.find((c) => c.id === general)).toMatchObject({
+      lastMessageId: sent.id,
+      lastReadMessageId: sent.id,
+    });
+    expect(mine.find((c) => c.id === other)).toMatchObject({
+      lastMessageId: forwarded.data.id,
+      lastReadMessageId: forwarded.data.id,
+    });
+    const bobs = await channels(bob);
+    expect(bobs.find((c) => c.id === general)?.lastReadMessageId).not.toBe(sent.id);
+  });
+});
+
 describe('답장', () => {
   it('같은 채널의 메시지에 답장하면 원래 메시지를 짧게 붙여 보낸다', async () => {
     const { alice, bob, general } = await setup();
