@@ -11,9 +11,11 @@ import {
   type MotionKey,
   PALETTE_MAX_COLORS,
   REQUIRED_CHARACTER_ANIMATIONS,
+  type RequiredAnimation,
   TILE_SIZE,
   decodePixels,
   encodePixels,
+  isBlank,
 } from '@metacode/shared';
 import { type Rect, emptyRowsBelow, shiftPixels } from './selection';
 
@@ -201,16 +203,34 @@ export function toManifest(doc: EditorDoc): AssetManifest {
   };
 }
 
-function copyDoc(doc: EditorDoc): EditorDoc {
+/**
+ * 되돌리기용 사본. 프레임 픽셀(Uint8Array)은 복사하지 않고 함께 쓴다: 큰 캐릭터(512×512)는 프레임 한 장이
+ * 256KB라, 붓질마다 문서 전체를 복사하면 되돌리기 기록만으로 수백 MB가 됐다. 대신 프레임을 그 자리에서
+ * 고치기 전에 PixelDocument.writable()이 그 프레임만 복사한다 (copy-on-write).
+ */
+function snapshot(doc: EditorDoc): EditorDoc {
   return {
     ...doc,
     palette: [...doc.palette],
-    animations: doc.animations.map((a) => ({
-      ...a,
-      frames: a.frames.map((f) => Uint8Array.from(f)),
-    })),
+    animations: doc.animations.map((a) => ({ ...a, frames: [...a.frames] })),
     footprint: [...doc.footprint],
   };
+}
+
+/** 프레임 픽셀의 지문 (같은 그림 찾기). 같으면 바이트까지 비교한다 */
+function fingerprint(pixels: Uint8Array): number {
+  let h = 2166136261;
+  for (let i = 0; i < pixels.length; i++) {
+    h ^= pixels[i]!;
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+function samePixels(a: Uint8Array, b: Uint8Array): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
 }
 
 export interface FrameRef {
@@ -232,6 +252,10 @@ export class PixelDocument {
   private savedVersion = 0;
   /** 마지막 edit()의 묶음 키. 같은 키로 이어서 바꾸면(색 고르기 드래그 등) 되돌리기 한 단계로 묶는다 */
   private lastKey: string | null = null;
+  /** 마지막 begin() 뒤에 복사해서 이 문서만 가진 프레임. 이것만 그 자리에서 고쳐도 된다 */
+  private owned = new WeakSet<Uint8Array>();
+  /** 프레임 수 세기는 문서가 바뀔 때만 다시 한다 (화면이 그릴 때마다 부른다) */
+  private counted: { version: number; count: number } | null = null;
 
   constructor(
     doc: EditorDoc,
@@ -259,9 +283,11 @@ export class PixelDocument {
   /** 이 뒤의 변경을 한 단계로 묶는다 */
   begin(): void {
     this.lastKey = null;
-    this.undoStack.push(copyDoc(this.doc));
+    this.undoStack.push(snapshot(this.doc));
     if (this.undoStack.length > UNDO_LIMIT) this.undoStack.shift();
     this.redoStack = [];
+    // 지금 프레임은 모두 방금 만든 사본과 함께 쓰므로, 고치려면 다시 복사해야 한다.
+    this.owned = new WeakSet();
   }
 
   undo(): void {
@@ -269,6 +295,7 @@ export class PixelDocument {
     if (!previous) return;
     this.redoStack.push(this.doc);
     this.doc = previous;
+    this.owned = new WeakSet();
     this.changed();
   }
 
@@ -277,7 +304,20 @@ export class PixelDocument {
     if (!next) return;
     this.undoStack.push(this.doc);
     this.doc = next;
+    this.owned = new WeakSet();
     this.changed();
+  }
+
+  /** 그 자리에서 고칠 프레임. 되돌리기 기록과 함께 쓰는 프레임이면 먼저 복사해서 바꿔 끼운다 */
+  private writable(ref: FrameRef): Uint8Array | undefined {
+    const frames = this.doc.animations[ref.animation]?.frames;
+    const pixels = frames?.[ref.frame];
+    if (!frames || !pixels) return undefined;
+    if (this.owned.has(pixels)) return pixels;
+    const copy = Uint8Array.from(pixels);
+    frames[ref.frame] = copy;
+    this.owned.add(copy);
+    return copy;
   }
 
   private changed(): void {
@@ -313,13 +353,16 @@ export class PixelDocument {
 
   /** 점 하나 (begin() 다음에 여러 번 부른다). mirror면 좌우 대칭 자리에도 칠한다 */
   paint(ref: FrameRef, x: number, y: number, value: number, mirror = false): void {
-    const pixels = this.frame(ref);
+    const current = this.frame(ref);
     const { width, height } = this.doc;
-    if (!pixels) return;
+    if (!current) return;
+    const targets = (mirror ? [x, width - 1 - x] : [x]).filter(
+      (px) => px >= 0 && y >= 0 && px < width && y < height && current[y * width + px] !== value,
+    );
+    if (targets.length === 0) return;
+    const pixels = this.writable(ref)!;
     let touched = false;
-    for (const px of mirror ? [x, width - 1 - x] : [x]) {
-      if (px < 0 || y < 0 || px >= width || y >= height) continue;
-      if (pixels[y * width + px] === value) continue;
+    for (const px of targets) {
       pixels[y * width + px] = value;
       touched = true;
     }
@@ -357,12 +400,13 @@ export class PixelDocument {
 
   /** 같은 색으로 이어진 영역 칠하기 (상하좌우) */
   fill(ref: FrameRef, x: number, y: number, value: number): void {
-    const pixels = this.frame(ref);
+    const current = this.frame(ref);
     const { width, height } = this.doc;
-    if (!pixels || x < 0 || y < 0 || x >= width || y >= height) return;
-    const target = pixels[y * width + x];
+    if (!current || x < 0 || y < 0 || x >= width || y >= height) return;
+    const target = current[y * width + x];
     if (target === value) return;
     this.begin();
+    const pixels = this.writable(ref)!;
     const stack = [y * width + x];
     while (stack.length > 0) {
       const i = stack.pop()!;
@@ -489,17 +533,108 @@ export class PixelDocument {
     return first;
   }
 
+  /**
+   * 가져온 그림(GIF)들로 애니메이션을 한 번에 채운다 (되돌리기 한 단계). target이 번호면 그 애니메이션의
+   * 프레임을 바꾸고, motion이면 남은 숫자 키로 새 모션을 만든다. mirror면 왼쪽·오른쪽 애니메이션의
+   * 반대쪽도 좌우 반전한 그림으로 채운다. 채운 첫 애니메이션의 번호를 돌려준다 (없으면 null).
+   */
+  importAnimations(
+    entries: {
+      target: number | { motion: string };
+      frames: Uint8Array[];
+      frameMs: number;
+      mirror: boolean;
+    }[],
+    palette: string[],
+    mirrorOf: (pixels: Uint8Array) => Uint8Array,
+  ): number | null {
+    let first: number | null = null;
+    this.edit((doc) => {
+      doc.palette = palette;
+      for (const entry of entries) {
+        let index: number;
+        if (typeof entry.target === 'number') {
+          index = entry.target;
+          const animation = doc.animations[index];
+          if (!animation) continue;
+          animation.frames = entry.frames;
+          animation.frameMs = entry.frameMs;
+        } else {
+          const used = new Set(doc.animations.map((a) => a.key).filter(Boolean));
+          const key = MOTION_KEYS.find((k) => !used.has(k));
+          if (!key || doc.kind !== 'character' || doc.animations.length >= ANIMATION_LIMIT) {
+            continue;
+          }
+          let n = 1;
+          while (doc.animations.some((a) => a.name === `motion-${n}`)) n++;
+          index =
+            doc.animations.push({
+              name: `motion-${n}`,
+              frames: entry.frames,
+              frameMs: entry.frameMs,
+              key,
+              label: entry.target.motion.slice(0, 16) || `모션 ${n}`,
+              loop: true,
+            }) - 1;
+        }
+        first ??= index;
+        const name = doc.animations[index]!.name;
+        const opposite = entry.mirror
+          ? name.endsWith('-left')
+            ? `${name.slice(0, -5)}-right`
+            : name.endsWith('-right')
+              ? `${name.slice(0, -6)}-left`
+              : null
+          : null;
+        const other = opposite ? doc.animations.find((a) => a.name === opposite) : undefined;
+        if (other) {
+          other.frames = entry.frames.map(mirrorOf);
+          other.frameMs = entry.frameMs;
+        }
+      }
+    });
+    return first;
+  }
+
   setFrameMs(animation: number, frameMs: number): void {
     this.edit((doc) => {
       doc.animations[animation]!.frameMs = frameMs;
     });
   }
 
-  /** 저장할 때의 프레임 수 (같은 그림은 하나로 센다) */
+  /**
+   * 저장할 때의 프레임 수 (같은 그림은 하나로 센다). 예전엔 프레임마다 base64로 바꿔 비교해서
+   * 큰 캐릭터는 그릴 때마다 느려졌다. 지문으로 묶고 바이트를 비교하며, 문서가 바뀔 때만 다시 센다.
+   */
   frameCount(): number {
-    const seen = new Set<string>();
-    for (const a of this.doc.animations) for (const f of a.frames) seen.add(encodePixels(f));
-    return seen.size;
+    if (this.counted?.version === this.version) return this.counted.count;
+    const groups = new Map<number, Uint8Array[]>();
+    let count = 0;
+    for (const a of this.doc.animations) {
+      for (const f of a.frames) {
+        const key = fingerprint(f);
+        const group = groups.get(key);
+        if (group?.some((other) => other === f || samePixels(other, f))) continue;
+        if (group) group.push(f);
+        else groups.set(key, [f]);
+        count++;
+      }
+    }
+    this.counted = { version: this.version, count };
+    return count;
+  }
+
+  /**
+   * 캐릭터에 빠진 필수 애니메이션 (매니페스트의 missingAnimations와 같은 규칙). 매니페스트로 바꾸지 않고
+   * 프레임을 바로 본다 (화면이 그릴 때마다 부르므로).
+   */
+  missingAnimations(): RequiredAnimation[] {
+    if (this.doc.kind !== 'character') return [];
+    return REQUIRED_CHARACTER_ANIMATIONS.filter((required) => {
+      const animation = this.doc.animations.find((a) => a.name === required.name);
+      if (!animation || animation.frames.length < required.minFrames) return true;
+      return animation.frames.some((pixels) => isBlank(pixels));
+    });
   }
 
   // ── 팔레트 ──
@@ -525,13 +660,10 @@ export class PixelDocument {
     this.edit((doc) => {
       doc.palette.splice(value - 1, 1);
       for (const animation of doc.animations) {
-        for (const pixels of animation.frames) {
-          for (let i = 0; i < pixels.length; i++) {
-            const v = pixels[i]!;
-            if (v === value) pixels[i] = 0;
-            else if (v > value) pixels[i] = v - 1;
-          }
-        }
+        // 되돌리기 기록과 함께 쓰는 프레임이라 그 자리에서 고치지 않고 새로 만든다.
+        animation.frames = animation.frames.map((pixels) =>
+          pixels.map((v) => (v === value ? 0 : v > value ? v - 1 : v)),
+        );
       }
       if (doc.colorSlots) {
         doc.colorSlots = Object.fromEntries(

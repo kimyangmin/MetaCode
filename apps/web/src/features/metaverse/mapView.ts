@@ -11,7 +11,14 @@ import {
   objectBounds,
 } from '@metacode/shared';
 import type Phaser from 'phaser';
-import { frameAt, framePixels, isAnimated, sheetCanvas, sheetColumns } from '../assets/render';
+import {
+  frameAt,
+  framePixels,
+  isAnimated,
+  sheetCanvas,
+  sheetCell,
+  sheetColumns,
+} from '../assets/render';
 
 export type AssetLookup = (ref: AssetRef) => AssetManifest | undefined;
 
@@ -36,24 +43,29 @@ function textureKeyOf(ref: AssetRef, manifest: AssetManifest): string {
   return `asset:${ref}:${manifestId(manifest)}`;
 }
 
-/** 에셋 하나 = 텍스처 하나. 프레임 i가 텍스처의 프레임 i다 (시트에서의 자리는 sheetColumns로 정한다) */
+/**
+ * 에셋 하나 = 텍스처 하나. 프레임 i가 텍스처의 프레임 i다 (시트에서의 자리는 sheetColumns로 정한다).
+ * maxSide를 주면 프레임을 그 크기 안으로 부드럽게 줄여 담는다 (큰 캐릭터).
+ */
 export function ensureAssetTexture(
   scene: Phaser.Scene,
   key: string,
   manifest: AssetManifest,
   palette?: readonly string[],
+  maxSide?: number,
 ): string {
   if (scene.textures.exists(key)) return key;
-  const texture = scene.textures.addCanvas(key, sheetCanvas(manifest, palette))!;
-  const cols = sheetColumns(manifest);
+  const cell = sheetCell(manifest, maxSide);
+  const texture = scene.textures.addCanvas(key, sheetCanvas(manifest, palette, cell))!;
+  const cols = sheetColumns(manifest, cell.width);
   manifest.frames.forEach((_, i) => {
     texture.add(
       i,
       0,
-      (i % cols) * manifest.width,
-      Math.floor(i / cols) * manifest.height,
-      manifest.width,
-      manifest.height,
+      (i % cols) * cell.width,
+      Math.floor(i / cols) * cell.height,
+      cell.width,
+      cell.height,
     );
   });
   return key;

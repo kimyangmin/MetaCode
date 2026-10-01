@@ -4128,6 +4128,73 @@ a {
   color: var(--muted);
 }
 
+/* 도트 에디터의 GIF 가져오기: 파일마다 넣을 애니메이션을 고른다 (에디터 위에 뜸) */
+.dialog__overlay:has(.gif-import) {
+  z-index: 300;
+}
+
+.dialog.gif-import {
+  display: grid;
+  gap: 12px;
+  width: min(520px, 100%);
+}
+
+.gif-import__files {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.gif-import__files li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.gif-import__files li > div {
+  display: grid;
+  min-width: 0;
+}
+
+.gif-import__files strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gif-import__files small {
+  color: var(--muted);
+}
+
+.gif-import__files select {
+  max-width: 45%;
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-input);
+  color: var(--fg);
+  font: inherit;
+}
+
+/* 프레임 넘기기 (‹ 3 / 6 ›) */
+.pixel-editor__frame-nav {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.pixel-editor__frame-count {
+  min-width: 52px;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
 /* 캐릭터 모션의 숫자 키와 반복 표시 */
 .pixel-editor__motion-key {
   min-width: 16px;

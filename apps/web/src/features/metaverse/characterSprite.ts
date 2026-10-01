@@ -12,6 +12,12 @@ import type Phaser from 'phaser';
 import { frameAt, frameOnce } from '../assets/render';
 import { type AssetLookup, ensureAssetTexture, manifestId } from './mapView';
 
+/**
+ * 캐릭터 텍스처의 가장 긴 변. 광장에서 캐릭터는 세로 2타일(32px)이라 6배로 키워도 192px이므로,
+ * 이보다 큰 그림은 텍스처로 올릴 때 줄여 담는다 (예전 최대 해상도 128×256과 같은 크기).
+ */
+const CHARACTER_TEXTURE_MAX = 256;
+
 /** 캐릭터 한 명의 겉모습: 색을 바꾼 텍스처와 매니페스트(애니메이션) */
 export interface CharacterLook {
   key: string;
@@ -37,7 +43,13 @@ export function characterLook(
   // 텍스처 키는 실제로 그린 매니페스트 기준이다. user:updated가 먼저 오고 고친 에셋은 나중에 받으므로,
   // version으로 키를 만들면 새 버전 키에 예전 그림이 들어가 받은 뒤에도 바뀌지 않았다.
   const key = `char:${manifestId(manifest)}:${characterKey(picked)}`;
-  ensureAssetTexture(scene, key, manifest, characterPalette(manifest, picked.colors));
+  ensureAssetTexture(
+    scene,
+    key,
+    manifest,
+    characterPalette(manifest, picked.colors),
+    CHARACTER_TEXTURE_MAX,
+  );
   return { key, manifest };
 }
 
