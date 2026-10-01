@@ -71,9 +71,15 @@ export function fitCharacter<T extends Phaser.GameObjects.Image>(
   return sprite.setDisplaySize(size.width, size.height) as T;
 }
 
-/** 첨부 모션 한 번의 길이 */
+/** 첨부 모션이 없는(또는 비어 있는) 캐릭터가 첨부 메시지를 보냈을 때 제자리에서 뛰는 시간 */
+export const ATTACHMENT_HOP_MS = 600;
+
+/**
+ * 첨부 모션 한 번의 길이. 첨부 모션은 필수가 아니라서, 없거나 모든 프레임이 비었으면 0이다
+ * (그때 광장은 애니메이션 대신 ATTACHMENT_HOP_MS 동안 제자리에서 뛴다).
+ */
 export function emoteDurationMs(manifest: AssetManifest): number {
-  const emote = manifest.animations.emote;
+  const emote = characterAnimation(manifest, 'emote')?.animation;
   return emote ? emote.frames.length * emote.frameMs : 0;
 }
 

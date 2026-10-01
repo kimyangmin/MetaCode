@@ -23,6 +23,7 @@ import {
   type ChangeEvent,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
+  type RefObject,
   useCallback,
   useEffect,
   useMemo,
@@ -31,7 +32,7 @@ import {
 } from 'react';
 import { ApiError } from '../../api/client';
 import { saveAsset } from './api';
-import { AnimatorEditor } from './AnimatorEditor';
+import { AnimatorEditor, withStatesFor } from './AnimatorEditor';
 import {
   BRUSH_MAX,
   BRUSH_MIN,
@@ -246,11 +247,16 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
   const [clipboard, setClipboard] = useState<Clip | null>(null);
   const [trimFeet, setTrimFeet] = useState(readTrimFeet);
   const fileRef = useRef<HTMLInputElement>(null);
+  // 해상도 칸에 입력해 두고 아직 적용하지 않은 크기를 적용한다 (저장하기 전에 부른다)
+  const applyPendingSize = useRef<(() => void) | null>(null);
   const gifRef = useRef<HTMLInputElement>(null);
+  const animatorGifRef = useRef<HTMLInputElement>(null);
   const unityRef = useRef<HTMLInputElement>(null);
   const [importing, setImporting] = useState<{
     files: GifFile[];
     source: 'GIF' | '유니티 클립';
+    /** 애니메이터의 "GIF로 상태": 가져오기 전의 애니메이션 이름 (새로 생긴 것마다 상태를 만든다) */
+    forAnimator?: ReadonlySet<string>;
   } | null>(null);
   /** 붓 굵기를 step만큼 (키를 빠르게 여러 번 눌러도 하나씩 쌓이게 앞 값에서 센다) */
   const stepBrush = (step: number) =>
@@ -651,6 +657,11 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
 
   const onPointerDown = (e: ReactPointerEvent<HTMLCanvasElement>) => {
     if (e.button !== 0 && e.button !== 2) return;
+    // preventDefault()로 포커스가 옮겨 가지 않으므로, 입력칸(해상도 등)에 쓰던 값이 blur로 적용되도록 직접 뺀다.
+    // 예전엔 해상도를 입력하고 그림판을 누르면 적용되지 않아 그림판 크기가 그대로였다.
+    const focused = document.activeElement;
+    if (focused instanceof HTMLElement && focused.matches('input, textarea, select'))
+      focused.blur();
     e.preventDefault();
     const p = pointAt(e);
     if (tool === 'lasso' || tool === 'crop') {
@@ -742,6 +753,7 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
 
   // ── 저장 ──
   const save = async () => {
+    applyPendingSize.current?.();
     const trimmed = doc.kind === 'character' && trimFeet ? editor.trimBelowFeet() : null;
     const result = assetManifestSchema.safeParse(toManifest(editor.doc));
     if (!result.success) {
@@ -796,7 +808,7 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
   };
 
   // ── GIF ──
-  const onImportGif = async (e: ChangeEvent<HTMLInputElement>) => {
+  const onImportGif = async (e: ChangeEvent<HTMLInputElement>, forAnimator = false) => {
     const files = [...(e.target.files ?? [])];
     e.target.value = '';
     if (files.length === 0) return;
@@ -808,7 +820,11 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
         })),
       );
       setStatus(null);
-      setImporting({ files: decoded, source: 'GIF' });
+      setImporting({
+        files: decoded,
+        source: 'GIF',
+        forAnimator: forAnimator ? new Set(editor.doc.animations.map((a) => a.name)) : undefined,
+      });
     } catch {
       setStatus({ kind: 'error', text: 'GIF를 읽지 못했습니다.' });
     }
@@ -1040,6 +1056,14 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
             onChange={(e) => void onImportGif(e)}
           />
           <input
+            ref={animatorGifRef}
+            type="file"
+            accept="image/gif"
+            multiple
+            hidden
+            onChange={(e) => void onImportGif(e, true)}
+          />
+          <input
             ref={unityRef}
             type="file"
             accept=".anim,.png,.meta"
@@ -1051,7 +1075,11 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
       </header>
 
       {animatorOpen && doc.kind === 'character' ? (
-        <AnimatorEditor editor={editor} onClose={() => setAnimatorOpen(false)} />
+        <AnimatorEditor
+          editor={editor}
+          onClose={() => setAnimatorOpen(false)}
+          onAddFromGif={() => animatorGifRef.current?.click()}
+        />
       ) : (
         <>
           <div className="pixel-editor__body">
@@ -1394,7 +1422,9 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
                 />
               )}
 
-              {doc.kind === 'character' && <CharacterSizeSettings editor={editor} />}
+              {doc.kind === 'character' && (
+                <CharacterSizeSettings editor={editor} applyPendingRef={applyPendingSize} />
+              )}
 
               {doc.kind === 'character' && (
                 <section>
@@ -1402,7 +1432,7 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
                   <p className="form__hint">
                     {doc.animator
                       ? `상태 ${doc.animator.states.length}개 · 전이 ${doc.animator.transitions.length}개. 광장에서 이 그래프대로 애니메이션을 틉니다.`
-                      : '없으면 대기·걷기·점프·첨부 모션을 정해진 규칙대로 틉니다. 상태 그래프로 언제 무엇을 틀지 직접 정할 수 있습니다 (유니티 Animator처럼).'}
+                      : '없으면 대기·걷기·점프·첨부 모션(있으면)을 정해진 규칙대로 틉니다. 상태 그래프로 언제 무엇을 틀지 직접 정할 수 있습니다 (유니티 Animator처럼).'}
                   </p>
                   <button type="button" className="button" onClick={() => setAnimatorOpen(true)}>
                     <Workflow aria-hidden /> 애니메이터 열기
@@ -1454,8 +1484,8 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
                 {doc.kind === 'character' && (
                   <p className="form__hint">
                     {sideCharacter
-                      ? '✓·✗ 표시가 있는 것은 모두 그려야 저장할 수 있습니다 (걷기·첨부 모션은 2프레임 이상, 점프는 1프레임 이상). 오른쪽만 그리면 왼쪽은 광장에서 좌우 반전됩니다.'
-                      : '✓·✗ 표시가 있는 것은 모두 그려야 저장할 수 있습니다 (걷기·첨부 모션은 2프레임 이상).'}
+                      ? '✓·✗ 표시가 있는 것은 모두 그려야 저장할 수 있습니다 (걷기는 2프레임 이상, 점프는 1프레임 이상). 오른쪽만 그리면 왼쪽은 광장에서 좌우 반전됩니다. 첨부 모션은 없어도 됩니다 (없으면 첨부를 보낼 때 제자리에서 뜀).'
+                      : '✓·✗ 표시가 있는 것은 모두 그려야 저장할 수 있습니다 (걷기는 2프레임 이상). 첨부 모션은 없어도 됩니다 (없으면 첨부를 보낼 때 제자리에서 뜀).'}
                   </p>
                 )}
                 <ul className="pixel-editor__animations">
@@ -1507,6 +1537,20 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
                     >
                       <Plus aria-hidden /> 모션
                     </button>
+                    {!editor.hasEmote() && (
+                      <button
+                        type="button"
+                        className="button"
+                        disabled={!editor.canAddAnimation()}
+                        title="첨부 메시지를 보냈을 때 광장에서 한 번 트는 애니메이션 (없으면 제자리에서 뜀)"
+                        onClick={() => {
+                          const at = editor.addEmote();
+                          if (at !== null) setSelected({ animation: at, frame: 0 });
+                        }}
+                      >
+                        <Plus aria-hidden /> 첨부 모션
+                      </button>
+                    )}
                     {!sideCharacter && !editor.hasJump() && (
                       <button
                         type="button"
@@ -1691,12 +1735,22 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
           editor={editor}
           files={importing.files}
           source={importing.source}
+          forAnimator={!!importing.forAnimator}
           current={ref.animation}
           onClose={() => setImporting(null)}
           onDone={(first, message) => {
+            const before = importing.forAnimator;
             setImporting(null);
             if (first !== null) setSelected({ animation: first, frame: 0 });
             setStatus({ kind: 'ok', text: message });
+            // 애니메이터에서 연 것이면 새로 생긴 애니메이션마다 그것을 트는 상태를 더한다.
+            const animator = editor.doc.animator;
+            if (before && animator) {
+              const added = editor.doc.animations
+                .map((a) => a.name)
+                .filter((name) => !before.has(name));
+              if (added.length > 0) editor.setAnimator(withStatesFor(animator, added));
+            }
           }}
         />
       )}
@@ -1761,8 +1815,14 @@ function MotionSettings({
   );
 }
 
-/** 지금 광장 방식에서 필수가 아닌 정해진 애니메이션(점프, 남겨 둔 왼쪽·위·아래)의 설명 */
+/** 필수가 아닌 애니메이션(첨부 모션, 점프, 남겨 둔 왼쪽·위·아래, 애니메이터용)의 설명 */
 function leftoverHint(name: string, side: boolean): string {
+  if (name === 'emote') {
+    return '첨부 메시지를 보냈을 때 광장에서 한 번 틉니다. 지우면 첨부를 보낼 때 제자리에서 뛰기만 합니다.';
+  }
+  if (!STANDARD_ANIMATIONS.has(name)) {
+    return '애니메이터의 상태가 트는 애니메이션입니다. 지우면 이것을 가리키던 상태가 빨간 점선으로 보이고 저장이 막힙니다.';
+  }
   if (side && name.endsWith('-left')) {
     return '왼쪽 모습을 따로 그린 것입니다. 지우면 오른쪽을 좌우 반전해서 씁니다 (좌우가 다른 캐릭터만 남겨 두세요).';
   }
@@ -1775,11 +1835,11 @@ function leftoverHint(name: string, side: boolean): string {
 const STYLE_OPTION: Record<PlazaStyle, { label: string; hint: string }> = {
   [PlazaStyle.TopDown]: {
     label: '탑다운',
-    hint: '위에서 내려다보는 광장용. 대기·걷기 4방향(아래·왼쪽·오른쪽·위)과 첨부 모션을 그립니다. 횡스크롤 광장에서도 쓸 수 있습니다.',
+    hint: '위에서 내려다보는 광장용. 대기·걷기 4방향(아래·왼쪽·오른쪽·위)을 그립니다 (첨부 모션은 골라서). 횡스크롤 광장에서도 쓸 수 있습니다.',
   },
   [PlazaStyle.SideScroll]: {
     label: '횡스크롤',
-    hint: '옆에서 보는 광장용. 오른쪽을 보는 대기·걷기·점프와 첨부 모션을 그립니다. 왼쪽은 오른쪽을 좌우 반전해서 쓰고, 위·아래 모습이 없어서 탑다운 광장에서는 쓸 수 없습니다.',
+    hint: '옆에서 보는 광장용. 오른쪽을 보는 대기·걷기·점프를 그립니다 (첨부 모션은 골라서). 왼쪽은 오른쪽을 좌우 반전해서 쓰고, 위·아래 모습이 없어서 탑다운 광장에서는 쓸 수 없습니다.',
   },
 };
 
@@ -1816,7 +1876,14 @@ function CharacterStyleSettings({ editor, onChange }: { editor: PixelDocument; o
  * 캐릭터 해상도 (가로·세로 각각 16~512px). 광장에서는 세로가 늘 2타일이고 가로는 그림 비율대로라,
  * 해상도를 올리면 같은 자리에 더 촘촘하게 그려진다. 받아 온 에셋을 줄이지 않고 쓰려고 열어 둔 설정이다.
  */
-function CharacterSizeSettings({ editor }: { editor: PixelDocument }) {
+function CharacterSizeSettings({
+  editor,
+  applyPendingRef,
+}: {
+  editor: PixelDocument;
+  /** 저장할 때 아직 적용하지 않은 입력을 적용하도록 apply를 넘겨 둔다 */
+  applyPendingRef: RefObject<(() => void) | null>;
+}) {
   const { doc } = editor;
   const [input, setInput] = useState({ width: String(doc.width), height: String(doc.height) });
   // 되돌리기 등으로 크기가 바뀌면 입력칸도 따라간다.
@@ -1837,6 +1904,13 @@ function CharacterSizeSettings({ editor }: { editor: PixelDocument }) {
     }
     editor.resizeCharacter(width, height);
   };
+  useEffect(() => {
+    applyPendingRef.current = apply;
+    return () => {
+      applyPendingRef.current = null;
+    };
+  });
+  const pending = input.width !== String(doc.width) || input.height !== String(doc.height);
 
   const field = (axis: 'width' | 'height', label: string) => (
     <input
@@ -1862,6 +1936,11 @@ function CharacterSizeSettings({ editor }: { editor: PixelDocument }) {
         {field('width', '캐릭터 가로 픽셀')}× 세로
         {field('height', '캐릭터 세로 픽셀')}
         px
+        {pending && (
+          <button type="button" className="button" onClick={apply}>
+            적용
+          </button>
+        )}
       </div>
       <p className="form__hint">
         가로·세로 각각 {CHARACTER_MIN_SIZE}~{CHARACTER_MAX_SIZE}px입니다. 광장에서는 아래의 광장

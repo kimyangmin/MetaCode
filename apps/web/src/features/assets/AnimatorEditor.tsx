@@ -37,7 +37,7 @@ import {
 } from 'react';
 import type { EditorAnimation, PixelDocument } from './editorModel';
 import { frameCanvas } from './pixelCanvas';
-import { ArrowDown, ArrowUp, Link2, Plus, RotateCcw, Trash2, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, ImagePlus, Link2, Plus, RotateCcw, Trash2, X } from 'lucide-react';
 
 /** 그래프 위 상태 상자 크기 */
 const NODE_W = 150;
@@ -68,6 +68,24 @@ function freeName(base: string, used: ReadonlySet<string>): string {
   return `${base}-${n}`;
 }
 
+/**
+ * 새 애니메이션마다 그것을 트는 상태를 더한 애니메이터 (GIF로 상태 추가). 상태 이름은 애니메이션 이름에서
+ * (겹치면 -2, -3 …), 자리는 지금 상태들 아래에 한 줄로. 상태 한도를 넘는 것은 더하지 않는다.
+ */
+export function withStatesFor(animator: Animator, animations: readonly string[]): Animator {
+  const used = new Set(animator.states.map((s) => s.name));
+  const left = Math.min(...animator.states.map((s) => s.x));
+  const top = Math.max(...animator.states.map((s) => s.y)) + NODE_H + 72;
+  const added: AnimatorState[] = [];
+  for (const animation of animations) {
+    if (animator.states.length + added.length >= ANIMATOR_STATE_LIMIT) break;
+    const name = freeName(animation, used);
+    used.add(name);
+    added.push({ name, animation, x: snap(left + added.length * (NODE_W + 40)), y: snap(top) });
+  }
+  return { ...animator, states: [...animator.states, ...added] };
+}
+
 /** 전이에 붙일 짧은 설명 (그래프의 화살표 옆) */
 function conditionText(transition: AnimatorTransition): string {
   const parts = transition.conditions.map((c) => (c.value === false ? `!${c.param}` : c.param));
@@ -79,10 +97,21 @@ function conditionText(transition: AnimatorTransition): string {
  * 캐릭터 애니메이터 편집기 (유니티 Animator처럼): 가운데 상태 그래프, 왼쪽 파라미터, 오른쪽 고른 것의 설정과
  * 미리보기. 고칠 때마다 PixelDocument.setAnimator로 새 애니메이터를 넘긴다 (되돌리기 가능).
  */
-export function AnimatorEditor({ editor, onClose }: { editor: PixelDocument; onClose(): void }) {
+export function AnimatorEditor({
+  editor,
+  onClose,
+  onAddFromGif,
+}: {
+  editor: PixelDocument;
+  onClose(): void;
+  /** GIF를 골라 새 애니메이션과 그것을 트는 상태를 만든다 (모션을 따로 만들지 않아도) */
+  onAddFromGif(): void;
+}) {
   const { doc } = editor;
   const animator = doc.animator;
-  const names = useMemo(() => new Set(doc.animations.map((a) => a.name)), [doc.animations]);
+  // 그릴 때마다 센다: 에디터는 애니메이션 목록을 그 자리에서 고치므로(GIF로 상태 추가 등) 배열로 memo하면
+  // 새 애니메이션을 못 보고 "없는 애니메이션"으로 잡았다.
+  const names = new Set(doc.animations.map((a) => a.name));
 
   if (!animator) {
     return (
@@ -124,7 +153,15 @@ export function AnimatorEditor({ editor, onClose }: { editor: PixelDocument; onC
       </section>
     );
   }
-  return <AnimatorGraph editor={editor} animator={animator} names={names} onClose={onClose} />;
+  return (
+    <AnimatorGraph
+      editor={editor}
+      animator={animator}
+      names={names}
+      onClose={onClose}
+      onAddFromGif={onAddFromGif}
+    />
+  );
 }
 
 function AnimatorGraph({
@@ -132,11 +169,13 @@ function AnimatorGraph({
   animator,
   names,
   onClose,
+  onAddFromGif,
 }: {
   editor: PixelDocument;
   animator: Animator;
   names: ReadonlySet<string>;
   onClose(): void;
+  onAddFromGif(): void;
 }) {
   const [selection, setSelection] = useState<Selection>(null);
   /** 전이를 만드는 중: 출발 상태 (Any State면 *) */
@@ -407,6 +446,15 @@ function AnimatorGraph({
           onClick={addState}
         >
           <Plus aria-hidden /> 상태
+        </button>
+        <button
+          type="button"
+          className="button"
+          disabled={animator.states.length >= ANIMATOR_STATE_LIMIT || !editor.canAddAnimation()}
+          title="GIF를 새 애니메이션으로 넣고 그것을 트는 상태를 만듭니다 (모션을 따로 만들지 않아도 됨)"
+          onClick={onAddFromGif}
+        >
+          <ImagePlus aria-hidden /> GIF로 상태
         </button>
         <button
           type="button"

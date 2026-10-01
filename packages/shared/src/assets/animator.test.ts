@@ -31,6 +31,14 @@ describe('애니메이터 검증', () => {
     expect(defaultAnimator(noJump).states.map((s) => s.name)).toEqual(['idle', 'walk', 'emote']);
   });
 
+  it('첨부 모션이 없으면 기본 그래프에 첨부 상태와 그 전이를 넣지 않는다 (저장이 막히지 않게)', () => {
+    const noEmote = new Set([...names].filter((n) => n !== 'emote'));
+    const animator = defaultAnimator(noEmote);
+    expect(animator.states.map((s) => s.name)).toEqual(['idle', 'walk', 'jump']);
+    expect(animator.transitions.some((t) => t.to === 'emote' || t.from === 'emote')).toBe(false);
+    expect(animatorProblems(animator, noEmote)).toEqual([]);
+  });
+
   it('없는 애니메이션·상태·파라미터, 겹치는 이름, 조건 없이 바로 넘어가는 전이를 잡는다', () => {
     const animator: Animator = {
       entry: 'missing',

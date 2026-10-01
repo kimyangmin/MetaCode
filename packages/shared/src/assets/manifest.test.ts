@@ -200,9 +200,21 @@ describe('캐릭터 필수 애니메이션', () => {
     const manifest = {
       ...base,
       frames,
-      animations: { ...base.animations, emote: { frames: [0, blank], frameMs: 100 } },
+      animations: { ...base.animations, 'walk-up': { frames: [0, blank], frameMs: 100 } },
     };
-    expect(missingAnimations(manifest).map((a) => a.name)).toEqual(['emote']);
+    expect(missingAnimations(manifest).map((a) => a.name)).toEqual(['walk-up']);
+  });
+
+  it('첨부 모션은 필수가 아니다 (없어도, 비어 있어도 저장할 수 있다)', () => {
+    const rest = { ...base.animations };
+    delete rest.emote;
+    expect(missingAnimations({ ...base, animations: rest })).toEqual([]);
+    expect(assetManifestSchema.safeParse({ ...base, animations: rest }).success).toBe(true);
+    const frames = [...base.frames, encodePixels(new Uint8Array(16 * 32))];
+    const blankEmote = { frames: [frames.length - 1], frameMs: 100 };
+    expect(
+      missingAnimations({ ...base, frames, animations: { ...rest, emote: blankEmote } }),
+    ).toEqual([]);
   });
 });
 
@@ -397,8 +409,9 @@ describe('광장 크기', () => {
 
   it('0.5타일 단위 1~4타일만, 캐릭터만 쓸 수 있다', () => {
     expect(problemsOf({ ...base, plazaHeight: 3.5 })).toEqual([]);
-    expect(problemsOf({ ...base, plazaHeight: 2.2 }).join()).toMatch(/광장 크기는 1~4타일/);
-    expect(problemsOf({ ...base, plazaHeight: 5 }).join()).toMatch(/광장 크기는 1~4타일/);
+    expect(problemsOf({ ...base, plazaHeight: 6 })).toEqual([]);
+    expect(problemsOf({ ...base, plazaHeight: 2.2 }).join()).toMatch(/광장 크기는 1~6타일/);
+    expect(problemsOf({ ...base, plazaHeight: 6.5 }).join()).toMatch(/광장 크기는 1~6타일/);
     expect(problemsOf(tile({ plazaHeight: 2 }))).toContain('광장 크기는 캐릭터만 쓸 수 있습니다.');
   });
 });
