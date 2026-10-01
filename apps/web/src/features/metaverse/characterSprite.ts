@@ -3,9 +3,12 @@ import {
   type AssetManifest,
   type Direction,
   type ProfileCharacter,
+  PlazaStyle,
+  characterAnimation,
   characterKey,
-  characterWorldSize,
   characterPalette,
+  characterStyle,
+  characterWorldSize,
   defaultCharacter,
 } from '@metacode/shared';
 import type Phaser from 'phaser';
@@ -98,31 +101,59 @@ export function motionDurationMs(manifest: AssetManifest, name: string): number 
   return animation ? animation.frames.length * animation.frameMs : 0;
 }
 
-/**
- * 횡스크롤에서 공중에 있을 때(점프, 떨어지기)의 프레임: jump-<방향> 애니메이션이 있으면 그것을 한 번,
- * 없으면 걷기의 두 번째 프레임(다리를 벌린 모습)에 멈춘다.
- */
-export function airborneFrame(manifest: AssetManifest, dir: Direction, elapsedMs: number): number {
-  const jump = manifest.animations[`jump-${dir}`];
-  if (jump) return frameOnce(jump, elapsedMs);
-  const walk = manifest.animations[`walk-${dir}`] ?? manifest.animations[`idle-${dir}`];
-  if (!walk) return 0;
-  return walk.frames[Math.min(1, walk.frames.length - 1)]!;
+/** 그릴 프레임과 좌우 반전 여부 */
+export interface CharacterPose {
+  frame: number;
+  flip: boolean;
 }
 
 /**
- * 애니메이션을 시작한 뒤 elapsedMs가 지났을 때의 프레임. 첨부 모션과 once(한 번 트는 캐릭터 모션)는
- * 한 번만 재생하고 마지막 프레임에 머문다. 없는 애니메이션이면 그 방향의 대기 프레임.
+ * 방향이 없는 애니메이션(첨부 모션, 캐릭터 모션)을 왼쪽을 볼 때 뒤집을지. 횡스크롤용 캐릭터는 오른쪽을 보고
+ * 그리므로 왼쪽을 보면 뒤집고, 탑다운용은 앞을 보고 그리므로 그대로 둔다.
  */
-export function characterFrame(
+function facesLeft(manifest: AssetManifest, dir: Direction): boolean {
+  return dir === 'left' && characterStyle(manifest) === PlazaStyle.SideScroll;
+}
+
+/**
+ * 횡스크롤에서 공중에 있을 때(점프, 떨어지기)의 모습: jump-<방향> 애니메이션이 있으면 그것을 한 번,
+ * 없으면 걷기의 두 번째 프레임(다리를 벌린 모습)에 멈춘다. 왼쪽이 없으면 오른쪽을 뒤집는다.
+ */
+export function airbornePose(
+  manifest: AssetManifest,
+  dir: Direction,
+  elapsedMs: number,
+): CharacterPose {
+  const jump = characterAnimation(manifest, `jump-${dir}`);
+  if (jump) return { frame: frameOnce(jump.animation, elapsedMs), flip: jump.mirrored };
+  const walk =
+    characterAnimation(manifest, `walk-${dir}`) ?? characterAnimation(manifest, `idle-${dir}`);
+  if (!walk) return { frame: 0, flip: false };
+  const { frames } = walk.animation;
+  return { frame: frames[Math.min(1, frames.length - 1)]!, flip: walk.mirrored };
+}
+
+/**
+ * 애니메이션을 시작한 뒤 elapsedMs가 지났을 때의 모습. 첨부 모션과 once(한 번 트는 캐릭터 모션)는
+ * 한 번만 재생하고 마지막 프레임에 머문다. 없는 애니메이션이면 그 방향의 대기.
+ * 횡스크롤용 캐릭터는 왼쪽이 없으면 오른쪽을 뒤집고, 위·아래가 없으면 오른쪽 (characterAnimation).
+ */
+export function characterPose(
   manifest: AssetManifest,
   name: string,
   dir: Direction,
   elapsedMs: number,
   once = name === 'emote',
-): number {
-  const animation: AssetAnimation | undefined =
-    manifest.animations[name] ?? manifest.animations[`idle-${dir}`];
-  if (!animation) return 0;
-  return once ? frameOnce(animation, elapsedMs) : frameAt(animation, elapsedMs);
+): CharacterPose {
+  const own = manifest.animations[name];
+  if (own && !/-(down|left|right|up)$/.test(name)) {
+    // 방향이 없는 애니메이션: 첨부 모션, 캐릭터 모션
+    const frame = once ? frameOnce(own, elapsedMs) : frameAt(own, elapsedMs);
+    return { frame, flip: facesLeft(manifest, dir) };
+  }
+  const found = characterAnimation(manifest, name) ?? characterAnimation(manifest, `idle-${dir}`);
+  if (!found) return { frame: 0, flip: false };
+  const animation: AssetAnimation = found.animation;
+  const frame = once ? frameOnce(animation, elapsedMs) : frameAt(animation, elapsedMs);
+  return { frame, flip: found.mirrored };
 }

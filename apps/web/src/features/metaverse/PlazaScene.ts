@@ -62,9 +62,9 @@ import type { VoiceLabel } from './plazaVoice';
 import {
   type CharacterLook,
   type PlayingMotion,
-  airborneFrame,
+  airbornePose,
   animationName,
-  characterFrame,
+  characterPose,
   characterLook,
   emoteDurationMs,
   fitCharacter,
@@ -276,16 +276,15 @@ export class PlazaScene extends Phaser.Scene {
         .image(position.x, position.y, 'speaking-ring')
         .setOrigin(0.5, 0.6)
         .setVisible(false),
-      sprite: fitCharacter(
-        this.add
-          .image(
-            position.x,
-            position.y,
-            look.key,
-            characterFrame(look.manifest, `idle-${occupant.dir}`, occupant.dir, 0),
-          )
-          .setOrigin(0.5, 1),
-      ),
+      sprite: (() => {
+        const pose = characterPose(look.manifest, `idle-${occupant.dir}`, occupant.dir, 0);
+        return fitCharacter(
+          this.add
+            .image(position.x, position.y, look.key, pose.frame)
+            .setOrigin(0.5, 1)
+            .setFlipX(pose.flip),
+        );
+      })(),
       look,
       animation: { name: `idle-${occupant.dir}`, start: 0 },
       position,
@@ -681,17 +680,18 @@ export class PlazaScene extends Phaser.Scene {
     if (actor.animation.name !== name) actor.animation = { name, start: now };
     const { manifest } = actor.look;
     const playing = name === 'emote' || name === actor.motion?.name;
-    actor.sprite.setFrame(
+    const pose =
       airborne && !playing
-        ? airborneFrame(manifest, actor.dir, now - actor.airborneSince)
-        : characterFrame(
+        ? airbornePose(manifest, actor.dir, now - actor.airborneSince)
+        : characterPose(
             manifest,
             name,
             actor.dir,
             now - actor.animation.start,
             name === 'emote' || (name === actor.motion?.name && !actor.motion.loop),
-          ),
-    );
+          );
+    // 횡스크롤용 캐릭터는 왼쪽을 그리지 않았으면 오른쪽 그림을 뒤집어 그린다.
+    actor.sprite.setFrame(pose.frame).setFlipX(pose.flip);
     // 첨부 모션 동안에는 제자리에서 뛴다.
     const lift =
       actor.emoteUntil > now

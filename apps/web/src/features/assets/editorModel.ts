@@ -10,9 +10,11 @@ import {
   MOTION_KEYS,
   type MotionKey,
   PALETTE_MAX_COLORS,
+  PlazaStyle,
   REQUIRED_CHARACTER_ANIMATIONS,
   type RequiredAnimation,
   TILE_SIZE,
+  characterStyle,
   decodePixels,
   encodePixels,
   isBlank,
@@ -33,8 +35,10 @@ export interface EditorAnimation {
   loop?: boolean;
 }
 
-/** 필수 애니메이션 (지울 수 없다) */
-const REQUIRED_NAMES = new Set(REQUIRED_CHARACTER_ANIMATIONS.map((r) => r.name));
+/** 이 문서(캐릭터)에 필요한 애니메이션 (지울 수 없다). 광장 방식마다 다르고, 캐릭터가 아니면 없다 */
+export function requiredOf(doc: Pick<EditorDoc, 'kind' | 'style'>): readonly RequiredAnimation[] {
+  return doc.kind === 'character' ? REQUIRED_CHARACTER_ANIMATIONS[doc.style] : [];
+}
 /** 한 캐릭터에 둘 수 있는 애니메이션 수 (매니페스트 검증과 같게) */
 const ANIMATION_LIMIT = 32;
 
@@ -53,6 +57,8 @@ export interface EditorDoc {
   platform: boolean;
   footprint: number[];
   colorSlots?: AssetManifest['colorSlots'];
+  /** 캐릭터가 쓰는 광장 방식 (필수 애니메이션이 다름). 캐릭터가 아니면 의미 없음 */
+  style: PlazaStyle;
 }
 
 /** 새로 그릴 때의 팔레트: Kenney Tiny Town 색 위주 */
@@ -84,8 +90,26 @@ function defaultFootprint(width: number, height: number): number[] {
   return Array.from({ length: cells }, (_, i) => (i >= cells - cols ? 1 : 0));
 }
 
-/** 종류에 맞는 새 문서. 캐릭터는 필수 애니메이션을 빈 프레임으로 채워 둔다 */
-export function newDoc(kind: AssetKind, name: string, tiles = { w: 1, h: 1 }): EditorDoc {
+/** 필수 애니메이션 하나를 빈 프레임으로 */
+function blankRequired(
+  required: RequiredAnimation,
+  width: number,
+  height: number,
+): EditorAnimation {
+  return {
+    name: required.name,
+    frames: Array.from({ length: required.minFrames }, () => blank(width, height)),
+    frameMs: required.name.startsWith('idle') ? 1000 : required.name.startsWith('jump') ? 150 : 120,
+  };
+}
+
+/** 종류에 맞는 새 문서. 캐릭터는 그 광장 방식의 필수 애니메이션을 빈 프레임으로 채워 둔다 */
+export function newDoc(
+  kind: AssetKind,
+  name: string,
+  tiles = { w: 1, h: 1 },
+  style: PlazaStyle = PlazaStyle.TopDown,
+): EditorDoc {
   const width =
     kind === 'character'
       ? CHARACTER_DEFAULT_SIZE.width
@@ -100,11 +124,9 @@ export function newDoc(kind: AssetKind, name: string, tiles = { w: 1, h: 1 }): E
         : tiles.h * TILE_SIZE;
   const animations =
     kind === 'character'
-      ? REQUIRED_CHARACTER_ANIMATIONS.map((required) => ({
-          name: required.name,
-          frames: Array.from({ length: required.minFrames }, () => blank(width, height)),
-          frameMs: required.name.startsWith('idle') ? 1000 : 120,
-        }))
+      ? REQUIRED_CHARACTER_ANIMATIONS[style].map((required) =>
+          blankRequired(required, width, height),
+        )
       : [{ name: DEFAULT_ANIMATION, frames: [blank(width, height)], frameMs: 200 }];
   return {
     kind,
@@ -116,6 +138,7 @@ export function newDoc(kind: AssetKind, name: string, tiles = { w: 1, h: 1 }): E
     solid: false,
     platform: false,
     footprint: defaultFootprint(width, height),
+    style,
   };
 }
 
@@ -123,12 +146,14 @@ export function fromManifest(manifest: AssetManifest): EditorDoc {
   const frames = manifest.frames.map(
     (f) => decodePixels(f) ?? blank(manifest.width, manifest.height),
   );
+  const style = characterStyle(manifest);
+  const required = REQUIRED_CHARACTER_ANIMATIONS[style];
   const order =
     manifest.kind === 'character'
       ? [
-          ...REQUIRED_CHARACTER_ANIMATIONS.map((r) => r.name),
+          ...required.map((r) => r.name),
           ...Object.keys(manifest.animations).filter(
-            (name) => !REQUIRED_CHARACTER_ANIMATIONS.some((r) => r.name === name),
+            (name) => !required.some((r) => r.name === name),
           ),
         ]
       : Object.keys(manifest.animations);
@@ -159,6 +184,7 @@ export function fromManifest(manifest: AssetManifest): EditorDoc {
     platform: manifest.platform ?? false,
     footprint: manifest.footprint ? [...manifest.footprint] : Array<number>(cells).fill(0),
     colorSlots: manifest.colorSlots,
+    style,
   };
 }
 
@@ -200,6 +226,10 @@ export function toManifest(doc: EditorDoc): AssetManifest {
     ...(doc.kind === 'tile' && doc.platform && !doc.solid ? { platform: true } : {}),
     ...(doc.kind === 'object' ? { footprint: doc.footprint.map((v) => (v ? 1 : 0) as 0 | 1) } : {}),
     ...(doc.kind === 'character' && doc.colorSlots ? { colorSlots: doc.colorSlots } : {}),
+    // 탑다운(기본)은 적지 않는다: 방식을 고르기 전에 만든 캐릭터와 같은 매니페스트가 된다.
+    ...(doc.kind === 'character' && doc.style === PlazaStyle.SideScroll
+      ? { style: doc.style }
+      : {}),
   };
 }
 
@@ -464,7 +494,8 @@ export class PixelDocument {
   }
 
   /**
-   * 모션을 하나 더하고 그 번호를 돌려준다. 남은 키 중 첫 번째를 주고, 대기(아래) 첫 프레임을 복사해 시작한다.
+   * 모션을 하나 더하고 그 번호를 돌려준다. 남은 키 중 첫 번째를 주고, 대기(아래, 횡스크롤용은 오른쪽)
+   * 첫 프레임을 복사해 시작한다.
    * 키가 다 찼거나 더할 수 없으면 null.
    */
   addMotion(): number | null {
@@ -472,7 +503,10 @@ export class PixelDocument {
     if (!key || !this.canAddAnimation()) return null;
     let n = 1;
     while (this.doc.animations.some((a) => a.name === `motion-${n}`)) n++;
-    const idle = this.doc.animations.find((a) => a.name === 'idle-down')?.frames[0];
+    const idle = (
+      this.doc.animations.find((a) => a.name === 'idle-down') ??
+      this.doc.animations.find((a) => a.name === 'idle-right')
+    )?.frames[0];
     this.edit((doc) => {
       doc.animations.push({
         name: `motion-${n}`,
@@ -500,7 +534,7 @@ export class PixelDocument {
   /** 필수가 아닌 애니메이션(모션, 점프)을 지운다 */
   removeAnimation(index: number): void {
     const animation = this.doc.animations[index];
-    if (!animation || REQUIRED_NAMES.has(animation.name)) return;
+    if (!animation || requiredOf(this.doc).some((r) => r.name === animation.name)) return;
     this.edit((doc) => doc.animations.splice(index, 1));
   }
 
@@ -629,8 +663,7 @@ export class PixelDocument {
    * 프레임을 바로 본다 (화면이 그릴 때마다 부르므로).
    */
   missingAnimations(): RequiredAnimation[] {
-    if (this.doc.kind !== 'character') return [];
-    return REQUIRED_CHARACTER_ANIMATIONS.filter((required) => {
+    return requiredOf(this.doc).filter((required) => {
       const animation = this.doc.animations.find((a) => a.name === required.name);
       if (!animation || animation.frames.length < required.minFrames) return true;
       return animation.frames.some((pixels) => isBlank(pixels));
@@ -676,6 +709,33 @@ export class PixelDocument {
   }
 
   // ── 종류별 설정 ──
+
+  /**
+   * 캐릭터가 쓰는 광장 방식을 바꾼다. 새 방식에 필요한데 없는 애니메이션은 더하고(점프는 걷기의 두 번째
+   * 프레임을 복사, 나머지는 빈 프레임), 필요한 것을 앞에 둔다. 예전 방식에만 필요하던 것(위·아래 등)은
+   * 지우지 않고 뒤에 남긴다 (다시 바꿀 때 그대로 쓰도록, 필요 없으면 따로 지운다).
+   */
+  setStyle(style: PlazaStyle): void {
+    if (this.doc.kind !== 'character' || this.doc.style === style) return;
+    this.edit((doc) => {
+      doc.style = style;
+      const required = REQUIRED_CHARACTER_ANIMATIONS[style];
+      const byName = new Map(doc.animations.map((a) => [a.name, a]));
+      const first = required.map((r) => {
+        const existing = byName.get(r.name);
+        if (existing) return existing;
+        const added = blankRequired(r, doc.width, doc.height);
+        if (r.name.startsWith('jump-')) {
+          const walk = byName.get(r.name.replace('jump-', 'walk-'));
+          const source = walk?.frames[Math.min(1, walk.frames.length - 1)];
+          if (source) added.frames = [Uint8Array.from(source)];
+        }
+        return added;
+      });
+      const names = new Set(required.map((r) => r.name));
+      doc.animations = [...first, ...doc.animations.filter((a) => !names.has(a.name))];
+    });
+  }
 
   setName(name: string): void {
     this.doc.name = name;
