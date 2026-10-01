@@ -26,7 +26,7 @@ import {
   isOutsideWindow,
   otherPanel,
 } from './arrangement';
-import { ArrowUpDown, GripVertical, SquareArrowOutUpRight, X } from 'lucide-react';
+import { GripVertical, SquareArrowOutUpRight, X } from 'lucide-react';
 import { useIsPhone } from '../ui/useMediaQuery';
 import { isAndroidApp } from '../platform';
 import { NavButton } from './NavButton';
@@ -82,18 +82,22 @@ interface SplitViewProps {
   plaza: (slots: PanelSlots) => ReactNode;
   /** 새 창으로 분리할 때 열 주소 (/popout/...) */
   popoutPaths: Record<PanelKey, string>;
+  /** 휴대폰 화면에서 머리글의 ☰ 옆에 둘 버튼 (커뮤니티 채널이면 관리자에게 채널 설정) */
+  phoneTools?: ReactNode;
 }
+
+/** 휴대폰 화면은 광장이 위, 채팅이 아래 (입력창이 화면 아래, 자판 가까이에 오게) */
+const PHONE_ARRANGEMENT: Arrangement = { orientation: 'vertical', first: 'plaza' };
 
 /**
  * 분할 화면: 지금 보는 채널의 채팅 모드와 그 광장.
  * - 가운데 선을 끌어 크기를 바꾸고, 머리글의 버튼으로 패널을 켜고 끈다.
  * - 머리글의 ⠿를 끌어 영역의 가장자리(상하좌우)에 놓으면 그쪽으로 옮기고, 창 밖에 놓으면(또는 ⧉) 새 창으로 분리한다.
- * - 휴대폰 화면은 위아래로만 나누고, ⇅로 위아래를 바꾼다 (옮기기·분리 없음).
+ * - 휴대폰 화면은 위아래로만 나눈다 (광장이 위, 옮기기·분리 없음).
  * - 크기, 켜짐, 배치는 기억한다. 분리한 창을 닫으면 메인 창으로 돌아온다.
  */
-export function SplitView({ chat, plaza, popoutPaths }: SplitViewProps) {
+export function SplitView({ chat, plaza, popoutPaths, phoneTools }: SplitViewProps) {
   const arrangement = useLayoutStore((s) => s.arrangement);
-  const phoneFirst = useLayoutStore((s) => s.phoneFirst);
   const detached = useLayoutStore((s) => s.detached);
   const [notice, setNotice] = useState<string | null>(null);
   const phone = useIsPhone();
@@ -119,8 +123,9 @@ export function SplitView({ chat, plaza, popoutPaths }: SplitViewProps) {
   return (
     <>
       <SplitPanels
-        arrangement={phone ? { orientation: 'vertical', first: phoneFirst } : arrangement}
+        arrangement={phone ? PHONE_ARRANGEMENT : arrangement}
         phone={phone}
+        phoneTools={phoneTools}
         render={render}
         onDetach={detach}
       />
@@ -158,11 +163,13 @@ function createContentHost(key: PanelKey): HTMLDivElement {
 function SplitPanels({
   arrangement,
   phone,
+  phoneTools,
   render,
   onDetach,
 }: {
   arrangement: Arrangement;
   phone: boolean;
+  phoneTools?: ReactNode;
   render: Record<PanelKey, (slots: PanelSlots) => ReactNode>;
   onDetach(key: PanelKey, at?: { x: number; y: number }): void;
 }) {
@@ -220,12 +227,6 @@ function SplitPanels({
     forgetCollapsed(groupIdOf(next.orientation));
     useLayoutStore.getState().setArrangement(next);
     setDrop(null);
-  };
-
-  // 휴대폰: 위아래 바꾸기
-  const swap = () => {
-    forgetCollapsed(groupIdOf('phone'));
-    useLayoutStore.getState().setPhoneFirst(second);
   };
 
   const track = (key: PanelKey) => (size: { asPercentage: number }) =>
@@ -309,15 +310,7 @@ function SplitPanels({
     handle: phone ? (
       <span className="panel-handle">
         <NavButton />
-        <button
-          type="button"
-          className="icon-button panel-handle__swap"
-          onClick={swap}
-          aria-label="채팅과 광장 위아래 바꾸기"
-          title="위아래 바꾸기"
-        >
-          <ArrowUpDown aria-hidden />
-        </button>
+        {phoneTools}
       </span>
     ) : (
       <PanelHandle

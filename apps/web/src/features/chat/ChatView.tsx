@@ -111,12 +111,12 @@ export function ChatView({
           { channelId, content, attachmentIds, replyToId },
           (err, result) => {
             if (err || !result.ok) return fail();
-            addMessageToCache(queryClient, result.data as MessageDto);
+            addMessageToCache(queryClient, result.data as MessageDto, me.id);
             setPending((list) => list.filter((p) => p.clientId !== clientId));
           },
         );
     },
-    [channelId, queryClient, socket],
+    [channelId, me.id, queryClient, socket],
   );
 
   /** 입력창의 글과, 올라간 첨부를 함께 보낸다. */

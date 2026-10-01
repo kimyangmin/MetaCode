@@ -5,6 +5,7 @@ import { Navigate, useNavigate, useParams } from 'react-router';
 import { ApiError, apiFetch } from './api/client';
 import { queryKeys } from './api/queries';
 import { ChatView } from './features/chat/ChatView';
+import { ChannelSettingsButton } from './features/communities/ChannelSettings';
 import { CommunitySidebar } from './features/communities/CommunitySidebar';
 import { MemberList } from './features/communities/MemberList';
 import {
@@ -66,6 +67,7 @@ export function CommunityPage() {
           chat: `/popout/chat/${channel.id}`,
           plaza: `/popout/plaza/community:${community.id}`,
         }}
+        phoneTools={<ChannelSettingsButton community={community} channel={channel} />}
         chat={({ actions, handle }) => (
           <ChatView
             key={channel.id}

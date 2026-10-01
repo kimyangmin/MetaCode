@@ -12,7 +12,7 @@ import {
   isManager,
 } from '@metacode/shared';
 import { AttachmentsService, toAttachmentDto } from '../attachments/attachments.service.js';
-import type { Attachment } from '../generated/prisma/client.js';
+import type { Attachment, Prisma } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { RealtimeService, room } from '../realtime/realtime.service.js';
 import { toProfile } from '../users/users.service.js';
@@ -63,6 +63,23 @@ export function toMessageDto(message: MessageRow): MessageDto {
   };
 }
 
+/**
+ * 내가 보낸 메시지는 읽은 것으로 둔다. 새 메시지의 id(UUIDv7)가 가장 크므로 앞으로만 옮기는 규칙에 맞는다.
+ * 예전엔 보낸 직후 그 채널이 잠깐 안 읽음이 되어 휴대폰 ☰에 점이 찍혔고, 창에 초점이 없으면 그대로 남았다.
+ */
+function readOwnMessage(
+  tx: Prisma.TransactionClient,
+  userId: string,
+  channelId: string,
+  messageId: string,
+) {
+  return tx.channelReadState.upsert({
+    where: { channelId_userId: { channelId, userId } },
+    create: { channelId, userId, lastReadMessageId: messageId },
+    update: { lastReadMessageId: messageId },
+  });
+}
+
 @Injectable()
 export class MessagesService {
   constructor(
@@ -103,6 +120,7 @@ export class MessagesService {
           select: { id: true },
         });
         await this.attachments.claim(tx, userId, channelId, attachmentIds, created.id);
+        await readOwnMessage(tx, userId, channelId, created.id);
         return tx.message.findUniqueOrThrow({ where: { id: created.id }, include: messageInclude });
       }),
     );
@@ -136,6 +154,7 @@ export class MessagesService {
             data: copies.map((c) => ({ ...c, messageId: created.id })),
           });
         }
+        await readOwnMessage(tx, userId, channelId, created.id);
         return tx.message.findUniqueOrThrow({ where: { id: created.id }, include: messageInclude });
       }),
     );

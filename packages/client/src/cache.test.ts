@@ -3,6 +3,7 @@ import { QueryClient } from '@tanstack/react-query';
 import { describe, expect, it } from 'vitest';
 import {
   type MessagesData,
+  addMessageToCache,
   queryKeys,
   removeMessageFromCache,
   updateMessageInCache,
@@ -69,5 +70,19 @@ describe('메시지 캐시', () => {
     removeMessageFromCache(queryClient, { channelId: 'c', messageId: 'm3', lastMessageId: 'm2' });
     const community = queryClient.getQueryData<CommunitySummary[]>(queryKeys.communities)![0]!;
     expect(community.channels[0]!.lastMessageId).toBe('m2');
+  });
+
+  it('내가 보낸 새 메시지는 채널을 읽은 것으로 두고, 남의 메시지는 안 읽음으로 둔다', () => {
+    const { queryClient } = setup();
+    const channel = () =>
+      queryClient.getQueryData<CommunitySummary[]>(queryKeys.communities)![0]!.channels[0]!;
+    addMessageToCache(queryClient, message('m4', '남의 메시지'), 'me');
+    expect(channel()).toMatchObject({ lastMessageId: 'm4', lastReadMessageId: 'm2' });
+    addMessageToCache(
+      queryClient,
+      { ...message('m5', '내 메시지'), author: { ...author, id: 'me' } },
+      'me',
+    );
+    expect(channel()).toMatchObject({ lastMessageId: 'm5', lastReadMessageId: 'm5' });
   });
 });
