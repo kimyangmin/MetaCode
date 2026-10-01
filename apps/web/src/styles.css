@@ -6503,14 +6503,80 @@ a {
   animation: popup-in 0.14s cubic-bezier(0.2, 0.9, 0.3, 1.15);
 }
 
+/* 멤버 목록에서 열면 목록 쪽(오른쪽 위)에서 커진다 */
+.profile-popup[data-placement='left'] {
+  transform-origin: top right;
+}
+
 .profile-popup[data-closing] {
   animation: popup-out 0.12s ease-in forwards;
   pointer-events: none;
 }
 
+/* 휴대폰에서 멤버 목록으로 열면: 화면 아래에서 올라오는 시트. 끌어내리면 닫힌다 (ProfilePopup) */
+.profile-popup[data-placement='sheet'] {
+  inset: auto 0 0;
+  width: auto;
+  max-width: none;
+  max-height: 85dvh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 8px 16px calc(16px + env(safe-area-inset-bottom));
+  border-width: 1px 0 0;
+  border-radius: 16px 16px 0 0;
+  animation: sheet-up 0.26s cubic-bezier(0.2, 0.9, 0.3, 1);
+  /* 끌다가 놓으면 제자리로 돌아간다 */
+  transition: transform 0.2s ease-out;
+}
+
+.profile-popup[data-placement='sheet'][data-dragging] {
+  transition: none;
+}
+
+/* 끌어 둔 자리(인라인 transform)에서 이어서 내려가도록 끝 프레임만 정한다 */
+.profile-popup[data-placement='sheet'][data-closing] {
+  animation: sheet-down 0.22s ease-in forwards;
+}
+
+.profile-popup__grabber {
+  justify-self: center;
+  width: 36px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--border);
+}
+
+.profile-sheet__backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 59;
+  background: rgb(0 0 0 / 0.4);
+  animation: fade-in 0.2s ease-out;
+}
+
+.profile-sheet__backdrop[data-closing] {
+  animation: fade-out 0.22s ease-in forwards;
+}
+
+@keyframes sheet-up {
+  from {
+    transform: translateY(100%);
+  }
+}
+
+@keyframes sheet-down {
+  to {
+    transform: translateY(100%);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .profile-popup,
-  .profile-popup[data-closing] {
+  .profile-popup[data-closing],
+  .profile-popup[data-placement='sheet'],
+  .profile-popup[data-placement='sheet'][data-closing],
+  .profile-sheet__backdrop,
+  .profile-sheet__backdrop[data-closing] {
     animation-duration: 1ms;
   }
 }
