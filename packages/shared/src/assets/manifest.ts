@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { PlazaStyle } from '../domain/plaza.js';
 import { TILE_SIZE } from '../plaza/layout.js';
 import { decodePixels, isBlank } from './pixels.js';
 
@@ -85,6 +86,8 @@ export const COLOR_SLOTS = ['skin', 'hair', 'shirt', 'pants', 'shoes'] as const;
 export type ColorSlot = (typeof COLOR_SLOTS)[number];
 
 export const CHARACTER_DIRECTIONS = ['down', 'left', 'right', 'up'] as const;
+/** 횡스크롤용 캐릭터의 방향 (옆에서 보므로 위·아래가 없다) */
+export const SIDE_DIRECTIONS = ['left', 'right'] as const;
 const DIRECTION_LABEL: Record<(typeof CHARACTER_DIRECTIONS)[number], string> = {
   down: '아래',
   left: '왼쪽',
@@ -98,26 +101,91 @@ export interface RequiredAnimation {
   label: string;
 }
 
-/** 캐릭터를 저장하려면 모두 그려야 하는 애니메이션 */
-export const REQUIRED_CHARACTER_ANIMATIONS: readonly RequiredAnimation[] = [
-  ...CHARACTER_DIRECTIONS.map((dir) => ({
-    name: `idle-${dir}`,
-    minFrames: 1,
-    label: `대기 (${DIRECTION_LABEL[dir]})`,
-  })),
-  ...CHARACTER_DIRECTIONS.map((dir) => ({
-    name: `walk-${dir}`,
-    minFrames: 2,
-    label: `걷기 (${DIRECTION_LABEL[dir]})`,
-  })),
-  { name: 'emote', minFrames: 2, label: '첨부 모션' },
-];
+const idle = (dir: (typeof CHARACTER_DIRECTIONS)[number]) => ({
+  name: `idle-${dir}`,
+  minFrames: 1,
+  label: `대기 (${DIRECTION_LABEL[dir]})`,
+});
+const walk = (dir: (typeof CHARACTER_DIRECTIONS)[number]) => ({
+  name: `walk-${dir}`,
+  minFrames: 2,
+  label: `걷기 (${DIRECTION_LABEL[dir]})`,
+});
+const jump = (dir: (typeof SIDE_DIRECTIONS)[number]) => ({
+  name: `jump-${dir}`,
+  minFrames: 1,
+  label: `점프 (${DIRECTION_LABEL[dir]})`,
+});
+const EMOTE: RequiredAnimation = { name: 'emote', minFrames: 2, label: '첨부 모션' };
 
 /**
- * 광장에서 공중에 있을 때(횡스크롤 점프·떨어지기) 트는 애니메이션. 없으면 걷기의 두 번째 프레임을 쓴다
- * (필수가 아닌 캐릭터 애니메이션).
+ * 캐릭터를 저장하려면 모두 그려야 하는 애니메이션. 캐릭터가 쓰는 광장 방식(manifest.style)마다 다르다.
+ * - 탑다운: 대기·걷기 4방향 + 첨부 모션
+ * - 횡스크롤: 오른쪽을 보는 대기·걷기·점프 + 첨부 모션. 옆에서 보므로 위·아래가 없고, 왼쪽은 그리지 않으면
+ *   오른쪽을 좌우 반전해서 쓴다 (characterAnimation). 공중 모습이 늘 보여서 점프가 필수다.
+ */
+export const REQUIRED_CHARACTER_ANIMATIONS: Readonly<
+  Record<PlazaStyle, readonly RequiredAnimation[]>
+> = {
+  [PlazaStyle.TopDown]: [
+    ...CHARACTER_DIRECTIONS.map(idle),
+    ...CHARACTER_DIRECTIONS.map(walk),
+    EMOTE,
+  ],
+  [PlazaStyle.SideScroll]: [idle('right'), walk('right'), jump('right'), EMOTE],
+};
+
+/**
+ * 광장에서 공중에 있을 때(횡스크롤 점프·떨어지기) 트는 애니메이션. 횡스크롤용 캐릭터는 필수이고,
+ * 탑다운용 캐릭터는 없어도 된다 (횡스크롤 광장에서 쓰면 걷기의 두 번째 프레임을 쓴다).
  */
 export const JUMP_ANIMATIONS = ['jump-left', 'jump-right'] as const;
+
+/** 대기·걷기·점프·첨부 모션처럼 이름이 정해진 애니메이션 (모션 키를 달 수 없다) */
+export const STANDARD_ANIMATIONS: ReadonlyMap<string, RequiredAnimation> = new Map(
+  [...REQUIRED_CHARACTER_ANIMATIONS[PlazaStyle.TopDown], ...SIDE_DIRECTIONS.map(jump)].map((a) => [
+    a.name,
+    a,
+  ]),
+);
+
+/** 찾은 애니메이션과, 그 그림을 좌우 반전해서 그려야 하는지 */
+export interface CharacterAnimationRef {
+  animation: AssetAnimation;
+  mirrored: boolean;
+}
+
+/**
+ * 캐릭터에서 이 이름의 애니메이션. 횡스크롤용 캐릭터는 오른쪽만 그려도 되므로:
+ * - 왼쪽(-left)이 없으면 같은 동작의 오른쪽을 좌우 반전해서 쓴다 (왼쪽을 따로 그렸으면 그것)
+ * - 위·아래가 없으면 오른쪽을 쓴다 (처음 나타날 때 방향이 아래이거나, 목록이 아래 모습을 보여 줄 때)
+ */
+export function characterAnimation(
+  manifest: Pick<AssetManifest, 'animations'>,
+  name: string,
+): CharacterAnimationRef | undefined {
+  const own = manifest.animations[name];
+  if (own) return { animation: own, mirrored: false };
+  const match = /^(.+)-(left|down|up)$/.exec(name);
+  const right = match ? manifest.animations[`${match[1]}-right`] : undefined;
+  return right ? { animation: right, mirrored: match![2] === 'left' } : undefined;
+}
+
+/** 캐릭터가 쓰는 광장 방식. 없으면 탑다운 (방식을 고르기 전에 만든 캐릭터) */
+export function characterStyle(manifest: Pick<AssetManifest, 'style'>): PlazaStyle {
+  return manifest.style ?? PlazaStyle.TopDown;
+}
+
+/**
+ * 이 캐릭터를 그 광장 방식에서 쓸 수 있는지. 횡스크롤용은 위·아래 모습이 없어서 탑다운에서 쓸 수 없고,
+ * 탑다운용은 왼쪽·오른쪽 모습이 있어서 횡스크롤에서도 쓴다.
+ */
+export function characterFitsStyle(
+  manifest: Pick<AssetManifest, 'style'>,
+  style: PlazaStyle,
+): boolean {
+  return characterStyle(manifest) === style || style === PlazaStyle.SideScroll;
+}
 
 /**
  * 캐릭터 모션: 필수 애니메이션 말고 직접 추가해서 광장에서 숫자 키로 트는 애니메이션 (춤, 인사 등).
@@ -161,6 +229,8 @@ const manifestShape = z.object({
   platform: z.boolean().optional(),
   /** 오브젝트: 그림을 덮는 타일 격자(row-major) 중 지나갈 수 없는 칸. 1이면 막힘 */
   footprint: z.array(z.union([z.literal(0), z.literal(1)])).optional(),
+  /** 캐릭터: 쓰는 광장 방식. 필수 애니메이션이 달라진다 (REQUIRED_CHARACTER_ANIMATIONS). 없으면 탑다운 */
+  style: z.enum([PlazaStyle.TopDown, PlazaStyle.SideScroll]).optional(),
   /** 캐릭터: 색을 바꿀 수 있는 부위 → [밝은 면, 그림자, 외곽선] 픽셀 값 */
   colorSlots: z
     .partialRecord(z.enum(COLOR_SLOTS), z.array(z.number().int().min(1)).length(3))
@@ -199,7 +269,7 @@ export function characterMotions(manifest: Pick<AssetManifest, 'animations'>): C
 /** 캐릭터에 빠진 애니메이션 (없거나, 프레임이 모자라거나, 빈 프레임이 있음) */
 export function missingAnimations(manifest: AssetManifest): RequiredAnimation[] {
   const frames = decodeFrames(manifest);
-  return REQUIRED_CHARACTER_ANIMATIONS.filter((required) => {
+  return REQUIRED_CHARACTER_ANIMATIONS[characterStyle(manifest)].filter((required) => {
     const animation = manifest.animations[required.name];
     if (!animation || animation.frames.length < required.minFrames) return true;
     return animation.frames.some((index) => {
@@ -264,7 +334,6 @@ export function manifestProblems(manifest: AssetManifest): string[] {
   const motionProblems = (): string[] => {
     const found: string[] = [];
     const keys = new Set<string>();
-    const required = new Set(REQUIRED_CHARACTER_ANIMATIONS.map((r) => r.name));
     for (const [name, animation] of animations) {
       const motion =
         animation.key !== undefined ||
@@ -275,7 +344,9 @@ export function manifestProblems(manifest: AssetManifest): string[] {
         found.push('모션(키, 이름, 반복)은 캐릭터만 쓸 수 있습니다.');
         break;
       }
-      if (required.has(name)) found.push(`${name}: 필수 애니메이션에는 모션 키를 달 수 없습니다.`);
+      if (STANDARD_ANIMATIONS.has(name)) {
+        found.push(`${name}: 정해진 애니메이션에는 모션 키를 달 수 없습니다.`);
+      }
       if (animation.key === undefined) found.push(`${name}: 모션에는 키가 있어야 합니다.`);
       else if (keys.has(animation.key)) found.push(`모션 키 ${animation.key}가 겹칩니다.`);
       else keys.add(animation.key);
@@ -299,6 +370,7 @@ export function manifestProblems(manifest: AssetManifest): string[] {
       problems.push(`${DEFAULT_ANIMATION} 애니메이션이 있어야 합니다.`);
     }
     if (manifest.colorSlots) problems.push('색 부위는 캐릭터만 쓸 수 있습니다.');
+    if (manifest.style) problems.push('광장 방식(style)은 캐릭터만 쓸 수 있습니다.');
   }
 
   if (kind !== AssetKind.Tile && manifest.solid !== undefined) {

@@ -1,4 +1,4 @@
-import { assetManifestSchema, missingAnimations } from '@metacode/shared';
+import { PlazaStyle, assetManifestSchema, missingAnimations } from '@metacode/shared';
 import { builtinAsset } from '@metacode/shared/builtin-assets';
 import { describe, expect, it } from 'vitest';
 import { PixelDocument, fromManifest, newDoc, toManifest } from './editorModel';
@@ -350,6 +350,52 @@ describe('큰 캐릭터를 위한 되돌리기와 세기', () => {
     expect(blank.missingAnimations().map((m) => m.name)).toEqual(
       missingAnimations(toManifest(blank.doc)).map((m) => m.name),
     );
+  });
+});
+
+describe('캐릭터 광장 방식', () => {
+  it('횡스크롤로 바꾸면 점프(오른쪽)를 걷기 그림으로 더하고, 왼쪽·위·아래는 남겨 두되 필수가 아니다', () => {
+    const doc = new PixelDocument(fromManifest(builtinAsset('builtin:char-short')!));
+    doc.setStyle(PlazaStyle.SideScroll);
+    const names = doc.doc.animations.map((a) => a.name);
+    expect(names.slice(0, 4)).toEqual(['idle-right', 'walk-right', 'jump-right', 'emote']);
+    expect(names).toContain('idle-left');
+    expect(names).not.toContain('jump-left');
+    expect(doc.missingAnimations()).toEqual([]);
+    const jump = doc.doc.animations.find((a) => a.name === 'jump-right')!;
+    const walk = doc.doc.animations.find((a) => a.name === 'walk-right')!;
+    expect(jump.frames[0]).toEqual(walk.frames[1]);
+
+    const saved = toManifest(doc.doc);
+    expect(saved.style).toBe(PlazaStyle.SideScroll);
+    expect(assetManifestSchema.safeParse(saved).success).toBe(true);
+    expect(fromManifest(saved).style).toBe(PlazaStyle.SideScroll);
+
+    // 왼쪽·위·아래는 이제 지울 수 있고(왼쪽은 오른쪽을 뒤집어 씀), 오른쪽 점프는 지울 수 없다
+    for (const name of ['idle-left', 'idle-up']) {
+      doc.removeAnimation(doc.doc.animations.findIndex((a) => a.name === name));
+      expect(doc.doc.animations.some((a) => a.name === name)).toBe(false);
+    }
+    doc.removeAnimation(doc.doc.animations.findIndex((a) => a.name === 'jump-right'));
+    expect(doc.doc.animations.some((a) => a.name === 'jump-right')).toBe(true);
+
+    // 탑다운으로 되돌리면 지운 것들이 빈 프레임으로 돌아와 다시 그려야 한다
+    doc.setStyle(PlazaStyle.TopDown);
+    expect(doc.missingAnimations().map((m) => m.name)).toEqual(['idle-left', 'idle-up']);
+    expect(toManifest(doc.doc).style).toBeUndefined();
+    doc.undo();
+    expect(doc.doc.style).toBe(PlazaStyle.SideScroll);
+  });
+
+  it('새 횡스크롤 캐릭터는 4개 애니메이션이 비어 있다', () => {
+    const manifest = toManifest(newDoc('character', '옆', undefined, PlazaStyle.SideScroll));
+    expect(Object.keys(manifest.animations)).toEqual([
+      'idle-right',
+      'walk-right',
+      'jump-right',
+      'emote',
+    ]);
+    expect(missingAnimations(manifest)).toHaveLength(4);
   });
 });
 
