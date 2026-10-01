@@ -87,6 +87,13 @@ interface Entry {
  * 저장하면 광장을 보던 사람들의 화면이 새 맵으로 바뀌고 모두 스폰 영역에서 다시 시작한다.
  * 횡스크롤 광장이면 옆에서 본 맵이다: 빈칸은 하늘이고, 지나갈 수 없는 타일로 땅을, 발판 타일로 발판을 만든다.
  */
+/** 맵 배율 (1~4배, Ctrl+0이면 기본) */
+const MAP_ZOOM_DEFAULT = 2;
+const mapZoomIn = (z: number) => Math.min(4, z + 1);
+const mapZoomOut = (z: number) => Math.max(1, z - 1);
+/** Ctrl+휠: 이만큼 모이면 한 단계 */
+const MAP_WHEEL_STEP = 60;
+
 export function MapEditor({
   communityId,
   communityName,
@@ -153,7 +160,9 @@ function MapEditorBody({
   const [tab, setTab] = useState<'tile' | 'object'>('tile');
   const [tile, setTile] = useState<AssetRef>(side ? 'builtin:side-grass' : 'builtin:tt-0');
   const [object, setObject] = useState<AssetRef>('builtin:bench');
-  const [zoom, setZoom] = useState(2);
+  const [zoom, setZoom] = useState(MAP_ZOOM_DEFAULT);
+  const stageRef = useRef<HTMLDivElement>(null);
+  const wheel = useRef(0);
   const [showBlocked, setShowBlocked] = useState(true);
   const [hover, setHover] = useState<{ x: number; y: number } | null>(null);
   const [spawnDrag, setSpawnDrag] = useState<{ x: number; y: number } | null>(null);
@@ -191,11 +200,38 @@ function MapEditorBody({
       } else if (mod && e.key.toLowerCase() === 'y') {
         e.preventDefault();
         editor.redo();
+      } else if (mod && (e.code === 'Equal' || e.code === 'NumpadAdd' || e.key === '+')) {
+        // 브라우저 확대 대신 맵을 키운다 (도트 에디터와 같은 단축키)
+        e.preventDefault();
+        setZoom(mapZoomIn);
+      } else if (mod && (e.code === 'Minus' || e.code === 'NumpadSubtract' || e.key === '-')) {
+        e.preventDefault();
+        setZoom(mapZoomOut);
+      } else if (mod && (e.code === 'Digit0' || e.code === 'Numpad0')) {
+        e.preventDefault();
+        setZoom(MAP_ZOOM_DEFAULT);
       }
     };
     window.addEventListener('keydown', onKey, true);
     return () => window.removeEventListener('keydown', onKey, true);
   }, [editor, requestClose]);
+
+  // Ctrl+휠(트랙패드 모아 벌리기)은 맵 배율. React의 onWheel은 passive라 브라우저 확대를 막지 못해 직접 건다.
+  useEffect(() => {
+    const stage = stageRef.current;
+    if (!stage) return;
+    const onWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey && !e.metaKey) return;
+      e.preventDefault();
+      wheel.current += e.deltaY;
+      while (Math.abs(wheel.current) >= MAP_WHEEL_STEP) {
+        setZoom(wheel.current < 0 ? mapZoomIn : mapZoomOut);
+        wheel.current -= Math.sign(wheel.current) * MAP_WHEEL_STEP;
+      }
+    };
+    stage.addEventListener('wheel', onWheel, { passive: false });
+    return () => stage.removeEventListener('wheel', onWheel);
+  }, []);
 
   // ── 그리기 ──
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -480,24 +516,24 @@ function MapEditorBody({
           <button
             type="button"
             className="pixel-editor__tool"
-            title="크게"
+            title="크게 (Ctrl + 또는 Ctrl+휠)"
             aria-label="크게"
-            onClick={() => setZoom((z) => Math.min(4, z + 1))}
+            onClick={() => setZoom(mapZoomIn)}
           >
             <ZoomIn aria-hidden />
           </button>
           <button
             type="button"
             className="pixel-editor__tool"
-            title="작게"
+            title="작게 (Ctrl − 또는 Ctrl+휠)"
             aria-label="작게"
-            onClick={() => setZoom((z) => Math.max(1, z - 1))}
+            onClick={() => setZoom(mapZoomOut)}
           >
             <ZoomOut aria-hidden />
           </button>
         </aside>
 
-        <div className="pixel-editor__stage map-editor__stage">
+        <div className="pixel-editor__stage map-editor__stage" ref={stageRef}>
           <canvas
             ref={canvasRef}
             className="map-editor__canvas"

@@ -1,4 +1,6 @@
 import {
+  type AnimatorRuntime,
+  AnimatorParamType,
   type AssetManifest,
   type AssetRef,
   CHARACTER_WORLD_HEIGHT,
@@ -17,7 +19,11 @@ import {
   buildCollision,
   characterFor,
   characterMotions,
+  fireTrigger,
   groundBelow,
+  setAnimatorBool,
+  startAnimator,
+  stepAnimator,
   isGrounded,
   isWalkable,
   mapStyle,
@@ -63,6 +69,8 @@ import {
   type CharacterLook,
   type PlayingMotion,
   airbornePose,
+  animatorCycleMs,
+  animatorPose,
   animationName,
   characterPose,
   characterLook,
@@ -147,6 +155,8 @@ interface Actor {
   emoteUntil: number;
   /** 틀고 있는 캐릭터 모션 (숫자 키). 움직이면 멈춘다 */
   motion: (PlayingMotion & { start: number }) | null;
+  /** 캐릭터에 애니메이터가 있으면 그 상태 (없으면 정해진 규칙대로 튼다) */
+  animator: AnimatorRuntime | null;
   dom: {
     root: HTMLDivElement;
     bubbles: HTMLOListElement;
@@ -283,6 +293,7 @@ export class PlazaScene extends Phaser.Scene {
             .image(position.x, position.y, look.key, pose.frame)
             .setOrigin(0.5, 1)
             .setFlipX(pose.flip),
+          look.manifest,
         );
       })(),
       look,
@@ -299,11 +310,13 @@ export class PlazaScene extends Phaser.Scene {
       bubblesWidth: 0,
       emoteUntil: 0,
       // 반복 중이던 모션은 나중에 연 사람에게도 보인다
-      motion: occupant.motion
-        ? { name: occupant.motion, loop: true, until: Infinity, start: performance.now() }
+      motion: null,
+      animator: look.manifest.animator
+        ? startAnimator(look.manifest.animator, performance.now())
         : null,
       dom: this.createActorDom(occupant.user, isMe),
     };
+    if (occupant.motion) this.applyMotion(actor, occupant.motion, true, performance.now());
     this.actors.set(occupant.user.id, actor);
     this.applyVoice(actor);
   }
@@ -323,9 +336,12 @@ export class PlazaScene extends Phaser.Scene {
     if (look.key !== actor.look.key) {
       actor.look = look;
       actor.sprite.setTexture(look.key, 0);
-      // 해상도가 다른 캐릭터로 바뀌었을 수 있으므로 월드 크기를 다시 맞춘다.
-      fitCharacter(actor.sprite);
+      // 해상도·광장 크기가 다른 캐릭터로 바뀌었을 수 있으므로 월드 크기를 다시 맞춘다.
+      fitCharacter(actor.sprite, look.manifest);
       actor.animation = { name: '', start: 0 };
+      actor.animator = look.manifest.animator
+        ? startAnimator(look.manifest.animator, performance.now())
+        : null;
     }
   }
 
@@ -363,6 +379,13 @@ export class PlazaScene extends Phaser.Scene {
     const motion = characterMotions(me.look.manifest).find((m) => m.key === key);
     if (!motion) return false;
     const now = performance.now();
+    // 애니메이터 파라미터: 트리거를 당기거나 불 값을 뒤집는다 (다른 사람에게도 같은 이름으로 알린다)
+    if (motion.parameter && me.animator) {
+      const on = motion.parameter === AnimatorParamType.Bool && !me.animator.bools.get(motion.name);
+      this.applyMotion(me, motion.name, on, now);
+      this.options.onMotion(motion.name, on);
+      return true;
+    }
     if (me.motion?.name === motion.name && me.motion.loop && me.motion.until > now) {
       me.motion = null;
       this.options.onMotion(null, false);
@@ -377,8 +400,22 @@ export class PlazaScene extends Phaser.Scene {
   setMotion(userId: string, motion: string | null, loop: boolean): void {
     const actor = this.actors.get(userId);
     if (!actor || userId === this.options.meId) return;
-    if (motion) this.startMotion(actor, motion, loop, performance.now());
+    if (motion) this.applyMotion(actor, motion, loop, performance.now());
     else actor.motion = null;
+  }
+
+  /**
+   * 받은 모션을 적용한다. 애니메이터 파라미터 이름이면 트리거를 당기거나 불 값을 정하고(loop = 켜짐),
+   * 아니면 그 이름의 애니메이션을 모션으로 튼다.
+   */
+  private applyMotion(actor: Actor, name: string, loop: boolean, now: number): void {
+    const parameter = actor.look.manifest.animator?.parameters.find((p) => p.name === name);
+    if (parameter && actor.animator) {
+      if (parameter.type === AnimatorParamType.Trigger) fireTrigger(actor.animator, name, now);
+      else setAnimatorBool(actor.animator, name, loop);
+      return;
+    }
+    if (actor.look.manifest.animations[name]) this.startMotion(actor, name, loop, now);
   }
 
   private startMotion(actor: Actor, name: string, loop: boolean, now: number): void {
@@ -441,6 +478,8 @@ export class PlazaScene extends Phaser.Scene {
     if (bubble.kind === 'attachment-emote') {
       actor.emoteUntil = now + emoteDurationMs(actor.look.manifest);
       actor.animation = { name: 'emote', start: now };
+      // 애니메이터가 있으면 첨부 보냄 트리거로 알린다 (어떤 상태로 갈지는 그래프가 정함)
+      if (actor.animator) fireTrigger(actor.animator, 'emote', now);
     }
   }
 
@@ -666,8 +705,56 @@ export class PlazaScene extends Phaser.Scene {
     const airborne =
       side && (isMe && this.body ? !this.body.grounded : !isGrounded(this.layout!, x, y));
     if (airborne && !actor.airborne) actor.airborneSince = now;
+    if (actor.animator && airborne !== actor.airborne) {
+      fireTrigger(actor.animator, airborne ? 'jump' : 'land', now);
+    }
     actor.airborne = airborne;
     if (actor.motion && actor.motion.until <= now) actor.motion = null;
+    if (actor.animator && actor.look.manifest.animator) {
+      this.renderAnimatorPose(actor, now);
+    } else {
+      this.renderRulePose(actor, now);
+    }
+    // 첨부 모션 동안에는 제자리에서 뛴다.
+    const lift =
+      actor.emoteUntil > now
+        ? Math.round(Math.abs(Math.sin((actor.emoteUntil - now) / 60)) * 4)
+        : 0;
+    this.placeActor(actor, now, lift);
+  }
+
+  /**
+   * 애니메이터가 있는 캐릭터: 걷는 중·공중을 파라미터로 넣고 그래프를 한 걸음 옮긴 뒤 그 상태의 모습.
+   * 숫자 키 모션(키가 달린 애니메이션)을 틀고 있으면 그것이 먼저다.
+   */
+  private renderAnimatorPose(actor: Actor, now: number): void {
+    const runtime = actor.animator!;
+    const { manifest } = actor.look;
+    const animator = manifest.animator!;
+    setAnimatorBool(runtime, 'moving', now - actor.lastMovedAt < WALK_HOLD_MS);
+    setAnimatorBool(runtime, 'airborne', actor.airborne);
+    stepAnimator(animator, runtime, now, (state) => animatorCycleMs(manifest, state, actor.dir));
+    if (actor.motion && actor.motion.until > now) {
+      const pose = characterPose(
+        manifest,
+        actor.motion.name,
+        actor.dir,
+        now - actor.motion.start,
+        !actor.motion.loop,
+      );
+      actor.sprite.setFrame(pose.frame).setFlipX(pose.flip);
+      return;
+    }
+    const state = animator.states.find((s) => s.name === runtime.state);
+    const pose = state
+      ? animatorPose(manifest, state, actor.dir, now - runtime.since)
+      : characterPose(manifest, `idle-${actor.dir}`, actor.dir, 0);
+    actor.sprite.setFrame(pose.frame).setFlipX(pose.flip);
+  }
+
+  /** 애니메이터가 없는 캐릭터: 첨부 모션 > 캐릭터 모션 > 공중 > 걷기·대기 */
+  private renderRulePose(actor: Actor, now: number): void {
+    const airborne = actor.airborne;
     const name = animationName(
       {
         dir: actor.dir,
@@ -692,11 +779,12 @@ export class PlazaScene extends Phaser.Scene {
           );
     // 횡스크롤용 캐릭터는 왼쪽을 그리지 않았으면 오른쪽 그림을 뒤집어 그린다.
     actor.sprite.setFrame(pose.frame).setFlipX(pose.flip);
-    // 첨부 모션 동안에는 제자리에서 뛴다.
-    const lift =
-      actor.emoteUntil > now
-        ? Math.round(Math.abs(Math.sin((actor.emoteUntil - now) / 60)) * 4)
-        : 0;
+  }
+
+  /** 캐릭터·그림자·말하는 중 고리를 자리에 놓는다 (횡스크롤은 그림자를 발 아래 땅에) */
+  private placeActor(actor: Actor, now: number, lift: number): void {
+    const { x, y } = actor.position;
+    const side = this.side;
     if (!side) {
       actor.sprite.setPosition(x, y - lift).setDepth(y);
       actor.shadow.setPosition(x, y).setDepth(1).setAlpha(1);
@@ -867,9 +955,10 @@ export class PlazaScene extends Phaser.Scene {
 
   private updateOverlay(now: number): void {
     for (const actor of this.actors.values()) {
+      // 광장 크기를 키운 캐릭터도 있으므로 실제로 그린 높이 위에 이름표를 둔다.
       const head = this.worldToScreen({
         x: actor.position.x,
-        y: actor.position.y - CHARACTER_WORLD_HEIGHT - 1,
+        y: actor.position.y - actor.sprite.displayHeight - 1,
       });
       const { root } = actor.dom;
       root.style.transform = `translate(${Math.round(head.x)}px, ${Math.round(head.y)}px)`;

@@ -1,8 +1,10 @@
+import { PALETTE_MAX_COLORS } from '@metacode/shared';
 import { describe, expect, it } from 'vitest';
 import {
   decodeGif,
   detectPixelScale,
   encodeGif,
+  expandByDelays,
   frameMsOf,
   mirrorPixels,
   oppositeAnimation,
@@ -32,11 +34,15 @@ describe('GIF', () => {
   it('색이 많으면 남은 팔레트 자리만큼 줄이고, 원래 색은 그대로 쓴다', () => {
     const rgba = new Uint8ClampedArray(100 * 4);
     for (let i = 0; i < 100; i++) rgba.set([i * 2, 255 - i * 2, 7, 255], i * 4);
-    const base = Array.from({ length: 60 }, (_, i) => `#0000${i.toString(16).padStart(2, '0')}`);
+    // 남은 자리 4칸
+    const base = Array.from(
+      { length: PALETTE_MAX_COLORS - 4 },
+      (_, i) => `#0000${i.toString(16).padStart(2, '0')}`,
+    );
     const { frames, palette: next } = quantizeFrames([rgba], 10, 10, base);
-    expect(next).toHaveLength(64);
-    expect(next.slice(0, 60)).toEqual(base);
-    expect(frames[0]!.every((v) => v >= 1 && v <= 64)).toBe(true);
+    expect(next).toHaveLength(PALETTE_MAX_COLORS);
+    expect(next.slice(0, base.length)).toEqual(base);
+    expect(frames[0]!.every((v) => v >= 1 && v <= PALETTE_MAX_COLORS)).toBe(true);
   });
 
   it('장면 시간은 가운데 값을 10ms 단위로, 범위 안에서', () => {
@@ -54,5 +60,13 @@ describe('GIF', () => {
     expect(oppositeAnimation('walk-left')).toBe('walk-right');
     expect(oppositeAnimation('jump-right')).toBe('jump-left');
     expect(oppositeAnimation('emote')).toBeNull();
+  });
+});
+
+describe('장면마다 다른 시간', () => {
+  it('프레임 간격의 배수만큼 같은 장면을 되풀이하고, 너무 길면 8번까지만', () => {
+    expect(expandByDelays(['a', 'b', 'c'], [100, 200, 100], 100)).toEqual(['a', 'b', 'b', 'c']);
+    expect(expandByDelays(['a'], [5000], 100)).toHaveLength(8);
+    expect(expandByDelays(['a', 'b'], [10, 10], 100)).toEqual(['a', 'b']);
   });
 });

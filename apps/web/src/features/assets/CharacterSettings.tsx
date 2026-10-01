@@ -7,11 +7,10 @@ import {
   type ColorSlot,
   PLAZA_STYLES,
   PlazaStyle,
-  SIDE_DIRECTIONS,
   type UserDetail,
+  characterAnimation,
   characterFitsStyle,
   characterFor,
-  characterStyle,
   characterKey,
   characterPalette,
   defaultCharacter,
@@ -34,6 +33,17 @@ const SLOT_LABEL: Record<ColorSlot, string> = {
 };
 
 const DIRECTIONS = ['down', 'left', 'right', 'up'] as const;
+
+/**
+ * 횡스크롤 광장 탭의 작은 미리보기: 오른쪽을 보는 대기·걷기·점프와 첨부 모션. 예전엔 왼쪽·오른쪽 걷기만
+ * 보여서 걷기(달리기)만 보였다.
+ */
+const SIDE_POSES = [
+  { animation: 'idle-right', label: '대기' },
+  { animation: 'walk-right', label: '걷기' },
+  { animation: 'jump-right', label: '점프' },
+  { animation: 'emote', label: '첨부 모션' },
+] as const;
 
 /** 미리보기 크기 (가장 긴 변, px). 캐릭터 해상도가 저마다 달라도 늘 같은 크기로 보인다 */
 const STAGE_BOX = 192;
@@ -135,20 +145,36 @@ function CharacterPicker({ me, style }: { me: UserDetail; style: PlazaStyle }) {
         </p>
       )}
       <div className="character-settings__stage">
-        <AssetPreview manifest={selected.manifest} box={STAGE_BOX} palette={palette} />
+        <AssetPreview
+          manifest={selected.manifest}
+          box={STAGE_BOX}
+          palette={palette}
+          animation={side ? 'walk-right' : 'walk-down'}
+        />
         <div className="character-settings__turn">
-          {(characterStyle(selected.manifest) === PlazaStyle.SideScroll
-            ? SIDE_DIRECTIONS
-            : DIRECTIONS
-          ).map((dir) => (
-            <AssetPreview
-              key={dir}
-              manifest={selected.manifest}
-              box={SMALL_BOX}
-              palette={palette}
-              animation={`walk-${dir}`}
-            />
-          ))}
+          {side
+            ? SIDE_POSES.filter((pose) =>
+                characterAnimation(selected.manifest, pose.animation),
+              ).map((pose) => (
+                <figure key={pose.animation} className="character-settings__pose">
+                  <AssetPreview
+                    manifest={selected.manifest}
+                    box={SMALL_BOX}
+                    palette={palette}
+                    animation={pose.animation}
+                  />
+                  <figcaption>{pose.label}</figcaption>
+                </figure>
+              ))
+            : DIRECTIONS.map((dir) => (
+                <AssetPreview
+                  key={dir}
+                  manifest={selected.manifest}
+                  box={SMALL_BOX}
+                  palette={palette}
+                  animation={`walk-${dir}`}
+                />
+              ))}
         </div>
       </div>
 

@@ -18,7 +18,7 @@ export interface DecodedGif {
 const DEFAULT_DELAY_MS = 100;
 /** 너무 큰 GIF는 풀지 않는다 (에디터가 다룰 수 있는 크기보다 훨씬 큼) */
 const MAX_GIF_PIXELS = 4096 * 4096;
-const MAX_GIF_FRAMES = 256;
+const MAX_GIF_FRAMES = 500;
 
 /**
  * GIF를 장면마다 그림 전체로 푼다. GIF는 장면이 앞 장면 위에 덧그리는 조각이고, 장면이 끝난 뒤 처리
@@ -113,6 +113,20 @@ export function shrinkRgba(
     }
   }
   return out;
+}
+
+/** 한 장면을 프레임 간격의 몇 배까지 늘려 담을지 */
+const MAX_REPEAT = 8;
+
+/**
+ * 장면마다 시간이 다르면(유니티 클립, 일부 GIF) 프레임 간격의 배수만큼 같은 장면을 되풀이해 담아 시간을
+ * 맞춘다. 애니메이션은 프레임 간격이 하나뿐이기 때문이다 (같은 그림은 저장할 때 한 장으로 합쳐진다).
+ */
+export function expandByDelays<T>(frames: T[], delays: number[], frameMs: number): T[] {
+  return frames.flatMap((frame, i) => {
+    const repeat = Math.max(1, Math.min(MAX_REPEAT, Math.round((delays[i] ?? frameMs) / frameMs)));
+    return Array<T>(repeat).fill(frame);
+  });
 }
 
 /** 장면 시간들을 애니메이션 하나의 프레임 간격으로 (가운데 값) */
