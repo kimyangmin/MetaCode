@@ -2,14 +2,16 @@ name: Mobile Build
 
 # 네이티브 안드로이드 앱(apps/mobile, React Native)이 빌드되는지 확인한다. APK는 Actions 아티팩트로 남긴다.
 # 예전 앱(apps/android, Capacitor)을 대신할 때까지는 Release로 올리지 않는다 (android-release.yml이 그대로 담당).
+# 빌드가 오래 걸려(10분 이상) PR마다 돌리지 않는다. 필요할 때 Actions → Mobile Build → Run workflow로 실행한다.
+# 다시 PR마다 돌리려면 아래 pull_request 트리거를 되살린다.
 on:
-  pull_request:
-    paths:
-      - 'apps/mobile/**'
-      - 'packages/shared/**'
-      - 'packages/client/**'
-      - 'pnpm-lock.yaml'
-      - '.github/workflows/mobile-build.yml'
+  # pull_request:
+  #   paths:
+  #     - 'apps/mobile/**'
+  #     - 'packages/shared/**'
+  #     - 'packages/client/**'
+  #     - 'pnpm-lock.yaml'
+  #     - '.github/workflows/mobile-build.yml'
   workflow_dispatch:
 
 concurrency:

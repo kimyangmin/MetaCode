@@ -44,7 +44,7 @@ cd apps/mobile/android
 ./gradlew assembleRelease   # 서명 설정 전에는 디버그 키로 서명됨
 ```
 
-PR에서 `apps/mobile`이 바뀌면 `Mobile Build` 워크플로가 같은 방법으로 APK를 만들어 아티팩트로 남깁니다 (손으로도 실행 가능).
+`Mobile Build` 워크플로가 같은 방법으로 APK를 만들어 아티팩트로 남깁니다. 빌드가 10분 넘게 걸려서 지금은 PR마다 돌리지 않고, 필요할 때 GitHub Actions → Mobile Build → Run workflow(브랜치 고르기)로 실행합니다.
 
 ## 인증
 
