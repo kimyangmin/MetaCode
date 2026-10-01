@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { type CharacterChoice, characterChoiceSchema } from '../assets/character.js';
+import { PlazaStyle } from '../domain/plaza.js';
 
 /** 프로필에 실리는 캐릭터. 직접 그린 캐릭터면 version(에셋이 바뀐 시각)이 있어서 바뀌면 다시 받는다 */
 export type ProfileCharacter = CharacterChoice & { version?: string };
@@ -19,6 +20,22 @@ export interface UserProfile {
   avatarAnimatedUrl?: string | null;
   /** 광장 캐릭터. 고르지 않았으면 null (사용자 ID로 고른 기본 캐릭터, defaultCharacter) */
   character: ProfileCharacter | null;
+  /**
+   * 횡스크롤 광장에서 쓸 캐릭터. null이면 탑다운과 같은 캐릭터(character)를 쓴다.
+   * 옛 서버·캐시에는 없을 수 있다.
+   */
+  sideCharacter?: ProfileCharacter | null;
+}
+
+/**
+ * 이 광장 방식에서 보일 캐릭터 (고르지 않았으면 null = 사용자 ID로 고른 기본 캐릭터).
+ * 횡스크롤은 따로 고른 것이 있으면 그것, 없으면 탑다운과 같은 캐릭터다.
+ */
+export function characterFor(
+  user: Pick<UserProfile, 'character' | 'sideCharacter'>,
+  style: PlazaStyle,
+): ProfileCharacter | null {
+  return style === PlazaStyle.SideScroll ? (user.sideCharacter ?? user.character) : user.character;
 }
 
 /** 프로필 자세히 (정보 팝업, 내 설정) */
@@ -87,5 +104,12 @@ export const applyImageSchema = z.object({ crop: imageCropSchema.optional() }).n
 export type ApplyImageRequest = z.infer<typeof applyImageSchema>;
 
 /** 캐릭터 고르기. null이면 기본 캐릭터로 돌아간다 */
-export const setCharacterSchema = z.object({ character: characterChoiceSchema.nullable() });
+/**
+ * 캐릭터 고르기. style이 횡스크롤이면 횡스크롤 광장의 캐릭터를 정한다 (null이면 탑다운과 같게).
+ * 없으면 탑다운(기본) 캐릭터다 (null이면 사용자 ID로 고른 기본 캐릭터).
+ */
+export const setCharacterSchema = z.object({
+  character: characterChoiceSchema.nullable(),
+  style: z.enum([PlazaStyle.TopDown, PlazaStyle.SideScroll]).default(PlazaStyle.TopDown),
+});
 export type SetCharacterRequest = z.infer<typeof setCharacterSchema>;

@@ -29,7 +29,10 @@ export function withUserProfile<T>(data: T, user: UserProfile): T {
         value.displayName === user.displayName &&
         value.avatarUrl === user.avatarUrl &&
         (value.avatarAnimatedUrl ?? null) === (user.avatarAnimatedUrl ?? null) &&
-        JSON.stringify(value.character) === JSON.stringify(user.character)
+        JSON.stringify(value.character) === JSON.stringify(user.character) &&
+        (!('sideCharacter' in user) ||
+          JSON.stringify(value.sideCharacter ?? null) ===
+            JSON.stringify(user.sideCharacter ?? null))
       ) {
         return value;
       }
@@ -40,6 +43,8 @@ export function withUserProfile<T>(data: T, user: UserProfile): T {
         avatarUrl: user.avatarUrl,
         avatarAnimatedUrl: user.avatarAnimatedUrl ?? null,
         character: user.character,
+        // 옛 서버가 보낸 프로필에는 없다 (그때는 있던 값을 그대로 둔다).
+        ...('sideCharacter' in user ? { sideCharacter: user.sideCharacter ?? null } : {}),
       };
     }
     let changed = false;
