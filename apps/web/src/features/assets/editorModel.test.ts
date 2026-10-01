@@ -307,3 +307,48 @@ describe('캐릭터 모션과 점프', () => {
     expect(assetManifestSchema.safeParse(toManifest(doc.doc)).success).toBe(true);
   });
 });
+
+describe('큰 캐릭터를 위한 되돌리기와 세기', () => {
+  it('되돌리기 기록은 바뀐 프레임만 복사하고, 되돌린 뒤 다시 그려도 기록이 망가지지 않는다', () => {
+    const doc = new PixelDocument(fromManifest(builtinAsset('builtin:char-short')!));
+    const other = doc.doc.animations[1]!.frames[0]!;
+    doc.begin();
+    doc.paint(at, 0, 0, 3);
+    // 고치지 않은 프레임은 복사하지 않고 그대로 함께 쓴다
+    expect(doc.doc.animations[1]!.frames[0]).toBe(other);
+    expect(doc.pick(at, 0, 0)).toBe(3);
+
+    doc.undo();
+    expect(doc.pick(at, 0, 0)).toBe(0);
+    doc.redo();
+    expect(doc.pick(at, 0, 0)).toBe(3);
+    doc.undo();
+    // 되돌린 상태에서 새로 그리면 다시 하기 기록은 버리고, 되돌린 그림은 그대로 남는다
+    doc.begin();
+    doc.paint(at, 1, 0, 4);
+    doc.undo();
+    expect(doc.pick(at, 0, 0)).toBe(0);
+    expect(doc.pick(at, 1, 0)).toBe(0);
+  });
+
+  it('색을 지워도 되돌리면 원래 그림이다', () => {
+    const doc = new PixelDocument(newDoc('tile', '타일'));
+    doc.begin();
+    doc.paint(at, 2, 2, 5);
+    doc.removeColor(5);
+    expect(doc.pick(at, 2, 2)).toBe(0);
+    doc.undo();
+    expect(doc.pick(at, 2, 2)).toBe(5);
+  });
+
+  it('같은 그림은 한 장으로 세고, 빠진 필수 애니메이션은 매니페스트와 같게 본다', () => {
+    const source = builtinAsset('builtin:char-short')!;
+    const doc = new PixelDocument(fromManifest(source));
+    expect(doc.frameCount()).toBe(source.frames.length);
+    expect(doc.missingAnimations()).toEqual([]);
+    const blank = new PixelDocument(newDoc('character', '새'));
+    expect(blank.missingAnimations().map((m) => m.name)).toEqual(
+      missingAnimations(toManifest(blank.doc)).map((m) => m.name),
+    );
+  });
+});
