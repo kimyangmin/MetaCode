@@ -29,6 +29,8 @@ model User {
   avatarAnimatedKey String? @map("avatar_animated_key")
   /// 광장 캐릭터 {asset, colors, version?}. null이면 사용자 ID로 고른 기본 캐릭터
   character   Json?
+  /// 횡스크롤 광장의 캐릭터 (같은 모양). null이면 character와 같다
+  sideCharacter Json? @map("side_character")
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 

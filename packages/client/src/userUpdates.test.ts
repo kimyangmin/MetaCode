@@ -71,3 +71,22 @@ describe('withUserProfile', () => {
     expect(withUserProfile(message, renamed)).toBe(message);
   });
 });
+
+describe('횡스크롤 캐릭터', () => {
+  it('횡스크롤 캐릭터만 바뀌어도 프로필을 바꾼다', () => {
+    const base = {
+      id: 'u1',
+      username: 'alice',
+      displayName: null,
+      avatarUrl: 'a.png',
+      character: null,
+      sideCharacter: null,
+    };
+    const updated = { ...base, sideCharacter: { asset: 'builtin:char-long', colors: {} } };
+    const data = { members: [{ user: base }] };
+    expect(withUserProfile(data, updated).members[0]!.user.sideCharacter).toEqual(
+      updated.sideCharacter,
+    );
+    expect(withUserProfile(data, base)).toBe(data);
+  });
+});

@@ -227,6 +227,7 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
   - `PUT /users/me/character {character | null}`: 기본 캐릭터(`BUILTIN_CHARACTERS`)나 **직접 만든** 캐릭터만 고를 수 있습니다 (남의 캐릭터 400). 색은 부위(`colorSlots`)가 있는 캐릭터에만 적용됩니다 (내장 캐릭터를 복제해 그린 것도 부위가 남음).
   - 직접 그린 캐릭터는 `version`(에셋 updatedAt)을 함께 저장합니다. 그 에셋을 고치면 version을 올리고, 지우면 기본 캐릭터로 돌려서 `user:updated`로 알립니다 (`characterAssetChanged`). 광장은 `['assets','one',id,version]`으로 에셋을 받아(`PlazaView.loadCharacters`) 씬에 등록한 뒤 다시 그리고, 받기 전에는 기본 캐릭터로 보입니다. 텍스처 키는 version이 아니라 **실제로 그린 매니페스트 객체**(`manifestId`, 맵 타일·오브젝트와 같은 방식)로 만듭니다. `user:updated`가 먼저 와서 새 에셋을 받기 전에 다시 그리므로, version으로 키를 만들면 새 버전 키에 예전 그림이 들어가 받은 뒤에도 바뀌지 않았습니다 (실제로 겪은 문제).
   - `withUserProfile`은 닉네임·사진과 함께 캐릭터도 바꿉니다.
+  - 횡스크롤 광장의 캐릭터는 따로 고를 수 있습니다: `User.sideCharacter`(같은 모양, null이면 탑다운 캐릭터를 씀), `PUT /users/me/character {character, style: 'SIDE_SCROLL'}`. 광장은 `characterFor(user, 맵 정의의 style)`로 고르고, 모션 목록도 그 캐릭터 것입니다. 설정 → 캐릭터의 "탑다운 광장 / 횡스크롤 광장" 탭, 횡스크롤 탭의 "탑다운과 같게"는 null로 저장합니다. 에셋을 고치거나 지우면 두 칸 모두 맞춥니다 (`characterAssetChanged`).
 - **맵 에디터 (Phase 6):** `apps/server/src/plaza/plaza-maps.service.ts`, `maps.controller.ts`, 웹 `features/assets/MapEditor.tsx`, `mapModel.ts`
   - `CommunityMap`(communityId, definition JSON). 없으면 내장 분수 광장. DM 모닥불 캠프는 늘 내장 맵입니다.
   - API: `GET /communities/:id/map`(멤버), `PUT`(소유자·관리자, `{definition}`), `DELETE`(내장 맵으로 되돌리기). 저장할 때 zod 검증 + 쓰는 에셋이 내장 에셋이거나 **이 커뮤니티의** 타일·오브젝트인지(`mapAssetProblems`) + 스폰 영역에 설 칸이 있는지(`hasStandableSpawn`) 확인합니다.
@@ -447,7 +448,7 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
 
 `apps/server/prisma/schema.prisma`가 기준입니다. 바꾸면 여기도 고칩니다.
 
-- `User` (구현됨): githubId, username(사용자 ID), displayName(GitHub 이름), avatarUrl(GitHub 사진), nickname, bio, avatarKey(올린 사진, 멈춘 것), avatarAnimatedKey(GIF로 올렸으면 움직이는 사진), character(광장 캐릭터 `{asset, colors, version?}`, null이면 기본)
+- `User` (구현됨): githubId, username(사용자 ID), displayName(GitHub 이름), avatarUrl(GitHub 사진), nickname, bio, avatarKey(올린 사진, 멈춘 것), avatarAnimatedKey(GIF로 올렸으면 움직이는 사진), character(광장 캐릭터 `{asset, colors, version?}`, null이면 기본), sideCharacter(횡스크롤 광장 캐릭터, null이면 character)
 - `RefreshToken` (구현됨): userId, tokenHash, familyId, client, expiresAt, revokedAt
 - `Friendship` (구현됨): requesterId, addresseeId(둘이 기본 키), status(`PENDING` | `ACCEPTED`), createdAt, acceptedAt
 - `Community` (구현됨): name, ownerId, iconKey·bannerKey(올린 아이콘·배너, 없으면 null), plazaStyle(`TOP_DOWN` | `SIDE_SCROLL`) / `CommunityMember`: userId, communityId, role(`OWNER` | `ADMIN` | `MEMBER`) / `Invite`: code(8자), expiresAt(7일), uses

@@ -9,6 +9,7 @@ import {
   PlazaStyle,
   SocketEvent,
   type UserProfile,
+  characterFor,
   characterMotions,
   isBuiltinRef,
   mapStyle,
@@ -106,7 +107,7 @@ export default function PlazaView({ plazaId, me, channelLabels, voiceLabels }: P
   const side = style === PlazaStyle.SideScroll;
   const [zoomToast, setZoomToast] = useState<number | null>(null);
   const [motionsOpen, setMotionsOpen] = useState(false);
-  const motions = useMyMotions(me);
+  const motions = useMyMotions(me, style);
 
   // 씬이 보내는 이동은 항상 최신 연결로 보낸다.
   const socketRef = useRef(socket);
@@ -174,7 +175,8 @@ export default function PlazaView({ plazaId, me, channelLabels, voiceLabels }: P
      */
     const loadCharacters = (users: UserProfile[]) => {
       for (const user of users) {
-        const character = user.character;
+        // 이 광장 방식에서 보일 캐릭터 (횡스크롤은 따로 고른 캐릭터일 수 있다)
+        const character = characterFor(user, scene.plazaStyle);
         if (!character || isBuiltinRef(character.asset)) continue;
         void queryClient
           .fetchQuery({
@@ -474,8 +476,8 @@ export default function PlazaView({ plazaId, me, channelLabels, voiceLabels }: P
 /**
  * 내 캐릭터의 모션 (숫자 키). 직접 그린 캐릭터에 추가한 것만 있고, 광장이 받아 둔 것과 같은 캐시로 받는다.
  */
-function useMyMotions(me: UserProfile) {
-  const character = me.character;
+function useMyMotions(me: UserProfile, style: PlazaStyle) {
+  const character = characterFor(me, style);
   const custom = !!character && !isBuiltinRef(character.asset);
   const asset = useQuery({
     queryKey: ['assets', 'one', character?.asset ?? '', character?.version ?? ''],
