@@ -916,8 +916,20 @@ a.button {
   margin-top: 12px;
 }
 
-.message:hover {
-  background: var(--bg-hover);
+/* 마우스가 있는 기기에서만. 손가락으로 누르면 :hover가 붙은 채 남아(다른 곳을 누를 때까지)
+   메시지에 밝은 줄이 계속 보였다 */
+@media (hover: hover) {
+  .message:hover {
+    background: var(--bg-hover);
+  }
+
+  .message:hover .message__hover-time {
+    visibility: visible;
+  }
+}
+
+.message {
+  -webkit-tap-highlight-color: transparent;
 }
 
 /* 손가락으로 메시지를 왼쪽으로 밀어 답장 (features/chat/swipeReply.ts) */
@@ -976,10 +988,6 @@ a.button {
   padding-top: 3px;
   color: var(--muted);
   font-size: 0.7rem;
-}
-
-.message:hover .message__hover-time {
-  visibility: visible;
 }
 
 .message__header {

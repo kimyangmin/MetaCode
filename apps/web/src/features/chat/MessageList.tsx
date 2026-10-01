@@ -19,6 +19,9 @@ import { type AppSocket, useRealtime } from '../../realtime/RealtimeProvider';
 import { openProfile } from '../../stores/profile';
 import { Avatar } from '../../ui/Avatar';
 import { ConfirmDialog } from '../../ui/ConfirmDialog';
+import { isManager } from '@metacode/shared';
+import { useCommunities } from '../communities/hooks';
+import { forgetOwnDeletion, markOwnDeletion } from './ashEffect';
 import { displayName, formatDay, formatTime, sameDay, markdownToPlain } from '@metacode/client';
 import { copyText } from '../../ui/clipboard';
 import { Markdown } from '../../ui/Markdown';
@@ -83,6 +86,10 @@ export function MessageList(props: MessageListProps) {
   const [away, setAway] = useState<{ newestId: string | null } | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const { socket } = useRealtime();
+  // 커뮤니티 소유자·관리자는 남의 메시지도 지울 수 있다 (서버도 같은 규칙, DM은 내 메시지만)
+  const myRole = useCommunities().data?.find((c) => c.id === props.communityId)?.myRole;
+  const moderator = myRole !== undefined && isManager(myRole);
+  const canDelete = (message: MessageDto) => moderator || message.author.id === me.id;
 
   // ── 채팅 영역 잡기 (Ctrl+Shift) ──
   const [range, setRange] = useState<MessageRange | null>(null);
@@ -132,29 +139,35 @@ export function MessageList(props: MessageListProps) {
   }, []);
 
   const deleteSelected = () => {
-    const mine = selected.filter((m) => m.author.id === me.id);
-    if (mine.length === 0) {
+    const deletable = selected.filter(canDelete);
+    if (deletable.length === 0) {
       showToast('잡은 범위에 내가 보낸 메시지가 없습니다.');
       return;
     }
     // 묻는 동안 잡기 키(D, Esc 등)가 함께 먹지 않게 잡기는 끝낸다.
     setRange(null);
-    setDeleting({ messages: mine, others: selected.length - mine.length });
+    setDeleting({ messages: deletable, others: selected.length - deletable.length });
+  };
+
+  /** 지우기 요청. 이 창에서 지운 것으로 적어 두어 알림이 오면 재가 되어 사라지는 연출을 보여 준다 */
+  const requestDelete = async (messageId: string) => {
+    markOwnDeletion(messageId);
+    const error = await request(socket, SocketEvent.MessageDelete, { messageId });
+    if (error) forgetOwnDeletion(messageId);
+    return error;
   };
 
   /** 확인 창에서 "삭제"를 누름. 지워진 메시지는 서버 알림(message:deleted)으로 재가 되어 사라진다 */
   const confirmDelete = async (targets: MessageDto[]) => {
     setDeleting(null);
     if (targets.length === 1) {
-      setActionError(
-        await request(socket, SocketEvent.MessageDelete, { messageId: targets[0]!.id }),
-      );
+      setActionError(await requestDelete(targets[0]!.id));
       return;
     }
     let failed = 0;
     let reason: string | null = null;
     for (const message of targets) {
-      const error = await request(socket, SocketEvent.MessageDelete, { messageId: message.id });
+      const error = await requestDelete(message.id);
       if (error) {
         failed++;
         reason = error;
@@ -260,7 +273,7 @@ export function MessageList(props: MessageListProps) {
           <strong>{selected.length}개 잡음</strong>
           <span>Shift+↑↓ 또는 끌어서 범위</span>
           <span>
-            <kbd>D</kbd> 내 메시지 삭제
+            <kbd>D</kbd> {moderator ? '삭제' : '내 메시지 삭제'}
           </span>
           <span>
             <kbd>C</kbd> 복사
@@ -350,6 +363,7 @@ export function MessageList(props: MessageListProps) {
           <MessageMenu
             target={menu}
             mine={menu.message.author.id === me.id}
+            canDelete={canDelete(menu.message)}
             onReply={props.onReply}
             onForward={(message) => props.onForward([message])}
             onEdit={(message) => setEditing(message.id)}
@@ -410,7 +424,7 @@ function DeleteConfirm({
   const preview = Array.from(text).slice(0, DELETE_PREVIEW_CHARS).join('');
   return (
     <ConfirmDialog
-      title={single ? '메시지를 삭제할까요?' : `내 메시지 ${messages.length}개를 삭제할까요?`}
+      title={single ? '메시지를 삭제할까요?' : `메시지 ${messages.length}개를 삭제할까요?`}
       confirmLabel="삭제"
       danger
       onConfirm={onConfirm}

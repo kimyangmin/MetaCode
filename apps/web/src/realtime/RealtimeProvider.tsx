@@ -18,7 +18,8 @@ import {
 import { API_URL } from '../config';
 import { getDesktopBridge } from '../platform';
 import { friendsKey } from '../features/friends/api';
-import { vanishMessage } from '../features/chat/ashEffect';
+import { takeOwnDeletion, vanishMessage } from '../features/chat/ashEffect';
+import { useChatEffectsStore } from '../stores/chatEffects';
 import { usePresenceStore, useTypingStore, withUserProfile } from '@metacode/client';
 import { useProfileStore } from '../stores/profile';
 import { useVoiceStore } from '../features/voice/store';
@@ -80,8 +81,14 @@ export function RealtimeProvider({ meId, children }: { meId: string; children: R
       if (!known) void queryClient.invalidateQueries({ queryKey: queryKeys.dms });
     });
     socket.on(SocketEvent.MessageUpdated, (message) => updateMessageInCache(queryClient, message));
-    // 화면에 보이는 메시지면 재가 되어 사라지는 연출을 보여 준 뒤 목록에서 뺀다 (누가 지웠든).
+    // 이 창에서 지운 메시지면(설정이 켜져 있을 때) 재가 되어 사라지는 연출을 보여 준 뒤 목록에서 뺀다.
+    // 다른 사람이 지운 메시지는 바로 뺀다.
     socket.on(SocketEvent.MessageDeleted, (deleted) => {
+      const own = takeOwnDeletion(deleted.messageId);
+      if (!own || !useChatEffectsStore.getState().deleteAnimation) {
+        removeMessageFromCache(queryClient, deleted);
+        return;
+      }
       void vanishMessage(deleted.messageId).then(() =>
         removeMessageFromCache(queryClient, deleted),
       );

@@ -43,7 +43,7 @@ const SHORTCUTS: { title: string; items: Shortcut[] }[] = [
       { keys: 'Ctrl+Shift', what: '함께 눌렀다 떼면 메시지 잡기 시작 (화면 맨 아래 메시지부터)' },
       { keys: '↑ / ↓', what: '잡기 중: 한 칸 옮기기' },
       { keys: 'Shift+↑ / Shift+↓', what: '잡기 중: 범위 늘리기 (메시지를 끌어도 됨)' },
-      { keys: 'D', what: '잡기 중: 범위 안의 내 메시지 삭제' },
+      { keys: 'D', what: '잡기 중: 범위 안의 내 메시지 삭제 (커뮤니티 관리자는 모든 메시지)' },
       { keys: 'C', what: '잡기 중: 대화 기록 복사' },
       { keys: 'F', what: '잡기 중: 전달' },
       { keys: 'Esc', what: '잡기 끝' },
