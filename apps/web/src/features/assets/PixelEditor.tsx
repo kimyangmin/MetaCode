@@ -1,7 +1,7 @@
 import {
   ASSET_NAME_MAX_LENGTH,
-  CHARACTER_MAX_WIDTH,
-  CHARACTER_MIN_WIDTH,
+  CHARACTER_MAX_SIZE,
+  CHARACTER_MIN_SIZE,
   FRAME_LIMIT,
   FRAME_MS_MAX,
   FRAME_MS_MIN,
@@ -12,7 +12,6 @@ import {
   REQUIRED_CHARACTER_ANIMATIONS,
   TILE_SIZE,
   assetManifestSchema,
-  characterHeightOf,
   missingAnimations,
 } from '@metacode/shared';
 import { useQueryClient } from '@tanstack/react-query';
@@ -1295,52 +1294,60 @@ function MotionSettings({
 }
 
 /**
- * 캐릭터 해상도. 광장에서 차지하는 크기는 늘 1타일×2타일이고, 여기서 고르는 것은 그림의 촘촘함뿐이다.
- * 받아 온 에셋을 줄이지 않고 쓰려고 열어 둔 설정이다.
+ * 캐릭터 해상도 (가로·세로 각각 16~512px). 광장에서는 세로가 늘 2타일이고 가로는 그림 비율대로라,
+ * 해상도를 올리면 같은 자리에 더 촘촘하게 그려진다. 받아 온 에셋을 줄이지 않고 쓰려고 열어 둔 설정이다.
  */
 function CharacterSizeSettings({ editor }: { editor: PixelDocument }) {
   const { doc } = editor;
-  const [input, setInput] = useState(String(doc.width));
+  const [input, setInput] = useState({ width: String(doc.width), height: String(doc.height) });
   // 되돌리기 등으로 크기가 바뀌면 입력칸도 따라간다.
-  const [shown, setShown] = useState(doc.width);
-  if (shown !== doc.width) {
-    setShown(doc.width);
-    setInput(String(doc.width));
+  const [shown, setShown] = useState(`${doc.width}x${doc.height}`);
+  if (shown !== `${doc.width}x${doc.height}`) {
+    setShown(`${doc.width}x${doc.height}`);
+    setInput({ width: String(doc.width), height: String(doc.height) });
   }
 
   const apply = () => {
-    const width = Number(input);
-    if (!Number.isInteger(width) || width < CHARACTER_MIN_WIDTH || width > CHARACTER_MAX_WIDTH) {
-      setInput(String(doc.width));
+    const valid = (v: number) =>
+      Number.isInteger(v) && v >= CHARACTER_MIN_SIZE && v <= CHARACTER_MAX_SIZE;
+    const width = Number(input.width);
+    const height = Number(input.height);
+    if (!valid(width) || !valid(height)) {
+      setInput({ width: String(doc.width), height: String(doc.height) });
       return;
     }
-    editor.resizeCharacter(width);
+    editor.resizeCharacter(width, height);
   };
+
+  const field = (axis: 'width' | 'height', label: string) => (
+    <input
+      type="number"
+      min={CHARACTER_MIN_SIZE}
+      max={CHARACTER_MAX_SIZE}
+      step={1}
+      value={input[axis]}
+      aria-label={label}
+      onChange={(e) => setInput((v) => ({ ...v, [axis]: e.target.value }))}
+      onBlur={apply}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') apply();
+      }}
+    />
+  );
 
   return (
     <section>
       <h3>해상도</h3>
       <div className="pixel-editor__row">
         가로
-        <input
-          type="number"
-          min={CHARACTER_MIN_WIDTH}
-          max={CHARACTER_MAX_WIDTH}
-          step={1}
-          value={input}
-          aria-label="캐릭터 가로 픽셀"
-          onChange={(e) => setInput(e.target.value)}
-          onBlur={apply}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') apply();
-          }}
-        />
-        <span>× 세로 {characterHeightOf(Number(input) || doc.width)}px</span>
+        {field('width', '캐릭터 가로 픽셀')}× 세로
+        {field('height', '캐릭터 세로 픽셀')}
+        px
       </div>
       <p className="form__hint">
-        {CHARACTER_MIN_WIDTH}~{CHARACTER_MAX_WIDTH}px, 세로는 가로의 2배입니다. 광장에서 차지하는
-        크기는 해상도와 상관없이 늘 1타일×2타일이라, 해상도를 올리면 같은 자리에 더 촘촘하게
-        그려집니다. 크기를 바꾸면 그림은 발밑 가운데를 기준으로 남습니다.
+        가로·세로 각각 {CHARACTER_MIN_SIZE}~{CHARACTER_MAX_SIZE}px입니다. 광장에서는 세로가 늘
+        2타일이고 가로는 그림 비율대로라, 해상도를 올리면 같은 자리에 더 촘촘하게 그려집니다. 크기를
+        바꾸면 그림은 발밑 가운데를 기준으로 남습니다.
       </p>
     </section>
   );

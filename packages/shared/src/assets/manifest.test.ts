@@ -123,21 +123,33 @@ describe('캐릭터 해상도', () => {
     };
   };
 
-  it('가로 16~256px, 세로가 가로의 2배(최대 512px)면 받는다', () => {
+  it('가로·세로 각각 16~512px면 비율과 상관없이 받는다', () => {
     expect(problemsOf(upscaled(2))).toEqual([]);
     expect(problemsOf(upscaled(3))).toEqual([]);
+    const square = encodePixels(new Uint8Array(64 * 64).fill(1));
+    const squareFrames = { ...base, width: 64, height: 64, frames: base.frames.map(() => square) };
+    expect(problemsOf(squareFrames)).toEqual([]);
   });
 
   it('범위를 벗어나거나 세로 비율이 다르면 거절한다', () => {
-    const message = '캐릭터 해상도는 가로 16~256px, 세로는 가로의 2배여야 합니다.';
+    const message = '캐릭터 해상도는 가로·세로 16~512px이어야 합니다.';
     expect(problemsOf({ ...base, width: 8, height: 16 })).toContain(message);
     expect(problemsOf({ ...base, width: 512, height: 1024 })).toContain(message);
-    expect(problemsOf({ ...base, width: 32, height: 32 })).toContain(message);
+    expect(problemsOf({ ...base, width: 32, height: 8 })).toContain(message);
   });
 
   it('해상도 × 프레임 수가 너무 많으면 거절한다', () => {
-    // 가장 큰 해상도(256×512)는 32프레임까지다 (ASSET_PIXEL_BUDGET).
-    const big = upscaled(16);
+    // 가장 큰 해상도(512×512)는 32프레임까지다 (ASSET_PIXEL_BUDGET). 16×32를 16배 키우면 256×512라
+    // 가로를 512로 넓힌다.
+    const tall = upscaled(16);
+    const widen = (frame: string) => {
+      const pixels = decodePixels(frame)!;
+      const next = new Uint8Array(512 * 512);
+      for (let y = 0; y < 512; y++)
+        next.set(pixels.subarray(y * 256, y * 256 + 256), y * 512 + 128);
+      return encodePixels(next);
+    };
+    const big = { ...tall, width: 512, height: 512, frames: tall.frames.map(widen) };
     expect(problemsOf(big)).toEqual([]);
     const spare = encodePixels(new Uint8Array(big.width * big.height));
     const tooMany = {

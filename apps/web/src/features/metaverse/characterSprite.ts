@@ -1,11 +1,10 @@
 import {
   type AssetAnimation,
   type AssetManifest,
-  CHARACTER_WORLD_HEIGHT,
-  CHARACTER_WORLD_WIDTH,
   type Direction,
   type ProfileCharacter,
   characterKey,
+  characterWorldSize,
   characterPalette,
   defaultCharacter,
 } from '@metacode/shared';
@@ -43,12 +42,13 @@ export function characterLook(
 }
 
 /**
- * 캐릭터를 월드 크기(1타일×2타일)로 맞춘다. 매니페스트 해상도는 16×32부터 256×512까지 제각각이라
+ * 캐릭터를 월드 크기(1타일×2타일)로 맞춘다. 매니페스트 해상도는 16×16부터 512×512까지 제각각이라
  * 텍스처 크기 그대로 그리면 캐릭터마다 크기가 달라진다. 텍스처를 바꾼 뒤에도 다시 불러야 한다
  * (setTexture는 배율을 그대로 두므로 원본 크기가 달라지면 화면 크기도 달라진다).
  */
 export function fitCharacter<T extends Phaser.GameObjects.Image>(sprite: T): T {
-  return sprite.setDisplaySize(CHARACTER_WORLD_WIDTH, CHARACTER_WORLD_HEIGHT) as T;
+  const size = characterWorldSize(sprite.frame.width, sprite.frame.height);
+  return sprite.setDisplaySize(size.width, size.height) as T;
 }
 
 /** 첨부 모션 한 번의 길이 */

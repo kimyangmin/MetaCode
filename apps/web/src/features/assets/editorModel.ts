@@ -1,9 +1,9 @@
 import {
   type AssetKind,
   type AssetManifest,
-  CHARACTER_DEFAULT_WIDTH,
-  CHARACTER_MAX_WIDTH,
-  CHARACTER_MIN_WIDTH,
+  CHARACTER_DEFAULT_SIZE,
+  CHARACTER_MAX_SIZE,
+  CHARACTER_MIN_SIZE,
   DEFAULT_ANIMATION,
   FRAME_LIMIT,
   JUMP_ANIMATIONS,
@@ -12,7 +12,6 @@ import {
   PALETTE_MAX_COLORS,
   REQUIRED_CHARACTER_ANIMATIONS,
   TILE_SIZE,
-  characterHeightOf,
   decodePixels,
   encodePixels,
 } from '@metacode/shared';
@@ -87,13 +86,13 @@ function defaultFootprint(width: number, height: number): number[] {
 export function newDoc(kind: AssetKind, name: string, tiles = { w: 1, h: 1 }): EditorDoc {
   const width =
     kind === 'character'
-      ? CHARACTER_DEFAULT_WIDTH
+      ? CHARACTER_DEFAULT_SIZE.width
       : kind === 'tile'
         ? TILE_SIZE
         : tiles.w * TILE_SIZE;
   const height =
     kind === 'character'
-      ? characterHeightOf(CHARACTER_DEFAULT_WIDTH)
+      ? CHARACTER_DEFAULT_SIZE.height
       : kind === 'tile'
         ? TILE_SIZE
         : tiles.h * TILE_SIZE;
@@ -613,13 +612,15 @@ export class PixelDocument {
   }
 
   /**
-   * 캐릭터 해상도 바꾸기 (가로 px, 세로는 2배). 그림은 발밑 가운데를 기준으로 남긴다.
+   * 캐릭터 해상도 바꾸기 (가로·세로 px, 각각 16~512). 그림은 발밑 가운데를 기준으로 남긴다.
    * 확대·축소해서 다시 칠하지 않으므로, 넓히면 그림이 아래 가운데에 그대로 남고 좁히면 가장자리가 잘린다.
    */
-  resizeCharacter(width: number): void {
-    const height = characterHeightOf(width);
+  resizeCharacter(width: number, height: number): void {
     const old = this.doc;
-    if (old.kind !== 'character' || (width === old.width && height === old.height)) return;
+    const ok = (v: number) =>
+      Number.isInteger(v) && v >= CHARACTER_MIN_SIZE && v <= CHARACTER_MAX_SIZE;
+    if (old.kind !== 'character' || !ok(width) || !ok(height)) return;
+    if (width === old.width && height === old.height) return;
     const dx = Math.floor((width - old.width) / 2);
     const dy = height - old.height;
     this.edit((doc) => {
@@ -691,11 +692,9 @@ export class PixelDocument {
     let at = { x: rect.x, y: rect.y };
     if (fit && !frame) {
       if (old.kind === 'character') {
-        width = Math.min(
-          CHARACTER_MAX_WIDTH,
-          Math.max(CHARACTER_MIN_WIDTH, rect.w, Math.ceil(rect.h / 2)),
-        );
-        height = characterHeightOf(width);
+        const clamp = (v: number) => Math.min(CHARACTER_MAX_SIZE, Math.max(CHARACTER_MIN_SIZE, v));
+        width = clamp(rect.w);
+        height = clamp(rect.h);
         at = { x: Math.floor((width - rect.w) / 2), y: height - rect.h };
       } else if (old.kind === 'object') {
         width = Math.ceil(rect.w / TILE_SIZE) * TILE_SIZE;
