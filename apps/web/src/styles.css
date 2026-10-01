@@ -2952,17 +2952,39 @@ body.popup-window {
   height: 22px;
   font-size: 13px;
   opacity: 0;
+  transform: rotate(-90deg) scale(0.6);
+  transition:
+    opacity 0.16s ease-out,
+    transform 0.22s ease-out;
 }
 
 .channel-row:hover .channel-row__edit,
 .channel-row__edit:focus-visible {
   opacity: 1;
+  transform: none;
 }
 
 .sidebar__lock {
   margin-left: auto;
   font-size: 0.7rem;
   opacity: 0.8;
+  transition:
+    opacity 0.16s ease-out,
+    transform 0.22s ease-out;
+}
+
+/* 설정 버튼이 자물쇠 자리에 나타나므로, 자물쇠는 돌면서 사라지고 설정 아이콘이 돌면서 들어온다 */
+.channel-row:has(.channel-row__edit):hover .sidebar__lock,
+.channel-row:has(.channel-row__edit:focus-visible) .sidebar__lock {
+  opacity: 0;
+  transform: rotate(90deg) scale(0.6);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .channel-row__edit,
+  .sidebar__lock {
+    transform: none !important;
+  }
 }
 
 .settings {
