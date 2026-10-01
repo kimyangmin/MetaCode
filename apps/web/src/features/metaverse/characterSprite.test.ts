@@ -1,6 +1,7 @@
 import { builtinAsset } from '@metacode/shared/builtin-assets';
 import { describe, expect, it } from 'vitest';
-import { animationName, characterFrame, emoteDurationMs } from './characterSprite';
+import { PlazaStyle } from '@metacode/shared';
+import { airbornePose, animationName, characterPose, emoteDurationMs } from './characterSprite';
 
 const manifest = builtinAsset('builtin:char-long')!;
 
@@ -14,12 +15,12 @@ describe('캐릭터 애니메이션', () => {
   it('걷기는 되풀이하고, 첨부 모션은 한 번 틀고 마지막 프레임에 머문다', () => {
     const walk = manifest.animations['walk-down']!;
     const cycle = walk.frames.length * walk.frameMs;
-    expect(characterFrame(manifest, 'walk-down', 'down', 0)).toBe(walk.frames[0]);
-    expect(characterFrame(manifest, 'walk-down', 'down', cycle)).toBe(walk.frames[0]);
+    expect(characterPose(manifest, 'walk-down', 'down', 0).frame).toBe(walk.frames[0]);
+    expect(characterPose(manifest, 'walk-down', 'down', cycle).frame).toBe(walk.frames[0]);
 
     const emote = manifest.animations.emote!;
     expect(emoteDurationMs(manifest)).toBe(emote.frames.length * emote.frameMs);
-    expect(characterFrame(manifest, 'emote', 'down', 60_000)).toBe(emote.frames.at(-1));
+    expect(characterPose(manifest, 'emote', 'down', 60_000).frame).toBe(emote.frames.at(-1));
   });
 
   it('캐릭터 모션은 첨부 모션 다음이고, 끝나는 시각이 지나면 대기·걷기로 돌아간다', () => {
@@ -36,8 +37,30 @@ describe('캐릭터 애니메이션', () => {
   });
 
   it('애니메이션이 없으면 그 방향의 대기 프레임', () => {
-    expect(characterFrame(manifest, 'dance', 'right', 0)).toBe(
+    expect(characterPose(manifest, 'dance', 'right', 0).frame).toBe(
       manifest.animations['idle-right']!.frames[0],
     );
+  });
+
+  it('횡스크롤용 캐릭터는 왼쪽이 없으면 오른쪽을 뒤집고, 위·아래는 오른쪽, 모션은 보는 쪽으로 뒤집는다', () => {
+    const right = Object.fromEntries(
+      Object.entries(manifest.animations).filter(([name]) => !/-(left|up|down)$/.test(name)),
+    );
+    const side = { ...manifest, style: PlazaStyle.SideScroll, animations: right };
+    const walk = right['walk-right']!;
+    expect(characterPose(side, 'walk-left', 'left', 0)).toEqual({
+      frame: walk.frames[0],
+      flip: true,
+    });
+    expect(characterPose(side, 'idle-down', 'down', 0)).toEqual({
+      frame: right['idle-right']!.frames[0],
+      flip: false,
+    });
+    expect(characterPose(side, 'emote', 'left', 0).flip).toBe(true);
+    expect(characterPose(side, 'emote', 'right', 0).flip).toBe(false);
+    expect(airbornePose(side, 'left', 0)).toEqual({ frame: walk.frames[1], flip: true });
+    // 탑다운용(왼쪽을 그림)은 뒤집지 않는다
+    expect(characterPose(manifest, 'walk-left', 'left', 0).flip).toBe(false);
+    expect(characterPose(manifest, 'emote', 'left', 0).flip).toBe(false);
   });
 });

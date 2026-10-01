@@ -7,8 +7,11 @@ import {
   type ColorSlot,
   PLAZA_STYLES,
   PlazaStyle,
+  SIDE_DIRECTIONS,
   type UserDetail,
+  characterFitsStyle,
   characterFor,
+  characterStyle,
   characterKey,
   characterPalette,
   defaultCharacter,
@@ -80,9 +83,12 @@ function CharacterPicker({ me, style }: { me: UserDetail; style: PlazaStyle }) {
   const [status, setStatus] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
 
+  // 횡스크롤용 캐릭터는 탑다운 광장에서 쓸 수 없어서 횡스크롤 탭에만 보인다.
   const options: { ref: string; manifest: AssetManifest }[] = [
     ...BUILTIN_CHARACTERS.map((ref) => ({ ref, manifest: BUILTIN_ASSETS[ref]! })),
-    ...mine.map((asset) => ({ ref: asset.id, manifest: asset.manifest })),
+    ...mine
+      .filter((asset) => characterFitsStyle(asset.manifest, style))
+      .map((asset) => ({ ref: asset.id, manifest: asset.manifest })),
   ];
   const selected = options.find((o) => o.ref === choice.asset) ?? options[0]!;
   const palette = characterPalette(selected.manifest, choice.colors);
@@ -122,7 +128,7 @@ function CharacterPicker({ me, style }: { me: UserDetail; style: PlazaStyle }) {
       {side && (
         <p className="form__hint">
           횡스크롤 광장에서 쓸 캐릭터입니다. 옆에서 보므로 왼쪽·오른쪽 걷기(와 점프)가 잘 보이는
-          캐릭터가 어울립니다.{' '}
+          캐릭터가 어울리고, 횡스크롤용으로 그린 캐릭터는 여기서만 고를 수 있습니다.{' '}
           {sameAsTopDown
             ? '지금은 따로 고르지 않아 탑다운 광장과 같은 캐릭터를 씁니다.'
             : '따로 고른 캐릭터를 씁니다.'}
@@ -131,7 +137,10 @@ function CharacterPicker({ me, style }: { me: UserDetail; style: PlazaStyle }) {
       <div className="character-settings__stage">
         <AssetPreview manifest={selected.manifest} box={STAGE_BOX} palette={palette} />
         <div className="character-settings__turn">
-          {DIRECTIONS.map((dir) => (
+          {(characterStyle(selected.manifest) === PlazaStyle.SideScroll
+            ? SIDE_DIRECTIONS
+            : DIRECTIONS
+          ).map((dir) => (
             <AssetPreview
               key={dir}
               manifest={selected.manifest}

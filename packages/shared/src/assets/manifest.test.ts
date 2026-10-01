@@ -1,10 +1,14 @@
 import { describe, expect, it } from 'vitest';
+import { PlazaStyle } from '../domain/plaza.js';
 import { BUILTIN_ASSETS, builtinAsset } from './builtin.js';
 import {
   type AssetManifest,
   assetManifestSchema,
   assetRefSchema,
+  characterAnimation,
+  characterFitsStyle,
   characterMotions,
+  characterStyle,
   footprintCells,
   missingAnimations,
 } from './manifest.js';
@@ -190,6 +194,72 @@ describe('캐릭터 필수 애니메이션', () => {
   });
 });
 
+describe('캐릭터 광장 방식', () => {
+  const base = builtinAsset('builtin:char-short')!;
+  // 내장 캐릭터(탑다운용)에서 오른쪽만 남긴 횡스크롤용 캐릭터 (왼쪽은 좌우 반전으로 그림)
+  const rightOnly = Object.fromEntries(
+    Object.entries(base.animations).filter(([name]) => !/-(left|up|down)$/.test(name)),
+  );
+  const jump = { 'jump-right': base.animations['walk-right']! };
+
+  it('방식이 없으면 탑다운이고, 횡스크롤용은 오른쪽 대기·걷기·점프와 첨부 모션만 필수다', () => {
+    expect(characterStyle(base)).toBe(PlazaStyle.TopDown);
+    const side = { ...base, style: PlazaStyle.SideScroll, animations: rightOnly };
+    expect(missingAnimations(side).map((a) => a.name)).toEqual(['jump-right']);
+    const complete = { ...side, animations: { ...rightOnly, ...jump } };
+    expect(missingAnimations(complete)).toEqual([]);
+    expect(problemsOf(complete)).toEqual([]);
+    // 같은 그림이라도 탑다운이면 왼쪽·위·아래가 빠졌다
+    expect(missingAnimations({ ...complete, style: undefined }).map((a) => a.name)).toEqual([
+      'idle-down',
+      'idle-left',
+      'idle-up',
+      'walk-down',
+      'walk-left',
+      'walk-up',
+    ]);
+  });
+
+  it('왼쪽이 없으면 오른쪽을 뒤집어 쓰고, 위·아래가 없으면 오른쪽, 그린 것은 그대로', () => {
+    const side = { animations: { ...rightOnly, ...jump } };
+    expect(characterAnimation(side, 'walk-left')).toEqual({
+      animation: rightOnly['walk-right'],
+      mirrored: true,
+    });
+    expect(characterAnimation(side, 'idle-down')).toEqual({
+      animation: rightOnly['idle-right'],
+      mirrored: false,
+    });
+    expect(characterAnimation(base, 'walk-left')).toEqual({
+      animation: base.animations['walk-left'],
+      mirrored: false,
+    });
+    expect(characterAnimation(side, 'dance')).toBeUndefined();
+  });
+
+  it('횡스크롤용은 탑다운에서 쓸 수 없고, 탑다운용은 어디서나 쓴다', () => {
+    const side = { style: PlazaStyle.SideScroll };
+    expect(characterFitsStyle(side, PlazaStyle.SideScroll)).toBe(true);
+    expect(characterFitsStyle(side, PlazaStyle.TopDown)).toBe(false);
+    expect(characterFitsStyle(base, PlazaStyle.SideScroll)).toBe(true);
+    expect(characterFitsStyle(base, PlazaStyle.TopDown)).toBe(true);
+  });
+
+  it('방식은 캐릭터만, 정해진 애니메이션에는 모션 키를 달 수 없다', () => {
+    expect(problemsOf(tile({ style: PlazaStyle.SideScroll }))).toContain(
+      '광장 방식(style)은 캐릭터만 쓸 수 있습니다.',
+    );
+    const keyed = {
+      ...base,
+      animations: {
+        ...base.animations,
+        'jump-left': { frames: [0], frameMs: 100, key: '1' as const },
+      },
+    };
+    expect(problemsOf(keyed).join()).toMatch(/jump-left: 정해진 애니메이션/);
+  });
+});
+
 describe('footprintCells', () => {
   it('놓은 칸(왼쪽 아래)을 기준으로 막힌 칸을 돌려준다', () => {
     // 2×3타일, 아래 줄 두 칸만 막힘
@@ -223,7 +293,7 @@ describe('캐릭터 모션 (숫자 키)', () => {
     ]);
   });
 
-  it('키가 겹치거나, 필수 애니메이션에 달거나, 캐릭터가 아니면 거절한다', () => {
+  it('키가 겹치거나, 정해진 애니메이션에 달거나, 캐릭터가 아니면 거절한다', () => {
     expect(
       problemsOf(
         withMotions({
@@ -236,7 +306,7 @@ describe('캐릭터 모션 (숫자 키)', () => {
       problemsOf(withMotions({ 'idle-down': { ...base.animations['idle-down']!, key: '2' } })).join(
         ' ',
       ),
-    ).toContain('필수 애니메이션');
+    ).toContain('정해진 애니메이션');
     expect(
       problemsOf(tile({ animations: { default: { frames: [0], frameMs: 1000, key: '1' } } })),
     ).toContain('모션(키, 이름, 반복)은 캐릭터만 쓸 수 있습니다.');

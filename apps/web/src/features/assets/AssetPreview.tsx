@@ -1,8 +1,8 @@
-import { type AssetManifest, DEFAULT_ANIMATION } from '@metacode/shared';
+import { type AssetManifest, DEFAULT_ANIMATION, characterAnimation } from '@metacode/shared';
 import { useEffect, useRef, useState } from 'react';
 import { frameAt, framePixels } from './render';
 
-/** 목록 카드에 보일 애니메이션: 캐릭터는 아래로 걷기, 나머지는 기본 애니메이션 */
+/** 목록 카드에 보일 애니메이션: 캐릭터는 아래로 걷기(횡스크롤용은 오른쪽), 나머지는 기본 애니메이션 */
 export function previewAnimation(manifest: AssetManifest): string {
   return manifest.kind === 'character' ? 'walk-down' : DEFAULT_ANIMATION;
 }
@@ -91,14 +91,25 @@ export function AssetPreview({
     const canvas = ref.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d')!;
-    const anim = manifest.animations[animation] ?? Object.values(manifest.animations)[0];
+    // 횡스크롤용 캐릭터는 왼쪽을 그리지 않았으면 오른쪽을 뒤집어 보여 준다.
+    const found = characterAnimation(manifest, animation);
+    const anim = found?.animation ?? Object.values(manifest.animations)[0];
+    const mirrored = found?.mirrored ?? false;
     let shownFrame = -1;
     const draw = (frame: number) => {
       if (frame === shownFrame) return;
       shownFrame = frame;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       if (frame >= manifest.frames.length) return;
-      ctx.drawImage(frameCanvas(manifest, frame, stablePalette, width, height), 0, 0);
+      const image = frameCanvas(manifest, frame, stablePalette, width, height);
+      if (!mirrored) {
+        ctx.drawImage(image, 0, 0);
+        return;
+      }
+      ctx.save();
+      ctx.scale(-1, 1);
+      ctx.drawImage(image, -width, 0);
+      ctx.restore();
     };
     draw(anim?.frames[0] ?? 0);
     if (!animate || !anim || anim.frames.length < 2) return;

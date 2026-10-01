@@ -9,7 +9,9 @@ import {
   type MotionKey,
   OBJECT_MAX_TILES,
   PALETTE_MAX_COLORS,
-  REQUIRED_CHARACTER_ANIMATIONS,
+  PLAZA_STYLES,
+  PlazaStyle,
+  STANDARD_ANIMATIONS,
   TILE_SIZE,
   assetManifestSchema,
 } from '@metacode/shared';
@@ -33,6 +35,7 @@ import {
   PixelDocument,
   fromManifest,
   isMotion,
+  requiredOf,
   toManifest,
 } from './editorModel';
 import type { EditorTarget } from './editorStore';
@@ -139,12 +142,9 @@ function saveTrimFeet(on: boolean) {
 const KIND_LABEL = { tile: '타일', object: '오브젝트', character: '캐릭터' } as const;
 
 const ANIMATION_LABEL = new Map<string, string>([
-  ...REQUIRED_CHARACTER_ANIMATIONS.map((a) => [a.name, a.label] as const),
-  ['jump-left', '점프 (왼쪽)'],
-  ['jump-right', '점프 (오른쪽)'],
+  ...[...STANDARD_ANIMATIONS.values()].map((a) => [a.name, a.label] as const),
   ['default', '기본'],
 ]);
-const REQUIRED_NAMES = new Set(REQUIRED_CHARACTER_ANIMATIONS.map((a) => a.name));
 
 /** 애니메이션 목록에 보일 이름: 필수·점프는 정해진 이름, 모션은 사용자가 붙인 이름 */
 function animationLabel(animation: EditorAnimation): string {
@@ -217,7 +217,9 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
     frame: Math.min(selected.frame, animation.frames.length - 1),
   };
   const pixels = animation.frames[ref.frame]!;
-  const missing = doc.kind === 'character' ? editor.missingAnimations() : [];
+  const missing = editor.missingAnimations();
+  const requiredNames = new Set(requiredOf(doc).map((r) => r.name));
+  const sideCharacter = doc.kind === 'character' && doc.style === PlazaStyle.SideScroll;
   const frameCount = editor.frameCount();
   const missingNames = new Set(missing.map((m) => m.name));
   const frameKey = `${ref.animation}:${ref.frame}`;
@@ -1062,6 +1064,13 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
 
           {doc.kind === 'object' && <ObjectSettings editor={editor} />}
 
+          {doc.kind === 'character' && (
+            <CharacterStyleSettings
+              editor={editor}
+              onChange={() => setSelected({ animation: 0, frame: 0 })}
+            />
+          )}
+
           {doc.kind === 'character' && <CharacterSizeSettings editor={editor} />}
 
           {doc.kind === 'character' && (
@@ -1107,7 +1116,9 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
             <h3>애니메이션</h3>
             {doc.kind === 'character' && (
               <p className="form__hint">
-                모두 그려야 저장할 수 있습니다 (걷기·첨부 모션은 2프레임 이상).
+                {sideCharacter
+                  ? '✓·✗ 표시가 있는 것은 모두 그려야 저장할 수 있습니다 (걷기·첨부 모션은 2프레임 이상, 점프는 1프레임 이상). 오른쪽만 그리면 왼쪽은 광장에서 좌우 반전됩니다.'
+                  : '✓·✗ 표시가 있는 것은 모두 그려야 저장할 수 있습니다 (걷기·첨부 모션은 2프레임 이상).'}
               </p>
             )}
             <ul className="pixel-editor__animations">
@@ -1118,7 +1129,7 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
                     aria-current={i === ref.animation}
                     onClick={() => setSelected({ animation: i, frame: 0 })}
                   >
-                    {doc.kind === 'character' && REQUIRED_NAMES.has(a.name) && (
+                    {requiredNames.has(a.name) && (
                       <span
                         className={missingNames.has(a.name) ? 'mark mark--todo' : 'mark mark--done'}
                       >
@@ -1157,7 +1168,7 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
                 >
                   <Plus aria-hidden /> 모션
                 </button>
-                {!editor.hasJump() && (
+                {!sideCharacter && !editor.hasJump() && (
                   <button
                     type="button"
                     className="button"
@@ -1202,25 +1213,24 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
               }}
             />
           )}
-          {doc.kind === 'character' && animation.name.startsWith('jump-') && (
-            <section>
-              <h3>점프</h3>
-              <p className="form__hint">
-                횡스크롤 광장에서 뛰어오르거나 떨어질 때 한 번 틉니다. 지우면 걷기의 두 번째
-                프레임을 씁니다.
-              </p>
-              <button
-                type="button"
-                className="button button--danger"
-                onClick={() => {
-                  editor.removeAnimation(ref.animation);
-                  setSelected({ animation: 0, frame: 0 });
-                }}
-              >
-                이 점프 지우기
-              </button>
-            </section>
-          )}
+          {doc.kind === 'character' &&
+            !isMotion(animation) &&
+            !requiredNames.has(animation.name) && (
+              <section>
+                <h3>{animationLabel(animation)}</h3>
+                <p className="form__hint">{leftoverHint(animation.name, sideCharacter)}</p>
+                <button
+                  type="button"
+                  className="button button--danger"
+                  onClick={() => {
+                    editor.removeAnimation(ref.animation);
+                    setSelected({ animation: 0, frame: 0 });
+                  }}
+                >
+                  이 애니메이션 지우기
+                </button>
+              </section>
+            )}
 
           <section>
             <h3>미리보기</h3>
@@ -1405,6 +1415,57 @@ function MotionSettings({
       <button type="button" className="button button--danger" onClick={onRemove}>
         이 모션 지우기
       </button>
+    </section>
+  );
+}
+
+/** 지금 광장 방식에서 필수가 아닌 정해진 애니메이션(점프, 남겨 둔 왼쪽·위·아래)의 설명 */
+function leftoverHint(name: string, side: boolean): string {
+  if (side && name.endsWith('-left')) {
+    return '왼쪽 모습을 따로 그린 것입니다. 지우면 오른쪽을 좌우 반전해서 씁니다 (좌우가 다른 캐릭터만 남겨 두세요).';
+  }
+  if (side) {
+    return '횡스크롤용 캐릭터는 쓰지 않는 애니메이션입니다 (탑다운으로 되돌릴 때를 위해 남겨 두었습니다).';
+  }
+  return '횡스크롤 광장에서 뛰어오르거나 떨어질 때 한 번 틉니다. 지우면 걷기의 두 번째 프레임을 씁니다.';
+}
+
+const STYLE_OPTION: Record<PlazaStyle, { label: string; hint: string }> = {
+  [PlazaStyle.TopDown]: {
+    label: '탑다운',
+    hint: '위에서 내려다보는 광장용. 대기·걷기 4방향(아래·왼쪽·오른쪽·위)과 첨부 모션을 그립니다. 횡스크롤 광장에서도 쓸 수 있습니다.',
+  },
+  [PlazaStyle.SideScroll]: {
+    label: '횡스크롤',
+    hint: '옆에서 보는 광장용. 오른쪽을 보는 대기·걷기·점프와 첨부 모션을 그립니다. 왼쪽은 오른쪽을 좌우 반전해서 쓰고, 위·아래 모습이 없어서 탑다운 광장에서는 쓸 수 없습니다.',
+  },
+};
+
+/**
+ * 캐릭터가 쓰는 광장 방식. 고르면 필수 애니메이션이 바뀐다 (없는 것은 더하고, 쓰지 않게 된 것은 남겨 둠).
+ */
+function CharacterStyleSettings({ editor, onChange }: { editor: PixelDocument; onChange(): void }) {
+  const { style } = editor.doc;
+  return (
+    <section>
+      <h3>광장 방식</h3>
+      <div className="pixel-editor__segmented" role="radiogroup" aria-label="광장 방식">
+        {PLAZA_STYLES.map((s) => (
+          <button
+            key={s}
+            type="button"
+            role="radio"
+            aria-checked={style === s}
+            onClick={() => {
+              editor.setStyle(s);
+              onChange();
+            }}
+          >
+            {STYLE_OPTION[s].label}
+          </button>
+        ))}
+      </div>
+      <p className="form__hint">{STYLE_OPTION[style].hint}</p>
     </section>
   );
 }

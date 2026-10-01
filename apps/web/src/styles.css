@@ -4039,6 +4039,15 @@ a {
   gap: 6px;
 }
 
+/* 횡스크롤용 캐릭터 표시 */
+.asset-card__badge {
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--bg-input);
+  color: var(--muted);
+  font-size: 0.7rem;
+}
+
 .asset-card__actions .button {
   padding: 4px 10px;
   font-size: 0.8rem;
@@ -4312,6 +4321,33 @@ a {
   align-items: center;
   gap: 6px;
   font-size: 0.85rem;
+}
+
+/* 캐릭터 광장 방식 고르기 (탑다운 / 횡스크롤). 설정의 .tabs와 같은 모양 */
+.pixel-editor__segmented {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 8px;
+  background: var(--bg-input);
+}
+
+.pixel-editor__segmented button {
+  flex: 1;
+  padding: 6px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.pixel-editor__segmented button[aria-checked='true'] {
+  background: var(--bg);
+  color: var(--fg);
+  font-weight: 600;
 }
 
 .pixel-editor__footprint {

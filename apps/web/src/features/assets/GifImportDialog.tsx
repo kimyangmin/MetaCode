@@ -208,9 +208,15 @@ export function GifImportDialog({
             </li>
           ))}
         </ul>
-        {doc.animations.some(
-          (a, index) => targets.includes(String(index)) && oppositeAnimation(a.name),
-        ) && (
+        {/* 반대쪽 애니메이션이 있을 때만 (횡스크롤용 캐릭터는 왼쪽을 그리지 않으면 광장이 저절로 뒤집는다) */}
+        {doc.animations.some((a, index) => {
+          const opposite = oppositeAnimation(a.name);
+          return (
+            targets.includes(String(index)) &&
+            !!opposite &&
+            doc.animations.some((b) => b.name === opposite)
+          );
+        }) && (
           <label className="pixel-editor__check">
             <input type="checkbox" checked={mirror} onChange={(e) => setMirror(e.target.checked)} />
             왼쪽·오른쪽 애니메이션이면 반대쪽도 좌우 반전해서 함께 만들기
