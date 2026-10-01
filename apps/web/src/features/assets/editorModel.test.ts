@@ -249,3 +249,50 @@ describe('자르기', () => {
     expect(doc.doc.footprint).toEqual([1, 1]);
   });
 });
+
+describe('캐릭터 모션과 점프', () => {
+  const character = () => new PixelDocument(fromManifest(builtinAsset('builtin:char-short')!));
+
+  it('모션을 더하면 남은 키를 차례로 받고, 저장하면 키·이름·반복이 남는다', () => {
+    const doc = character();
+    const first = doc.addMotion()!;
+    const second = doc.addMotion()!;
+    expect(doc.doc.animations[first]).toMatchObject({ key: '1', label: '모션 1', loop: false });
+    expect(doc.doc.animations[second]!.key).toBe('2');
+    doc.updateMotion(first, { label: '춤', loop: true, key: '5' });
+    // 다른 모션이 쓰는 키는 고를 수 없다
+    doc.updateMotion(second, { key: '5' });
+    expect(doc.doc.animations[second]!.key).toBe('2');
+    const manifest = toManifest(doc.doc);
+    expect(assetManifestSchema.safeParse(manifest).success).toBe(true);
+    expect(manifest.animations['motion-1']).toMatchObject({ key: '5', label: '춤', loop: true });
+    expect(fromManifest(manifest).animations.find((a) => a.name === 'motion-1')).toMatchObject({
+      key: '5',
+      label: '춤',
+      loop: true,
+    });
+  });
+
+  it('키 열 개를 다 쓰면 더 더할 수 없고, 필수 애니메이션은 지울 수 없다', () => {
+    const doc = character();
+    for (let i = 0; i < 10; i++) expect(doc.addMotion()).not.toBeNull();
+    expect(doc.addMotion()).toBeNull();
+    const count = doc.doc.animations.length;
+    doc.removeAnimation(0); // idle-down
+    expect(doc.doc.animations).toHaveLength(count);
+    doc.removeAnimation(count - 1);
+    expect(doc.doc.animations).toHaveLength(count - 1);
+  });
+
+  it('점프는 걷기의 두 번째 프레임으로 시작하고, 둘 다 있으면 더하지 않는다', () => {
+    const doc = character();
+    expect(doc.hasJump()).toBe(false);
+    const at = doc.addJump()!;
+    const walk = doc.doc.animations.find((a) => a.name === 'walk-left')!;
+    expect(doc.doc.animations[at]!.name).toBe('jump-left');
+    expect(doc.doc.animations[at]!.frames[0]).toEqual(walk.frames[1]);
+    expect(doc.hasJump()).toBe(true);
+    expect(doc.addJump()).toBeNull();
+    expect(assetManifestSchema.safeParse(toManifest(doc.doc)).success).toBe(true);
+  });
+});

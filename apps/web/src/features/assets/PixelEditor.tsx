@@ -5,6 +5,8 @@ import {
   FRAME_LIMIT,
   FRAME_MS_MAX,
   FRAME_MS_MIN,
+  MOTION_LABEL_MAX_LENGTH,
+  type MotionKey,
   OBJECT_MAX_TILES,
   PALETTE_MAX_COLORS,
   REQUIRED_CHARACTER_ANIMATIONS,
@@ -27,10 +29,12 @@ import {
 import { ApiError } from '../../api/client';
 import { saveAsset } from './api';
 import {
+  type EditorAnimation,
   type EditorDoc,
   type FrameRef,
   PixelDocument,
   fromManifest,
+  isMotion,
   toManifest,
 } from './editorModel';
 import type { EditorTarget } from './editorStore';
@@ -59,7 +63,9 @@ import {
   PaintBucket,
   Pencil,
   Pipette,
+  Plus,
   Redo2,
+  Repeat2,
   Scissors,
   Undo2,
   X,
@@ -128,7 +134,18 @@ function saveTrimFeet(on: boolean) {
 
 const KIND_LABEL = { tile: '타일', object: '오브젝트', character: '캐릭터' } as const;
 
-const ANIMATION_LABEL = new Map(REQUIRED_CHARACTER_ANIMATIONS.map((a) => [a.name, a.label]));
+const ANIMATION_LABEL = new Map<string, string>([
+  ...REQUIRED_CHARACTER_ANIMATIONS.map((a) => [a.name, a.label] as const),
+  ['jump-left', '점프 (왼쪽)'],
+  ['jump-right', '점프 (오른쪽)'],
+  ['default', '기본'],
+]);
+const REQUIRED_NAMES = new Set(REQUIRED_CHARACTER_ANIMATIONS.map((a) => a.name));
+
+/** 애니메이션 목록에 보일 이름: 필수·점프는 정해진 이름, 모션은 사용자가 붙인 이름 */
+function animationLabel(animation: EditorAnimation): string {
+  return animation.label ?? ANIMATION_LABEL.get(animation.name) ?? animation.name;
+}
 
 function rgb(hex: string): [number, number, number] {
   const v = parseInt(hex.slice(1), 16);
@@ -960,7 +977,15 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
                   checked={doc.solid}
                   onChange={(e) => editor.setSolid(e.target.checked)}
                 />
-                지나갈 수 없음 (벽, 물, 나무 등)
+                지나갈 수 없음 (벽, 물, 나무 등. 횡스크롤에서는 딛고 서는 땅)
+              </label>
+              <label className="pixel-editor__check">
+                <input
+                  type="checkbox"
+                  checked={doc.platform}
+                  onChange={(e) => editor.setPlatform(e.target.checked)}
+                />
+                발판 (횡스크롤: 위에서만 딛고 아래에서는 뛰어 지나감)
               </label>
             </section>
           )}
@@ -1023,7 +1048,7 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
                     aria-current={i === ref.animation}
                     onClick={() => setSelected({ animation: i, frame: 0 })}
                   >
-                    {doc.kind === 'character' && (
+                    {doc.kind === 'character' && REQUIRED_NAMES.has(a.name) && (
                       <span
                         className={missingNames.has(a.name) ? 'mark mark--todo' : 'mark mark--done'}
                       >
@@ -1034,12 +1059,50 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
                         )}
                       </span>
                     )}
-                    {ANIMATION_LABEL.get(a.name) ?? (a.name === 'default' ? '기본' : a.name)}
+                    {a.key !== undefined && (
+                      <kbd className="pixel-editor__motion-key" title={`광장에서 ${a.key} 키`}>
+                        {a.key}
+                      </kbd>
+                    )}
+                    {animationLabel(a)}
+                    {a.loop && (
+                      <Repeat2 className="pixel-editor__loop" role="img" aria-label="반복" />
+                    )}
                     <small>{a.frames.length}프레임</small>
                   </button>
                 </li>
               ))}
             </ul>
+            {doc.kind === 'character' && (
+              <div className="pixel-editor__row">
+                <button
+                  type="button"
+                  className="button"
+                  disabled={editor.freeMotionKeys().length === 0 || !editor.canAddAnimation()}
+                  title="광장에서 숫자 키(1~9, 0)로 트는 모션"
+                  onClick={() => {
+                    const at = editor.addMotion();
+                    if (at !== null) setSelected({ animation: at, frame: 0 });
+                  }}
+                >
+                  <Plus aria-hidden /> 모션
+                </button>
+                {!editor.hasJump() && (
+                  <button
+                    type="button"
+                    className="button"
+                    disabled={!editor.canAddAnimation()}
+                    title="횡스크롤 광장에서 공중에 있을 때 (없으면 걷기의 두 번째 프레임)"
+                    onClick={() => {
+                      const at = editor.addJump();
+                      if (at !== null) setSelected({ animation: at, frame: 0 });
+                    }}
+                  >
+                    <Plus aria-hidden /> 점프
+                  </button>
+                )}
+              </div>
+            )}
             <label className="pixel-editor__row">
               프레임 간격
               <input
@@ -1057,6 +1120,37 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
               ms
             </label>
           </section>
+
+          {doc.kind === 'character' && isMotion(animation) && (
+            <MotionSettings
+              editor={editor}
+              index={ref.animation}
+              animation={animation}
+              onRemove={() => {
+                editor.removeAnimation(ref.animation);
+                setSelected({ animation: 0, frame: 0 });
+              }}
+            />
+          )}
+          {doc.kind === 'character' && animation.name.startsWith('jump-') && (
+            <section>
+              <h3>점프</h3>
+              <p className="form__hint">
+                횡스크롤 광장에서 뛰어오르거나 떨어질 때 한 번 틉니다. 지우면 걷기의 두 번째
+                프레임을 씁니다.
+              </p>
+              <button
+                type="button"
+                className="button button--danger"
+                onClick={() => {
+                  editor.removeAnimation(ref.animation);
+                  setSelected({ animation: 0, frame: 0 });
+                }}
+              >
+                이 점프 지우기
+              </button>
+            </section>
+          )}
 
           <section>
             <h3>미리보기</h3>
@@ -1140,6 +1234,63 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
         </div>
       </footer>
     </div>
+  );
+}
+
+/** 캐릭터 모션 설정: 이름, 숫자 키, 반복, 지우기 */
+function MotionSettings({
+  editor,
+  index,
+  animation,
+  onRemove,
+}: {
+  editor: PixelDocument;
+  index: number;
+  animation: EditorAnimation;
+  onRemove(): void;
+}) {
+  const keys = editor.freeMotionKeys(animation.key);
+  return (
+    <section>
+      <h3>모션</h3>
+      <label className="pixel-editor__field">
+        이름
+        <input
+          value={animation.label ?? ''}
+          maxLength={MOTION_LABEL_MAX_LENGTH}
+          placeholder={animation.name}
+          onChange={(e) => editor.updateMotion(index, { label: e.target.value })}
+        />
+      </label>
+      <label className="pixel-editor__row">
+        키
+        <select
+          value={animation.key}
+          onChange={(e) => editor.updateMotion(index, { key: e.target.value as MotionKey })}
+          aria-label="광장에서 누를 숫자 키"
+        >
+          {keys.map((key) => (
+            <option key={key} value={key}>
+              {key}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="pixel-editor__check">
+        <input
+          type="checkbox"
+          checked={!!animation.loop}
+          onChange={(e) => editor.updateMotion(index, { loop: e.target.checked })}
+        />
+        움직일 때까지 반복 (끄면 한 번)
+      </label>
+      <p className="form__hint">
+        광장에서 이 숫자 키를 누르면 틉니다. 반복하는 모션은 다시 누르거나 움직이면 멈춥니다.
+      </p>
+      <button type="button" className="button button--danger" onClick={onRemove}>
+        이 모션 지우기
+      </button>
+    </section>
   );
 }
 

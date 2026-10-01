@@ -43,7 +43,7 @@ export function characterLook(
 }
 
 /**
- * 캐릭터를 월드 크기(1타일×2타일)로 맞춘다. 매니페스트 해상도는 16×32부터 128×256까지 제각각이라
+ * 캐릭터를 월드 크기(1타일×2타일)로 맞춘다. 매니페스트 해상도는 16×32부터 256×512까지 제각각이라
  * 텍스처 크기 그대로 그리면 캐릭터마다 크기가 달라진다. 텍스처를 바꾼 뒤에도 다시 불러야 한다
  * (setTexture는 배율을 그대로 두므로 원본 크기가 달라지면 화면 크기도 달라진다).
  */
@@ -57,28 +57,60 @@ export function emoteDurationMs(manifest: AssetManifest): number {
   return emote ? emote.frames.length * emote.frameMs : 0;
 }
 
+/** 틀고 있는 캐릭터 모션 (숫자 키). 한 번 트는 모션은 until이 끝나는 시각, 반복은 Infinity */
+export interface PlayingMotion {
+  name: string;
+  loop: boolean;
+  until: number;
+}
+
 export interface CharacterState {
   dir: Direction;
   walking: boolean;
   /** 첨부 모션이 끝나는 시각. 지났으면 모션 중이 아님 */
   emoteUntil: number;
+  /** 캐릭터 모션. 움직이면 멈추므로 걷는 중에는 없다 */
+  motion?: PlayingMotion | null;
 }
 
-/** 지금 틀어야 할 애니메이션 이름 */
+/** 지금 틀어야 할 애니메이션 이름: 첨부 모션 > 캐릭터 모션 > 걷기·대기 */
 export function animationName(state: CharacterState, now: number): string {
   if (state.emoteUntil > now) return 'emote';
+  if (state.motion && state.motion.until > now) return state.motion.name;
   return `${state.walking ? 'walk' : 'idle'}-${state.dir}`;
 }
 
-/** 애니메이션을 시작한 뒤 elapsedMs가 지났을 때의 프레임. 첨부 모션은 한 번만 재생한다 */
+/** 한 번 트는 모션의 길이 */
+export function motionDurationMs(manifest: AssetManifest, name: string): number {
+  const animation = manifest.animations[name];
+  return animation ? animation.frames.length * animation.frameMs : 0;
+}
+
+/**
+ * 횡스크롤에서 공중에 있을 때(점프, 떨어지기)의 프레임: jump-<방향> 애니메이션이 있으면 그것을 한 번,
+ * 없으면 걷기의 두 번째 프레임(다리를 벌린 모습)에 멈춘다.
+ */
+export function airborneFrame(manifest: AssetManifest, dir: Direction, elapsedMs: number): number {
+  const jump = manifest.animations[`jump-${dir}`];
+  if (jump) return frameOnce(jump, elapsedMs);
+  const walk = manifest.animations[`walk-${dir}`] ?? manifest.animations[`idle-${dir}`];
+  if (!walk) return 0;
+  return walk.frames[Math.min(1, walk.frames.length - 1)]!;
+}
+
+/**
+ * 애니메이션을 시작한 뒤 elapsedMs가 지났을 때의 프레임. 첨부 모션과 once(한 번 트는 캐릭터 모션)는
+ * 한 번만 재생하고 마지막 프레임에 머문다. 없는 애니메이션이면 그 방향의 대기 프레임.
+ */
 export function characterFrame(
   manifest: AssetManifest,
   name: string,
   dir: Direction,
   elapsedMs: number,
+  once = name === 'emote',
 ): number {
   const animation: AssetAnimation | undefined =
     manifest.animations[name] ?? manifest.animations[`idle-${dir}`];
   if (!animation) return 0;
-  return name === 'emote' ? frameOnce(animation, elapsedMs) : frameAt(animation, elapsedMs);
+  return once ? frameOnce(animation, elapsedMs) : frameAt(animation, elapsedMs);
 }

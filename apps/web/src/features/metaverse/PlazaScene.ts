@@ -10,10 +10,16 @@ import {
   type PlazaMoved,
   type PlazaOccupant,
   type PlazaSnapshot,
+  PlazaStyle,
   type Position,
   TILE_SIZE,
   type UserProfile,
   buildCollision,
+  characterMotions,
+  groundBelow,
+  isGrounded,
+  isWalkable,
+  mapStyle,
 } from '@metacode/shared';
 import { builtinAsset } from '@metacode/shared/builtin-assets';
 import {
@@ -27,11 +33,19 @@ import {
   createElement as createIcon,
 } from 'lucide';
 import Phaser from 'phaser';
-import { drawShadow, drawSpeakingRing, drawTargetMarker } from './art';
+import {
+  SIDE_SKY,
+  drawCloud,
+  drawHills,
+  drawShadow,
+  drawSpeakingRing,
+  drawTargetMarker,
+} from './art';
 import {
   type Bubble,
   activeBubbles,
   pushBubble,
+  stepZoomOffset,
   zoomFor,
   RemoteTrack,
   directionOf,
@@ -39,20 +53,32 @@ import {
   stepToward,
   findPath,
   tileCenter,
+  type SideBody,
+  createSideBody,
+  stepSide,
 } from '@metacode/client';
 import type { VoiceLabel } from './plazaVoice';
 import {
   type CharacterLook,
+  type PlayingMotion,
+  airborneFrame,
   animationName,
   characterFrame,
   characterLook,
   emoteDurationMs,
   fitCharacter,
+  motionDurationMs,
 } from './characterSprite';
-import { MapView } from './mapView';
+import { MapView, SIDE_ACTOR_DEPTH } from './mapView';
 
 /** 이만큼 움직이지 않아야 걷기를 멈춘다 (받은 위치 사이에서 걷기 모션이 끊겼다 이어지지 않게) */
 const WALK_HOLD_MS = 120;
+/** 횡스크롤 점프 키 */
+const JUMP_KEYS = ['ArrowUp', ' '];
+/** 횡스크롤 클릭 이동: 막혀서 이만큼 못 가면 그만둔다 */
+const SIDE_STUCK_MS = 1500;
+/** 횡스크롤 클릭 이동: 누른 곳이 위(발판)면 제자리에서 이만큼까지 뛰어 오른다 */
+const SIDE_TARGET_JUMPS = 3;
 export interface MoveState extends Position {
   dir: Direction;
   moving: boolean;
@@ -87,6 +113,10 @@ export interface PlazaSceneOptions {
   nameOf(user: UserProfile): string;
   /** 내 캐릭터 위치를 서버에 보낸다 */
   onMove(state: MoveState): void;
+  /** 내 캐릭터 모션을 틀거나(이름) 멈췄다(null): 서버에 보낸다 */
+  onMotion(motion: string | null, loop: boolean): void;
+  /** 처음 배율 단계 (사용자가 Ctrl +/−로 바꾼 값, 기억해 둔 것) */
+  zoomOffset?: number;
 }
 
 interface Actor {
@@ -104,12 +134,18 @@ interface Actor {
   track: RemoteTrack | null;
   /** 이번 프레임에 움직였는지 (내 캐릭터는 서버에 보내는 moving) */
   walking: boolean;
+  /** 횡스크롤: 땅에서 떨어져 있다 (점프, 떨어지는 중) */
+  airborne: boolean;
+  /** 공중에 뜬 시각 (점프 애니메이션의 시작) */
+  airborneSince: number;
   lastMovedAt: number;
   bubbles: Bubble[];
   renderedBubbles: string;
   bubblesWidth: number;
   /** 첨부 모션이 끝나는 시각 */
   emoteUntil: number;
+  /** 틀고 있는 캐릭터 모션 (숫자 키). 움직이면 멈춘다 */
+  motion: (PlayingMotion & { start: number }) | null;
   dom: {
     root: HTMLDivElement;
     bubbles: HTMLOListElement;
@@ -128,7 +164,23 @@ export class PlazaScene extends Phaser.Scene {
   private resolveReady!: () => void;
 
   private layout: MapLayout | null = null;
+  private style: PlazaStyle = PlazaStyle.TopDown;
   private map: { key: string; view: MapView } | null = null;
+  /** 횡스크롤 하늘의 구름·언덕 (맵을 다시 그릴 때 치운다) */
+  private backdrop: Phaser.GameObjects.GameObject[] = [];
+  /** 횡스크롤: 내 캐릭터의 몸 (위치와 세로 속도). 탑다운에서는 null */
+  private body: SideBody | null = null;
+  /**
+   * 횡스크롤 클릭 이동: 걸어갈 x와 누른 곳의 땅 높이, 지난 프레임에 막혔는지, 마지막으로 나아간 시각,
+   * 누른 곳이 위라서 뛴 횟수
+   */
+  private sideTarget: {
+    x: number;
+    groundY: number;
+    blocked: boolean;
+    progressAt: number;
+    jumps: number;
+  } | null = null;
   /** 서버에서 받은 에셋(직접 그린 캐릭터 등). 내장 에셋은 builtinAsset으로 찾는다 */
   private readonly customAssets = new Map<AssetRef, AssetManifest>();
   private readonly assetOf = (ref: AssetRef) => this.customAssets.get(ref) ?? builtinAsset(ref);
@@ -138,6 +190,8 @@ export class PlazaScene extends Phaser.Scene {
   private voice: ReadonlyMap<string, ActorVoice> = new Map();
   private lastSent: (MoveState & { at: number }) | null = null;
   private zoomLevel = 2;
+  /** 사용자가 Ctrl +/−로 더하거나 뺀 배율 단계 */
+  private zoomOffset = 0;
   /** 눌려 있는 방향키. PlazaView가 광장 패널에 포커스가 있을 때만 넣는다 */
   private readonly held = new Set<string>();
   /** 지난 프레임 이후 눌린 키. 프레임 사이에 눌렀다 뗀 짧은 입력도 한 걸음은 움직이게 한다 */
@@ -146,6 +200,7 @@ export class PlazaScene extends Phaser.Scene {
   constructor(options: PlazaSceneOptions) {
     super('plaza');
     this.options = options;
+    this.zoomOffset = options.zoomOffset ?? 0;
     this.readyPromise = new Promise((resolve) => (this.resolveReady = resolve));
   }
 
@@ -158,6 +213,8 @@ export class PlazaScene extends Phaser.Scene {
     this.textures.addCanvas('shadow', drawShadow());
     this.textures.addCanvas('target', drawTargetMarker());
     this.textures.addCanvas('speaking-ring', drawSpeakingRing());
+    for (let i = 0; i < 3; i++) this.textures.addCanvas(`cloud-${i}`, drawCloud(i));
+    this.textures.addCanvas('hills', drawHills());
     this.cameras.main.setRoundPixels(true);
     this.scale.on(Phaser.Scale.Events.RESIZE, () => this.updateZoom());
     this.updateZoom();
@@ -168,6 +225,7 @@ export class PlazaScene extends Phaser.Scene {
     });
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.clearActors();
+      this.clearBackdrop();
       this.map?.view.destroy();
       this.map = null;
     });
@@ -181,8 +239,14 @@ export class PlazaScene extends Phaser.Scene {
     this.drawMap(snapshot.definition, snapshot.assets);
     this.clearActors();
     this.path = [];
+    this.body = null;
+    this.sideTarget = null;
     this.lastSent = null;
     for (const occupant of snapshot.occupants) this.upsert(occupant);
+  }
+
+  private get side(): boolean {
+    return this.style === PlazaStyle.SideScroll;
   }
 
   upsert(occupant: PlazaOccupant): void {
@@ -217,11 +281,17 @@ export class PlazaScene extends Phaser.Scene {
       dir: occupant.dir,
       track: isMe ? null : new RemoteTrack(position, performance.now()),
       walking: false,
+      airborne: false,
+      airborneSince: 0,
       lastMovedAt: 0,
       bubbles: [],
       renderedBubbles: '',
       bubblesWidth: 0,
       emoteUntil: 0,
+      // 반복 중이던 모션은 나중에 연 사람에게도 보인다
+      motion: occupant.motion
+        ? { name: occupant.motion, loop: true, until: Infinity, start: performance.now() }
+        : null,
       dom: this.createActorDom(occupant.user, isMe),
     };
     this.actors.set(occupant.user.id, actor);
@@ -261,6 +331,50 @@ export class PlazaScene extends Phaser.Scene {
     if (!actor?.track) return;
     actor.track.push(event, performance.now());
     actor.dir = event.dir;
+    // 움직이면 모션은 멈춘다 (서버도 반복 모션을 지운다)
+    if (event.moving) actor.motion = null;
+  }
+
+  // ── 캐릭터 모션 (숫자 키) ──
+
+  /** 내 캐릭터의 모션 (키 순서). 직접 그린 캐릭터에 추가한 것만 있다 */
+  myMotions() {
+    const me = this.actors.get(this.options.meId);
+    return me ? characterMotions(me.look.manifest) : [];
+  }
+
+  /**
+   * 숫자 키: 내 캐릭터의 그 키 모션을 튼다. 반복 모션을 다시 누르면 멈춘다. 그 키의 모션이 없으면 false
+   * (PlazaView가 키를 브라우저에 그대로 넘긴다).
+   */
+  playMotion(key: string): boolean {
+    const me = this.actors.get(this.options.meId);
+    if (!me) return false;
+    const motion = characterMotions(me.look.manifest).find((m) => m.key === key);
+    if (!motion) return false;
+    const now = performance.now();
+    if (me.motion?.name === motion.name && me.motion.loop && me.motion.until > now) {
+      me.motion = null;
+      this.options.onMotion(null, false);
+      return true;
+    }
+    this.startMotion(me, motion.name, motion.loop, now);
+    this.options.onMotion(motion.name, motion.loop);
+    return true;
+  }
+
+  /** 다른 사람이 모션을 틀거나(이름) 멈췄다(null) */
+  setMotion(userId: string, motion: string | null, loop: boolean): void {
+    const actor = this.actors.get(userId);
+    if (!actor || userId === this.options.meId) return;
+    if (motion) this.startMotion(actor, motion, loop, performance.now());
+    else actor.motion = null;
+  }
+
+  private startMotion(actor: Actor, name: string, loop: boolean, now: number): void {
+    const until = loop ? Infinity : now + motionDurationMs(actor.look.manifest, name);
+    actor.motion = { name, loop, until, start: now };
+    actor.animation = { name, start: now };
   }
 
   /** 서버가 내 이동을 받아들이지 않았다: 그 자리로 되돌린다 */
@@ -270,6 +384,8 @@ export class PlazaScene extends Phaser.Scene {
     me.position = { x: correction.x, y: correction.y };
     me.dir = correction.dir;
     this.path = [];
+    this.sideTarget = null;
+    if (this.side && this.layout) this.body = createSideBody(this.layout, me.position);
     this.lastSent = { ...me.position, dir: me.dir, moving: false, at: performance.now() };
     this.marker?.setVisible(false);
   }
@@ -370,6 +486,10 @@ export class PlazaScene extends Phaser.Scene {
   }
 
   private moveMe(me: Actor, delta: number, now: number): void {
+    if (this.side) {
+      this.moveMeSide(me, delta, now);
+      return;
+    }
     const layout = this.layout!;
     const down = (key: string) => (this.held.has(key) || this.tapped.has(key) ? 1 : 0);
     const dx = down('ArrowRight') - down('ArrowLeft');
@@ -401,17 +521,83 @@ export class PlazaScene extends Phaser.Scene {
     }
 
     me.walking = me.position.x !== before.x || me.position.y !== before.y;
+    if (me.walking) me.motion = null;
     this.sendMove(me, now);
   }
 
-  /** 움직이는 동안은 일정 간격으로, 멈추면 한 번 더 (멈춘 자리) 보낸다 */
-  private sendMove(me: Actor, now: number): void {
+  /**
+   * 횡스크롤: 좌우로 걷고(←→), 점프하고(↑, Space: 누르고 있으면 높이), 발판 아래로 내려간다(↓).
+   * 클릭 이동은 누른 곳의 x까지 걸어가고, 막히면 뛰어 본다.
+   */
+  private moveMeSide(me: Actor, delta: number, now: number): void {
+    const layout = this.layout!;
+    const down = (key: string) => this.held.has(key) || this.tapped.has(key);
+    let dx = (down('ArrowRight') ? 1 : 0) - (down('ArrowLeft') ? 1 : 0);
+    const jump = JUMP_KEYS.some((key) => this.tapped.has(key));
+    const jumpHeld = JUMP_KEYS.some((key) => this.held.has(key));
+    const drop = this.tapped.has('ArrowDown');
+    this.tapped.clear();
+    if (dx !== 0 || jump || drop) this.stopSideTarget();
+
+    const before = this.body ?? createSideBody(layout, me.position);
+    let autoJump = false;
+    const target = this.sideTarget;
+    if (target && dx === 0) {
+      const gap = target.x - before.x;
+      if (now - target.progressAt > SIDE_STUCK_MS) {
+        this.stopSideTarget();
+      } else if (Math.abs(gap) <= 1.5) {
+        // 도착했다. 누른 곳이 위(발판)면 제자리에서 뛰어 오른다 (발판은 아래에서 뛰어 지나간다).
+        if (before.grounded) {
+          if (target.groundY < before.y - 4 && target.jumps < SIDE_TARGET_JUMPS) {
+            autoJump = true;
+            target.jumps++;
+            target.progressAt = now;
+          } else {
+            this.stopSideTarget();
+          }
+        }
+      } else {
+        dx = Math.sign(gap);
+        // 지난 프레임에 턱이나 벽에 막혀 못 갔으면 뛰어서 넘어 본다
+        autoJump = target.blocked && before.grounded;
+      }
+    }
+    const body = stepSide(
+      layout,
+      before,
+      { dx, jump: jump || autoJump, jumpHeld: jumpHeld || !!this.sideTarget, drop },
+      delta,
+    );
+    if (this.sideTarget) {
+      const moved = Math.abs(body.x - before.x) > 0.01;
+      this.sideTarget.blocked = !moved;
+      if (moved) this.sideTarget.progressAt = now;
+    }
+    this.body = body;
+    me.position = { x: body.x, y: body.y };
+    if (dx !== 0) me.dir = dx < 0 ? 'left' : 'right';
+    me.walking = body.x !== before.x || body.y !== before.y;
+    if (me.walking) me.motion = null;
+    // 내려앉거나 뛰어오르는 순간은 바로 보낸다: 서버가 딛은 땅을 알아야 다음 점프를 받아들인다.
+    this.sendMove(me, now, body.grounded !== before.grounded);
+  }
+
+  private stopSideTarget(): void {
+    this.sideTarget = null;
+    this.marker?.setVisible(false);
+  }
+
+  /** 움직이는 동안은 일정 간격으로, 멈추면 한 번 더 (멈춘 자리) 보낸다. force면 간격과 상관없이 보낸다 */
+  private sendMove(me: Actor, now: number, force = false): void {
     const state: MoveState = { ...me.position, dir: me.dir, moving: me.walking };
     const last = this.lastSent;
-    if (me.walking) {
-      if (last && now - last.at < MOVE_SEND_INTERVAL_MS) return;
-    } else if (!last?.moving) {
-      return;
+    if (!force) {
+      if (me.walking) {
+        if (last && now - last.at < MOVE_SEND_INTERVAL_MS) return;
+      } else if (!last?.moving) {
+        return;
+      }
     }
     this.lastSent = { ...state, at: now };
     this.options.onMove(state);
@@ -420,6 +606,10 @@ export class PlazaScene extends Phaser.Scene {
   private walkTo(target: Position): void {
     const me = this.actors.get(this.options.meId);
     if (!me || !this.layout) return;
+    if (this.side) {
+      this.walkToSide(target);
+      return;
+    }
     const path = findPath(this.layout, me.position, target);
     if (path.length === 0) return;
     // 지금 서 있는 칸의 가운데를 먼저 거쳐서, 칸 모서리를 비스듬히 파고들지 않게 한다.
@@ -433,30 +623,89 @@ export class PlazaScene extends Phaser.Scene {
     this.marker.setPosition(end.x, end.y - 2).setVisible(true);
   }
 
+  /** 횡스크롤 클릭 이동: 누른 곳의 x로 걸어간다. 표시는 그 아래 땅(또는 누른 땅의 윗면)에 */
+  private walkToSide(target: Position): void {
+    const layout = this.layout!;
+    const mapWidth = layout.width * TILE_SIZE;
+    const x = Math.min(Math.max(target.x, 6), mapWidth - 6);
+    this.path = [];
+    let y = Math.min(target.y, layout.height * TILE_SIZE);
+    // 땅 속을 눌렀으면 그 땅의 윗면까지 올린다
+    while (y > 0 && !isWalkable(layout, x, y)) y -= TILE_SIZE / 2;
+    const ground = groundBelow(layout, x, y);
+    this.sideTarget = {
+      x,
+      groundY: ground,
+      blocked: false,
+      progressAt: performance.now(),
+      jumps: 0,
+    };
+    if (!this.marker) this.marker = this.add.image(0, 0, 'target');
+    this.marker
+      .setDepth(SIDE_ACTOR_DEPTH - 0.6)
+      .setPosition(x, ground - 2)
+      .setVisible(true);
+  }
+
   private renderActor(actor: Actor, now: number): void {
     const { x, y } = actor.position;
+    const side = this.side;
     if (actor.walking) actor.lastMovedAt = now;
+    // 횡스크롤: 발밑이 땅(발판)에서 떨어져 있으면 공중 모습
+    const isMe = actor.user.id === this.options.meId;
+    const airborne =
+      side && (isMe && this.body ? !this.body.grounded : !isGrounded(this.layout!, x, y));
+    if (airborne && !actor.airborne) actor.airborneSince = now;
+    actor.airborne = airborne;
+    if (actor.motion && actor.motion.until <= now) actor.motion = null;
     const name = animationName(
       {
         dir: actor.dir,
         walking: now - actor.lastMovedAt < WALK_HOLD_MS,
         emoteUntil: actor.emoteUntil,
+        motion: actor.motion,
       },
       now,
     );
     if (actor.animation.name !== name) actor.animation = { name, start: now };
     const { manifest } = actor.look;
-    actor.sprite.setFrame(characterFrame(manifest, name, actor.dir, now - actor.animation.start));
+    const playing = name === 'emote' || name === actor.motion?.name;
+    actor.sprite.setFrame(
+      airborne && !playing
+        ? airborneFrame(manifest, actor.dir, now - actor.airborneSince)
+        : characterFrame(
+            manifest,
+            name,
+            actor.dir,
+            now - actor.animation.start,
+            name === 'emote' || (name === actor.motion?.name && !actor.motion.loop),
+          ),
+    );
     // 첨부 모션 동안에는 제자리에서 뛴다.
     const lift =
       actor.emoteUntil > now
         ? Math.round(Math.abs(Math.sin((actor.emoteUntil - now) / 60)) * 4)
         : 0;
-    actor.sprite.setPosition(x, y - lift).setDepth(y);
-    actor.shadow.setPosition(x, y).setDepth(1);
+    if (!side) {
+      actor.sprite.setPosition(x, y - lift).setDepth(y);
+      actor.shadow.setPosition(x, y).setDepth(1).setAlpha(1);
+      if (actor.ring.visible) {
+        actor.ring.setPosition(x, y + 1).setDepth(1.5);
+        actor.ring.setAlpha(0.6 + 0.4 * Math.sin(now / 150));
+      }
+      return;
+    }
+    // 횡스크롤: 캐릭터는 배경(바닥 층·오브젝트) 앞, 그림자와 고리는 발 아래 땅에 (높이 뜰수록 옅게)
+    const ground = groundBelow(this.layout!, x, y);
+    const fade = Math.max(0.2, 1 - Math.max(0, ground - y) / 64);
+    actor.sprite.setPosition(x, y - lift).setDepth(SIDE_ACTOR_DEPTH + y / 1e4);
+    actor.shadow
+      .setPosition(x, ground)
+      .setDepth(SIDE_ACTOR_DEPTH - 0.5)
+      .setAlpha(fade);
     if (actor.ring.visible) {
-      actor.ring.setPosition(x, y + 1).setDepth(1.5);
-      actor.ring.setAlpha(0.6 + 0.4 * Math.sin(now / 150));
+      actor.ring.setPosition(x, ground + 1).setDepth(SIDE_ACTOR_DEPTH - 0.4);
+      actor.ring.setAlpha((0.6 + 0.4 * Math.sin(now / 150)) * fade);
     }
   }
 
@@ -471,16 +720,78 @@ export class PlazaScene extends Phaser.Scene {
     const key = JSON.stringify(definition) + JSON.stringify(assets);
     if (this.map?.key === key) return;
     this.map?.view.destroy();
+    this.style = mapStyle(definition);
     this.layout = buildCollision(definition, this.assetOf);
     this.map = { key, view: new MapView(this, definition, this.assetOf) };
+    this.drawBackdrop();
     this.updateZoom();
+  }
+
+  /**
+   * 횡스크롤 하늘: 하늘색 배경, 멀리 있는 언덕 띠와 구름 두 겹. 카메라보다 천천히 움직여(패럴랙스)
+   * 멀리 있는 것처럼 보인다. 세로로는 따라 움직여 언덕이 땅과 어긋나지 않게 한다.
+   */
+  private drawBackdrop(): void {
+    this.clearBackdrop();
+    const camera = this.cameras.main;
+    if (!this.side || !this.layout) {
+      camera.setBackgroundColor('rgba(0, 0, 0, 0)');
+      return;
+    }
+    camera.setBackgroundColor(SIDE_SKY);
+    const layout = this.layout;
+    const width = layout.width * TILE_SIZE;
+    const { spawn } = layout;
+    const horizon = groundBelow(
+      layout,
+      (spawn.x + spawn.w / 2) * TILE_SIZE,
+      (spawn.y + 1) * TILE_SIZE - 1,
+    );
+    this.backdrop.push(
+      this.add
+        .tileSprite(0, horizon + 8, width + 512, 48, 'hills')
+        .setOrigin(0, 1)
+        .setScrollFactor(0.5, 1)
+        .setDepth(-2),
+    );
+    // 구름: 맵 폭에 고르게, 높이와 모양은 자리마다 정해진 값 (볼 때마다 같게)
+    const count = Math.max(4, Math.round(width / 120));
+    for (let i = 0; i < count; i++) {
+      const far = i % 2 === 0;
+      const x = (i + 0.3 + ((i * 7) % 5) / 10) * (width / count);
+      const y = TILE_SIZE * (1.5 + ((i * 5) % 4) * 1.2);
+      this.backdrop.push(
+        this.add
+          .image(x, y, `cloud-${i % 3}`)
+          .setScrollFactor(far ? 0.3 : 0.6, 1)
+          .setAlpha(far ? 0.8 : 1)
+          .setDepth(far ? -3 : -1),
+      );
+    }
+  }
+
+  private clearBackdrop(): void {
+    for (const object of this.backdrop) object.destroy();
+    this.backdrop = [];
   }
 
   private updateZoom(): void {
     if (!this.layout) return;
     const { width, height } = this.scale.gameSize;
-    this.zoomLevel = zoomFor(this.layout, width, height);
+    this.zoomLevel = zoomFor(this.layout, width, height, this.zoomOffset);
     this.cameras.main.setZoom(this.zoomLevel);
+  }
+
+  /**
+   * Ctrl +/−: 배율을 한 단계 올리거나 내린다 (정수 배율만). 바뀐 배율과, 기억해 둘 단계를 돌려준다.
+   * 맵을 아직 그리지 않았으면 null.
+   */
+  zoomBy(step: 1 | -1): { zoom: number; offset: number } | null {
+    if (!this.layout) return null;
+    const { width, height } = this.scale.gameSize;
+    this.zoomOffset = stepZoomOffset(this.layout, width, height, this.zoomOffset, step);
+    this.updateZoom();
+    return { zoom: this.zoomLevel, offset: this.zoomOffset };
   }
 
   /** 카메라 가운데: 내 캐릭터를 따라가되, 맵이 화면보다 작은 쪽은 맵 가운데에 둔다 */

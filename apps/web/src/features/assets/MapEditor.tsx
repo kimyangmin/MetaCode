@@ -1,8 +1,8 @@
 import {
   type AssetManifest,
   type AssetRef,
+  Cell,
   type CommunityMapDto,
-  DEFAULT_ANIMATION,
   MAP_MAX_SIZE,
   MAP_MIN_SIZE,
   TILE_SIZE,
@@ -25,8 +25,15 @@ import { ApiError, apiFetch } from '../../api/client';
 import { jsonBody } from '../../api/queries';
 import { AssetPreview } from './AssetPreview';
 import { useCommunityAssets } from './api';
-import { MapDocument, type TileLayer, fromDefinition, tileSize, toDefinition } from './mapModel';
-import { framePixels } from './render';
+import { firstFrame, paintMap } from './mapCanvas';
+import {
+  MapDocument,
+  type TileLayer,
+  fromDefinition,
+  isSideDoc,
+  tileSize,
+  toDefinition,
+} from './mapModel';
 import {
   Brush,
   Eraser,
@@ -47,14 +54,27 @@ type Tool = 'ground' | 'overlay' | 'fill' | 'object' | 'erase' | 'spawn';
 /** 팔레트 미리보기 크기 (가장 긴 변, px) */
 const PALETTE_BOX = 32;
 
-const TOOLS: { id: Tool; label: string; icon: ReactNode }[] = [
-  { id: 'ground', label: '바닥 칠하기', icon: <Brush aria-hidden /> },
-  { id: 'overlay', label: '장식 칠하기 (바닥 위에 겹침)', icon: <Flower2 aria-hidden /> },
-  { id: 'fill', label: '바닥 채우기', icon: <PaintBucket aria-hidden /> },
+const TOOLS: { id: Tool; label: string; side?: string; icon: ReactNode }[] = [
+  { id: 'ground', label: '바닥 칠하기', side: '땅·배경 칠하기', icon: <Brush aria-hidden /> },
+  {
+    id: 'overlay',
+    label: '장식 칠하기 (바닥 위에 겹침)',
+    side: '장식 칠하기 (캐릭터 앞에 겹침)',
+    icon: <Flower2 aria-hidden />,
+  },
+  { id: 'fill', label: '바닥 채우기', side: '땅·배경 채우기', icon: <PaintBucket aria-hidden /> },
   { id: 'object', label: '오브젝트 놓기', icon: <TreePine aria-hidden /> },
-  { id: 'erase', label: '지우기 (오브젝트, 장식)', icon: <Eraser aria-hidden /> },
+  {
+    id: 'erase',
+    label: '지우기 (오브젝트, 장식)',
+    side: '지우기 (오브젝트, 장식, 땅)',
+    icon: <Eraser aria-hidden />,
+  },
   { id: 'spawn', label: '스폰 영역 (끌어서)', icon: <Flag aria-hidden /> },
 ];
+
+/** 횡스크롤 맵의 팔레트에서 앞에 보일 타일 (옆에서 본 타일) */
+const isSideTile = (ref: AssetRef) => ref.startsWith('builtin:side-');
 
 interface Entry {
   ref: AssetRef;
@@ -62,30 +82,10 @@ interface Entry {
   community: boolean;
 }
 
-const firstFrames = new WeakMap<AssetManifest, HTMLCanvasElement>();
-
-/** 에셋 첫 프레임을 원래 크기 캔버스로 (맵 그리기용, 매니페스트마다 한 번 만든다) */
-function firstFrame(manifest: AssetManifest): HTMLCanvasElement {
-  const cached = firstFrames.get(manifest);
-  if (cached) return cached;
-  const frame = manifest.animations[DEFAULT_ANIMATION]?.frames[0] ?? 0;
-  const canvas = document.createElement('canvas');
-  canvas.width = manifest.width;
-  canvas.height = manifest.height;
-  canvas
-    .getContext('2d')!
-    .putImageData(
-      new ImageData(framePixels(manifest, frame), manifest.width, manifest.height),
-      0,
-      0,
-    );
-  firstFrames.set(manifest, canvas);
-  return canvas;
-}
-
 /**
  * 맵 에디터: 커뮤니티 분수 광장의 타일(바닥·장식)을 칠하고 오브젝트를 놓는다.
  * 저장하면 광장을 보던 사람들의 화면이 새 맵으로 바뀌고 모두 스폰 영역에서 다시 시작한다.
+ * 횡스크롤 광장이면 옆에서 본 맵이다: 빈칸은 하늘이고, 지나갈 수 없는 타일로 땅을, 발판 타일로 발판을 만든다.
  */
 export function MapEditor({
   communityId,
@@ -147,10 +147,11 @@ function MapEditorBody({
   const [editor] = useState(
     () => new MapDocument(fromDefinition(initial.definition), () => setVersion((v) => v + 1)),
   );
+  const side = isSideDoc(editor.doc);
   const [custom, setCustom] = useState(initial.custom);
   const [tool, setTool] = useState<Tool>('ground');
   const [tab, setTab] = useState<'tile' | 'object'>('tile');
-  const [tile, setTile] = useState<AssetRef>('builtin:tt-0');
+  const [tile, setTile] = useState<AssetRef>(side ? 'builtin:side-grass' : 'builtin:tt-0');
   const [object, setObject] = useState<AssetRef>('builtin:bench');
   const [zoom, setZoom] = useState(2);
   const [showBlocked, setShowBlocked] = useState(true);
@@ -164,10 +165,6 @@ function MapEditorBody({
   const manifests = useMemo(() => new Map(entries.map((e) => [e.ref, e.manifest])), [entries]);
   const assetOf = useCallback((ref: AssetRef) => manifests.get(ref), [manifests]);
   const sizeOf = useCallback((ref: AssetRef) => tileSize(manifests.get(ref)), [manifests]);
-  const frameOf = (ref: AssetRef) => {
-    const manifest = manifests.get(ref);
-    return manifest ? firstFrame(manifest) : undefined;
-  };
 
   const doc = editor.doc;
   const definition = toDefinition(doc);
@@ -207,35 +204,20 @@ function MapEditorBody({
     if (!canvas) return;
     const ctx = canvas.getContext('2d')!;
     const T = TILE_SIZE * zoom;
-    ctx.imageSmoothingEnabled = false;
-    ctx.fillStyle = '#11161d';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    for (const layer of ['ground', 'overlay'] as const) {
-      doc[layer].forEach((v, i) => {
-        if (!v) return;
-        const image = frameOf(doc.tiles[v - 1]!);
-        if (image) ctx.drawImage(image, (i % doc.width) * T, Math.floor(i / doc.width) * T, T, T);
-      });
-    }
-    const objects = [...doc.objects].sort((a, b) => a.y - b.y);
-    for (const o of objects) {
-      const manifest = manifests.get(o.asset);
-      const image = frameOf(o.asset);
-      if (!manifest || !image) continue;
-      const bottom = (o.y + 1) * T;
-      ctx.drawImage(
-        image,
-        o.x * T,
-        bottom - manifest.height * zoom,
-        manifest.width * zoom,
-        manifest.height * zoom,
-      );
-    }
-    // 막힌 칸
+    paintMap(ctx, doc, zoom, assetOf);
+    // 막힌 칸 (빨강), 횡스크롤의 발판 (노랑 윗변: 위에서만 딛는다)
     if (showBlocked) {
-      ctx.fillStyle = 'rgba(232, 69, 55, 0.28)';
       layout.blocked.forEach((b, i) => {
-        if (b) ctx.fillRect((i % doc.width) * T, Math.floor(i / doc.width) * T, T, T);
+        if (!b) return;
+        const x = (i % doc.width) * T;
+        const y = Math.floor(i / doc.width) * T;
+        if (b === Cell.Platform) {
+          ctx.fillStyle = 'rgba(253, 190, 83, 0.6)';
+          ctx.fillRect(x, y, T, Math.max(2, T / 4));
+        } else {
+          ctx.fillStyle = 'rgba(232, 69, 55, 0.28)';
+          ctx.fillRect(x, y, T, T);
+        }
       });
     }
     // 격자
@@ -262,12 +244,11 @@ function MapEditorBody({
     if (hover && !spawnDrag) {
       if (tool === 'object') {
         const manifest = manifests.get(object);
-        const image = frameOf(object);
-        if (manifest && image) {
+        if (manifest) {
           ctx.globalAlpha = 0.6;
           const bottom = (hover.y + 1) * T;
           ctx.drawImage(
-            image,
+            firstFrame(manifest),
             hover.x * T,
             bottom - manifest.height * zoom,
             manifest.width * zoom,
@@ -379,7 +360,10 @@ function MapEditorBody({
     );
   };
 
-  const list = entries.filter((e) => e.manifest.kind === tab);
+  // 횡스크롤이면 옆에서 본 타일을 앞에 둔다.
+  const list = entries
+    .filter((e) => e.manifest.kind === tab)
+    .sort((a, b) => (side ? Number(isSideTile(b.ref)) - Number(isSideTile(a.ref)) : 0));
   const selected = tab === 'tile' ? tile : object;
 
   return (
@@ -449,8 +433,8 @@ function MapEditorBody({
               type="button"
               className="pixel-editor__tool"
               aria-pressed={tool === t.id}
-              aria-label={t.label}
-              title={t.label}
+              aria-label={(side && t.side) || t.label}
+              title={(side && t.side) || t.label}
               onClick={() => {
                 setTool(t.id);
                 if (t.id === 'object') setTab('object');
@@ -548,8 +532,12 @@ function MapEditorBody({
           </div>
           <p className="form__hint">
             {tab === 'tile'
-              ? '바닥은 땅, 장식은 바닥 위에 겹쳐 그립니다. 빨간 칸은 지나갈 수 없습니다.'
-              : '누른 칸이 오브젝트 그림의 왼쪽 아래가 됩니다.'}
+              ? side
+                ? '옆에서 본 맵입니다. 빈칸은 하늘이고, 빨간 칸(지나갈 수 없는 타일)은 딛고 서는 땅, 노란 선(발판)은 위에서만 딛습니다. 장식은 캐릭터 앞에 겹쳐 그립니다.'
+                : '바닥은 땅, 장식은 바닥 위에 겹쳐 그립니다. 빨간 칸은 지나갈 수 없습니다.'
+              : side
+                ? '누른 칸이 오브젝트 그림의 왼쪽 아래가 됩니다. 횡스크롤에서 오브젝트는 배경이라 막지 않습니다.'
+                : '누른 칸이 오브젝트 그림의 왼쪽 아래가 됩니다.'}
           </p>
           <ul className="map-editor__palette">
             {list.map((entry) => (

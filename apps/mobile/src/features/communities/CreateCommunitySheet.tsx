@@ -1,9 +1,9 @@
 import { parseInviteCode, queryKeys } from '@metacode/client';
-import type { CommunitySummary } from '@metacode/shared';
+import { type CommunitySummary, PlazaStyle } from '@metacode/shared';
 import { useQueryClient } from '@tanstack/react-query';
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { Text } from 'react-native';
+import { Text, View } from 'react-native';
 import { ApiError, apiFetch, apiSend } from '../../api/client';
 import { useUiStore } from '../../stores/ui';
 import { Sheet } from '../../ui/Sheet';
@@ -16,6 +16,7 @@ export function CreateCommunitySheet({ visible, onClose }: { visible: boolean; o
   const queryClient = useQueryClient();
   const [mode, setMode] = useState<'create' | 'join'>('create');
   const [name, setName] = useState('');
+  const [plazaStyle, setPlazaStyle] = useState<PlazaStyle>(PlazaStyle.TopDown);
   const [invite, setInvite] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -72,7 +73,7 @@ export function CreateCommunitySheet({ visible, onClose }: { visible: boolean; o
           autoFocus
           returnKeyType="done"
           onSubmitEditing={() =>
-            name.trim() && void run(() => apiSend('/communities', 'POST', { name }))
+            name.trim() && void run(() => apiSend('/communities', 'POST', { name, plazaStyle }))
           }
         />
       ) : (
@@ -88,6 +89,25 @@ export function CreateCommunitySheet({ visible, onClose }: { visible: boolean; o
           onSubmitEditing={join}
         />
       )}
+      {mode === 'create' && (
+        // 웹 PlazaStylePicker와 같은 선택 (탑다운 / 횡스크롤)
+        <View style={{ gap: 6 }}>
+          <Text style={{ color: theme.muted, fontSize: 13 }}>광장 방식</Text>
+          <Segmented<PlazaStyle>
+            value={plazaStyle}
+            onChange={setPlazaStyle}
+            options={[
+              { value: PlazaStyle.TopDown, label: '탑다운' },
+              { value: PlazaStyle.SideScroll, label: '횡스크롤' },
+            ]}
+          />
+          <Text style={{ color: theme.muted, fontSize: 12 }}>
+            {plazaStyle === PlazaStyle.SideScroll
+              ? '옆에서 보는 광장. 좌우로 걷고 점프해서 발판에 오릅니다.'
+              : '위에서 내려다보는 광장. 방향키로 네 방향을 걷습니다.'}
+          </Text>
+        </View>
+      )}
       {error && <Text style={{ color: theme.danger }}>{error}</Text>}
       {mode === 'create' ? (
         <Button
@@ -95,7 +115,7 @@ export function CreateCommunitySheet({ visible, onClose }: { visible: boolean; o
           variant="primary"
           busy={busy}
           disabled={!name.trim()}
-          onPress={() => void run(() => apiSend('/communities', 'POST', { name }))}
+          onPress={() => void run(() => apiSend('/communities', 'POST', { name, plazaStyle }))}
         />
       ) : (
         <Button

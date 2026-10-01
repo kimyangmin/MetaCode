@@ -30,6 +30,28 @@ export const plazaMoveSchema = z.object({
 
 export type PlazaMoveRequest = z.infer<typeof plazaMoveSchema>;
 
+/**
+ * 캐릭터 모션을 틀거나(motion = 애니메이션 이름) 멈춘다(null). loop면 움직이거나 멈출 때까지 반복하고,
+ * 나중에 광장을 연 사람에게도 보인다 (스냅숏의 motion). 어떤 모션이 있는지는 각자 받은 캐릭터 에셋으로 안다.
+ */
+export const plazaSetMotionSchema = z.object({
+  plazaId: plazaIdSchema,
+  motion: z
+    .string()
+    .regex(/^[a-z][a-z0-9-]{0,31}$/)
+    .nullable(),
+  loop: z.boolean(),
+});
+
+export type PlazaSetMotionRequest = z.input<typeof plazaSetMotionSchema>;
+
+export interface PlazaMotionChanged {
+  plazaId: PlazaId;
+  userId: string;
+  motion: string | null;
+  loop: boolean;
+}
+
 /** 광장에 있는 사람 한 명 (그 광장의 온라인 멤버) */
 export interface PlazaOccupant {
   user: UserProfile;
@@ -37,6 +59,8 @@ export interface PlazaOccupant {
   y: number;
   dir: Direction;
   moving: boolean;
+  /** 반복 중인 캐릭터 모션 (없으면 null) */
+  motion: string | null;
 }
 
 /** 광장을 열 때 받는 전체 상태 */

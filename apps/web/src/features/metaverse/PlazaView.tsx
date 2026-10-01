@@ -4,15 +4,20 @@ import {
   type PlazaCorrection,
   type PlazaId,
   type PlazaMemberChange,
+  type PlazaMotionChanged,
   type PlazaMoved,
+  PlazaStyle,
   SocketEvent,
   type UserProfile,
+  characterMotions,
   isBuiltinRef,
+  mapStyle,
   messagePresentation,
 } from '@metacode/shared';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import Phaser from 'phaser';
 import { type KeyboardEvent, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { Repeat2, Sparkles } from 'lucide-react';
 import { apiFetch } from '../../api/client';
 import { useRealtime } from '../../realtime/RealtimeProvider';
 import {
@@ -29,6 +34,48 @@ import { PlazaScene } from './PlazaScene';
 import { type VoiceLabel, plazaVoiceStates } from './plazaVoice';
 
 const ARROW_KEYS = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
+/** 횡스크롤은 Space로도 뛴다 */
+const SIDE_KEYS = new Set([...ARROW_KEYS, ' ']);
+
+/** Ctrl +/−로 바꾼 배율 단계 (광장을 다시 열어도 그대로) */
+const ZOOM_KEY = 'metacode:plaza-zoom';
+/** 배율을 바꾸면 잠깐 보이는 표시 */
+const ZOOM_TOAST_MS = 1200;
+/** 트랙패드를 모아 벌리기(Ctrl+휠)는 조금씩 여러 번 오므로 이만큼 모이면 한 단계 */
+const WHEEL_STEP = 60;
+
+function readZoomOffset(): number {
+  try {
+    return Number(localStorage.getItem(ZOOM_KEY)) || 0;
+  } catch {
+    return 0;
+  }
+}
+
+function saveZoomOffset(offset: number): void {
+  try {
+    localStorage.setItem(ZOOM_KEY, String(offset));
+  } catch {
+    // 기억하지 못해도 이번에는 바뀐 배율로 보인다.
+  }
+}
+
+/** Ctrl(맥은 Cmd) + / − (숫자 자판의 +, −도). 자판 배열과 상관없이 자리(code)로도 본다 */
+function zoomStepOf(e: KeyboardEvent): 1 | -1 | null {
+  if (!(e.ctrlKey || e.metaKey) || e.altKey) return null;
+  if (e.key === '+' || e.key === '=' || e.code === 'Equal' || e.code === 'NumpadAdd') return 1;
+  if (e.key === '-' || e.key === '_' || e.code === 'Minus' || e.code === 'NumpadSubtract') {
+    return -1;
+  }
+  return null;
+}
+
+/** 숫자 키 (모션). 한글 자판에서도 되도록 자리(code)로 본다 */
+function digitOf(e: KeyboardEvent): string | null {
+  if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return null;
+  const match = /^(?:Digit|Numpad)(\d)$/.exec(e.code);
+  return match ? match[1]! : /^\d$/.test(e.key) ? e.key : null;
+}
 
 export interface PlazaViewProps {
   plazaId: PlazaId;
@@ -55,6 +102,11 @@ export default function PlazaView({ plazaId, me, channelLabels, voiceLabels }: P
   const [scene, setScene] = useState<PlazaScene | null>(null);
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [focused, setFocused] = useState(false);
+  const [style, setStyle] = useState<PlazaStyle>(PlazaStyle.TopDown);
+  const side = style === PlazaStyle.SideScroll;
+  const [zoomToast, setZoomToast] = useState<number | null>(null);
+  const [motionsOpen, setMotionsOpen] = useState(false);
+  const motions = useMyMotions(me);
 
   // 씬이 보내는 이동은 항상 최신 연결로 보낸다.
   const socketRef = useRef(socket);
@@ -74,6 +126,9 @@ export default function PlazaView({ plazaId, me, channelLabels, voiceLabels }: P
       overlay,
       nameOf: displayName,
       onMove: (state) => socketRef.current?.emit(SocketEvent.PlazaMove, { plazaId, ...state }),
+      onMotion: (motion, loop) =>
+        socketRef.current?.emit(SocketEvent.PlazaSetMotion, { plazaId, motion, loop }),
+      zoomOffset: readZoomOffset(),
     });
     const game = new Phaser.Game({
       type: Phaser.AUTO,
@@ -158,6 +213,7 @@ export default function PlazaView({ plazaId, me, channelLabels, voiceLabels }: P
           if (request !== latestWatch) return;
           scene.applySnapshot(ack.data);
           loadCharacters(ack.data.occupants.map((o) => o.user));
+          setStyle(mapStyle(ack.data.definition));
           setStatus('ready');
         });
       });
@@ -179,6 +235,9 @@ export default function PlazaView({ plazaId, me, channelLabels, voiceLabels }: P
     };
     const onCorrected = (correction: PlazaCorrection) => {
       if (correction.plazaId === plazaId) scene.corrected(correction);
+    };
+    const onMotion = (event: PlazaMotionChanged) => {
+      if (event.plazaId === plazaId) scene.setMotion(event.userId, event.motion, event.loop);
     };
     // 메시지 하나가 채팅 모드와 광장 모두에 보인다 (메타버스 전용 메시지는 없다).
     const onMessage = (message: MessageDto) => {
@@ -218,6 +277,7 @@ export default function PlazaView({ plazaId, me, channelLabels, voiceLabels }: P
     socket.on(SocketEvent.PlazaMoved, onMoved);
     socket.on(SocketEvent.PlazaMember, onMember);
     socket.on(SocketEvent.PlazaCorrected, onCorrected);
+    socket.on(SocketEvent.PlazaMotionChanged, onMotion);
     socket.on(SocketEvent.PlazaMapChanged, onMapChanged);
     socket.on(SocketEvent.MessageCreated, onMessage);
     socket.on(SocketEvent.MessageUpdated, onMessageUpdated);
@@ -229,6 +289,7 @@ export default function PlazaView({ plazaId, me, channelLabels, voiceLabels }: P
       socket.off(SocketEvent.PlazaMoved, onMoved);
       socket.off(SocketEvent.PlazaMember, onMember);
       socket.off(SocketEvent.PlazaCorrected, onCorrected);
+      socket.off(SocketEvent.PlazaMotionChanged, onMotion);
       socket.off(SocketEvent.PlazaMapChanged, onMapChanged);
       socket.off(SocketEvent.MessageCreated, onMessage);
       socket.off(SocketEvent.MessageUpdated, onMessageUpdated);
@@ -247,6 +308,41 @@ export default function PlazaView({ plazaId, me, channelLabels, voiceLabels }: P
     scene?.setVoice(plazaVoiceStates(calls, voiceLabelsRef.current, myCallId));
   }, [scene, calls, voiceKey, myCallId]);
 
+  // 배율 표시는 잠깐만 보인다.
+  useEffect(() => {
+    if (zoomToast === null) return;
+    const timer = setTimeout(() => setZoomToast(null), ZOOM_TOAST_MS);
+    return () => clearTimeout(timer);
+  }, [zoomToast]);
+
+  const zoom = (step: 1 | -1) => {
+    const result = scene?.zoomBy(step);
+    if (!result) return;
+    saveZoomOffset(result.offset);
+    setZoomToast(result.zoom);
+  };
+
+  // Ctrl+휠(트랙패드 모아 벌리기)도 배율을 바꾼다. 브라우저 확대를 막으려면 passive가 아니어야 해서 직접 건다.
+  const zoomRef = useRef(zoom);
+  useLayoutEffect(() => {
+    zoomRef.current = zoom;
+  });
+  useEffect(() => {
+    const host = hostRef.current;
+    if (!host) return;
+    let wheel = 0;
+    const onWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey && !e.metaKey) return;
+      e.preventDefault();
+      wheel += e.deltaY;
+      if (Math.abs(wheel) < WHEEL_STEP) return;
+      zoomRef.current(wheel < 0 ? 1 : -1);
+      wheel = 0;
+    };
+    host.addEventListener('wheel', onWheel, { passive: false });
+    return () => host.removeEventListener('wheel', onWheel);
+  }, []);
+
   // 창이 포커스를 잃으면 keyup을 못 받으므로 눌린 키를 비운다.
   useEffect(() => {
     if (!scene) return;
@@ -256,6 +352,19 @@ export default function PlazaView({ plazaId, me, channelLabels, voiceLabels }: P
   }, [scene]);
 
   const onKeyDown = (e: KeyboardEvent) => {
+    // Ctrl +/−: 광장 배율 (브라우저 확대 대신)
+    const step = zoomStepOf(e);
+    if (step) {
+      e.preventDefault();
+      zoom(step);
+      return;
+    }
+    // 숫자 키: 캐릭터 모션
+    const digit = digitOf(e);
+    if (digit && !e.repeat && scene?.playMotion(digit)) {
+      e.preventDefault();
+      return;
+    }
     // /는 채팅 입력창으로 (게임처럼 바로 말하기). 한글 자판에서도 되도록 자리(code)로도 본다.
     if (
       (e.key === '/' || e.code === 'Slash') &&
@@ -270,8 +379,10 @@ export default function PlazaView({ plazaId, me, channelLabels, voiceLabels }: P
       requestPanelFocus('chat', 'plaza');
       return;
     }
-    if (!ARROW_KEYS.has(e.key) || e.altKey || e.ctrlKey || e.metaKey) return;
+    if (!(side ? SIDE_KEYS : ARROW_KEYS).has(e.key) || e.altKey || e.ctrlKey || e.metaKey) return;
     e.preventDefault();
+    // 누르고 있어서 반복되는 keydown은 새로 누른 것이 아니다 (점프가 계속 이어지지 않게).
+    if (e.repeat) return;
     scene?.press(e.key);
   };
   const onKeyUp = (e: KeyboardEvent) => {
@@ -284,7 +395,11 @@ export default function PlazaView({ plazaId, me, channelLabels, voiceLabels }: P
       className="plaza"
       tabIndex={0}
       role="application"
-      aria-label="광장. 방향키로 움직이고, 가고 싶은 곳을 누르면 걸어갑니다."
+      aria-label={
+        side
+          ? '광장. 좌우 방향키로 걷고 위쪽 방향키나 스페이스로 뜁니다. 아래쪽 방향키로 발판에서 내려갑니다.'
+          : '광장. 방향키로 움직이고, 가고 싶은 곳을 누르면 걸어갑니다.'
+      }
       data-focused={focused}
       onKeyDown={onKeyDown}
       onKeyUp={onKeyUp}
@@ -308,7 +423,65 @@ export default function PlazaView({ plazaId, me, channelLabels, voiceLabels }: P
           광장을 누르면 방향키로 움직일 수 있어요 · Shift+Tab으로 오가기
         </p>
       )}
-      {status === 'ready' && focused && <p className="plaza__hint">/ 를 누르면 바로 채팅</p>}
+      {status === 'ready' && focused && (
+        <p className="plaza__hint">
+          {side ? '←→ 걷기 · Space 점프 · ↓ 내려가기 · ' : ''}
+          {motions.length > 0 ? '숫자 키 모션 · ' : ''}/ 를 누르면 바로 채팅
+        </p>
+      )}
+      {zoomToast !== null && (
+        <p className="plaza__zoom" role="status">
+          ×{zoomToast}
+        </p>
+      )}
+      {status === 'ready' && motions.length > 0 && (
+        <div className="plaza-motions" onPointerDown={(e) => e.stopPropagation()}>
+          {motionsOpen && (
+            <ul className="plaza-motions__list" aria-label="모션">
+              {motions.map((motion) => (
+                <li key={motion.name}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      scene?.playMotion(motion.key);
+                      hostRef.current?.focus({ preventScroll: true });
+                    }}
+                  >
+                    <kbd>{motion.key}</kbd>
+                    <span>{motion.label}</span>
+                    {motion.loop && <Repeat2 role="img" aria-label="반복" />}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          <button
+            type="button"
+            className="plaza-motions__toggle"
+            aria-expanded={motionsOpen}
+            aria-label="모션"
+            title="모션 (숫자 키)"
+            onClick={() => setMotionsOpen((v) => !v)}
+          >
+            <Sparkles aria-hidden />
+          </button>
+        </div>
+      )}
     </div>
   );
+}
+
+/**
+ * 내 캐릭터의 모션 (숫자 키). 직접 그린 캐릭터에 추가한 것만 있고, 광장이 받아 둔 것과 같은 캐시로 받는다.
+ */
+function useMyMotions(me: UserProfile) {
+  const character = me.character;
+  const custom = !!character && !isBuiltinRef(character.asset);
+  const asset = useQuery({
+    queryKey: ['assets', 'one', character?.asset ?? '', character?.version ?? ''],
+    queryFn: () => apiFetch<AssetDto>(`/assets/${character!.asset}`),
+    enabled: custom,
+    staleTime: Infinity,
+  });
+  return custom && asset.data ? characterMotions(asset.data.manifest) : [];
 }
