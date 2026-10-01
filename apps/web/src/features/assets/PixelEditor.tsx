@@ -808,6 +808,17 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
         setStatus({ kind: 'error', text: result.error });
         return;
       }
+      // 지금 있는 프레임과 합쳐 한도를 넘으면 가져오지 않는다 (예전엔 가져온 뒤 저장할 때에야 막혔다)
+      const total = editor.frameCountIf((probe) =>
+        probe.importFrames(ref, result.frames, result.palette),
+      );
+      if (total > FRAME_LIMIT[doc.kind]) {
+        setStatus({
+          kind: 'error',
+          text: `가져오면 프레임이 ${total}장이 되어 한도(${FRAME_LIMIT[doc.kind]}장)를 넘습니다.`,
+        });
+        return;
+      }
       editor.importFrames(ref, result.frames, result.palette);
       setStatus({ kind: 'ok', text: `${result.frames.length}프레임을 가져왔습니다.` });
     } catch {

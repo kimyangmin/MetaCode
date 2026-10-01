@@ -133,6 +133,42 @@ function idleFrame(doc: Pick<EditorDoc, 'animations' | 'style'>): Uint8Array | u
   return idle?.frames[0];
 }
 
+/** 캐릭터 해상도를 이 크기로 바꿀 수 있는지 (16~512px 정수이고 지금과 다를 때) */
+function canResizeCharacter(doc: EditorDoc, width: number, height: number): boolean {
+  const ok = (v: number) =>
+    Number.isInteger(v) && v >= CHARACTER_MIN_SIZE && v <= CHARACTER_MAX_SIZE;
+  return (
+    doc.kind === 'character' &&
+    ok(width) &&
+    ok(height) &&
+    (width !== doc.width || height !== doc.height)
+  );
+}
+
+/** 캐릭터 해상도를 그 자리에서 바꾼다 (edit() 안에서 부른다). 그림은 발밑 가운데를 기준으로 남긴다 */
+function resizeCharacterDoc(doc: EditorDoc, width: number, height: number): void {
+  const old = { width: doc.width, height: doc.height };
+  const dx = Math.floor((width - old.width) / 2);
+  const dy = height - old.height;
+  for (const animation of doc.animations) {
+    animation.frames = animation.frames.map((pixels) => {
+      const next = blank(width, height);
+      for (let y = 0; y < old.height; y++) {
+        const ny = y + dy;
+        if (ny < 0 || ny >= height) continue;
+        for (let x = 0; x < old.width; x++) {
+          const nx = x + dx;
+          if (nx < 0 || nx >= width) continue;
+          next[ny * width + nx] = pixels[y * old.width + x]!;
+        }
+      }
+      return next;
+    });
+  }
+  doc.width = width;
+  doc.height = height;
+}
+
 /** 모션(애니메이션)과 애니메이터 파라미터가 쓰고 있는 숫자 키 */
 function usedMotionKeys(doc: Pick<EditorDoc, 'animations' | 'animator'>): Set<MotionKey> {
   const used = new Set<MotionKey>();
@@ -702,6 +738,8 @@ export class PixelDocument {
    * 프레임을 바꾸고, motion이면 남은 숫자 키로 새 모션을 만들고, animation이면 숫자 키 없는 새 애니메이션을
    * 만든다 (애니메이터의 상태가 틀 것: 이름은 파일 이름에서, 겹치면 -2, -3 …). mirror면 왼쪽·오른쪽
    * 애니메이션의 반대쪽도 좌우 반전한 그림으로 채운다. 채운 첫 애니메이션의 번호를 돌려준다 (없으면 null).
+   * size를 주면(캐릭터에 그림이 들어가게 해상도를 넓힐 때) 같은 되돌리기 단계에서 먼저 해상도를 바꾼다
+   * (예전엔 해상도와 가져오기가 따로라 되돌리기를 두 번 눌러야 했다). frames는 그 크기로 만든 것이다.
    */
   importAnimations(
     entries: {
@@ -712,9 +750,12 @@ export class PixelDocument {
     }[],
     palette: string[],
     mirrorOf: (pixels: Uint8Array) => Uint8Array,
+    size?: { width: number; height: number },
   ): number | null {
     let first: number | null = null;
+    const resize = size && canResizeCharacter(this.doc, size.width, size.height) ? size : null;
     this.edit((doc) => {
+      if (resize) resizeCharacterDoc(doc, resize.width, resize.height);
       doc.palette = palette;
       for (const entry of entries) {
         let index: number;
@@ -774,6 +815,16 @@ export class PixelDocument {
     this.edit((doc) => {
       doc.animations[animation]!.frameMs = frameMs;
     });
+  }
+
+  /**
+   * change를 문서 사본에 해 보고 저장할 때의 프레임 수를 센다 (이 문서는 그대로). 가져오기 전에 프레임 한도를
+   * 넘는지 미리 본다 (예전엔 가져온 뒤 저장할 때에야 막혔다).
+   */
+  frameCountIf(change: (probe: PixelDocument) => void): number {
+    const probe = new PixelDocument(snapshot(this.doc));
+    change(probe);
+    return probe.frameCount();
   }
 
   /**
@@ -968,32 +1019,8 @@ export class PixelDocument {
    * 확대·축소해서 다시 칠하지 않으므로, 넓히면 그림이 아래 가운데에 그대로 남고 좁히면 가장자리가 잘린다.
    */
   resizeCharacter(width: number, height: number): void {
-    const old = this.doc;
-    const ok = (v: number) =>
-      Number.isInteger(v) && v >= CHARACTER_MIN_SIZE && v <= CHARACTER_MAX_SIZE;
-    if (old.kind !== 'character' || !ok(width) || !ok(height)) return;
-    if (width === old.width && height === old.height) return;
-    const dx = Math.floor((width - old.width) / 2);
-    const dy = height - old.height;
-    this.edit((doc) => {
-      for (const animation of doc.animations) {
-        animation.frames = animation.frames.map((pixels) => {
-          const next = blank(width, height);
-          for (let y = 0; y < old.height; y++) {
-            const ny = y + dy;
-            if (ny < 0 || ny >= height) continue;
-            for (let x = 0; x < old.width; x++) {
-              const nx = x + dx;
-              if (nx < 0 || nx >= width) continue;
-              next[ny * width + nx] = pixels[y * old.width + x]!;
-            }
-          }
-          return next;
-        });
-      }
-      doc.width = width;
-      doc.height = height;
-    });
+    if (!canResizeCharacter(this.doc, width, height)) return;
+    this.edit((doc) => resizeCharacterDoc(doc, width, height));
   }
 
   /**

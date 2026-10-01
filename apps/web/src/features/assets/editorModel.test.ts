@@ -1,4 +1,5 @@
 import {
+  FRAME_LIMIT,
   PALETTE_MAX_COLORS,
   PlazaStyle,
   assetManifestSchema,
@@ -628,5 +629,38 @@ describe('모션 키', () => {
     });
     const motion = doc.doc.animations[doc.addMotion()!]!;
     expect(motion.frames[0]).toEqual(idleRight);
+  });
+});
+
+describe('가져오기와 프레임 한도', () => {
+  it('해상도를 넓히며 가져오면 되돌리기 한 번에 해상도와 그림이 함께 돌아간다', () => {
+    const doc = new PixelDocument(newDoc('character', '새'));
+    const frame = new Uint8Array(32 * 40);
+    frame[32 * 40 - 1] = 1;
+    const at = doc.importAnimations(
+      [{ target: 0, frames: [frame], frameMs: 100, mirror: false }],
+      doc.doc.palette,
+      (p) => p,
+      { width: 32, height: 40 },
+    );
+    expect(at).toBe(0);
+    expect([doc.doc.width, doc.doc.height]).toEqual([32, 40]);
+    expect(doc.doc.animations[0]!.frames[0]).toEqual(frame);
+    doc.undo();
+    expect([doc.doc.width, doc.doc.height]).toEqual([16, 32]);
+    expect(doc.canUndo).toBe(false);
+  });
+
+  it('가져오기 전에 사본으로 프레임 수를 세어 보고, 문서는 바꾸지 않는다', () => {
+    const doc = new PixelDocument(newDoc('tile', '타일'));
+    const frames = Array.from({ length: 20 }, (_, i) => {
+      const f = new Uint8Array(256);
+      f[i] = 1;
+      return f;
+    });
+    const total = doc.frameCountIf((probe) => probe.importFrames(at, frames, doc.doc.palette));
+    expect(total).toBeGreaterThan(FRAME_LIMIT.tile);
+    expect(doc.doc.animations[0]!.frames).toHaveLength(1);
+    expect(doc.canUndo).toBe(false);
   });
 });

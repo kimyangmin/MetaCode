@@ -186,11 +186,15 @@ function AnimatorGraph({
     const minY = Math.min(...animator.states.map((s) => s.y));
     return { x: 260 - minX, y: 80 - minY };
   });
-  /** Any State 상자 자리 (저장하지 않는다) */
-  const [anyAt, setAnyAt] = useState(() => ({
-    x: Math.min(...animator.states.map((s) => s.x)) - 220,
-    y: Math.min(...animator.states.map((s) => s.y)),
+  /**
+   * Any State 상자 자리: 애니메이터에 저장한 자리, 없으면(예전에 만든 그래프) 처음 연 때의 상태들 왼쪽.
+   * 끌면 애니메이터에 저장한다 (예전엔 저장하지 않아 다시 열면 늘 처음 자리로 돌아갔다).
+   */
+  const [fallbackAny] = useState(() => ({
+    x: snap(Math.min(...animator.states.map((s) => s.x)) - 220),
+    y: snap(Math.min(...animator.states.map((s) => s.y))),
   }));
+  const anyAt = animator.anyState ?? fallbackAny;
   const drag = useRef<
     | {
         kind: 'state';
@@ -200,7 +204,12 @@ function AnimatorGraph({
         /** 끌기 한 번 = 되돌리기 한 단계 (같은 상태를 다시 끌면 따로 되돌린다) */
         id: number;
       }
-    | { kind: 'any'; start: { x: number; y: number }; from: { x: number; y: number } }
+    | {
+        kind: 'any';
+        start: { x: number; y: number };
+        from: { x: number; y: number };
+        id: number;
+      }
     | { kind: 'pan'; start: { x: number; y: number }; from: { x: number; y: number } }
     | null
   >(null);
@@ -330,7 +339,12 @@ function AnimatorGraph({
     const at = nodeAt(name);
     drag.current =
       name === ANY_STATE
-        ? { kind: 'any', start: { x: e.clientX, y: e.clientY }, from: { ...at } }
+        ? {
+            kind: 'any',
+            start: { x: e.clientX, y: e.clientY },
+            from: { ...at },
+            id: ++dragSeq.current,
+          }
         : {
             kind: 'state',
             name,
@@ -360,7 +374,11 @@ function AnimatorGraph({
     if (current.kind === 'pan') {
       setOffset({ x: current.from.x + dx, y: current.from.y + dy });
     } else if (current.kind === 'any') {
-      setAnyAt({ x: snap(current.from.x + dx), y: snap(current.from.y + dy) });
+      const x = snap(current.from.x + dx);
+      const y = snap(current.from.y + dy);
+      if (x !== anyAt.x || y !== anyAt.y) {
+        commit({ ...animator, anyState: { x, y } }, `move:${ANY_STATE}:${current.id}`);
+      }
     } else {
       const x = snap(current.from.x + dx);
       const y = snap(current.from.y + dy);

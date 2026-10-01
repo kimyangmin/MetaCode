@@ -5,6 +5,7 @@ import {
   TRIGGER_HOLD_MS,
   animatorAnimationChoices,
   animatorProblems,
+  animatorSchema,
   defaultAnimator,
   fireTrigger,
   setAnimatorBool,
@@ -137,5 +138,55 @@ describe('애니메이터 재생', () => {
     // 한 바퀴가 0ms인 애니메이션이라도 멈춘다
     stepAnimator(custom, rt, 10, () => 0);
     expect(['idle', 'dance']).toContain(rt.state);
+  });
+
+  it('"끝나면 넘어가기" 전이가 기다리는 트리거는 애니메이션이 끝날 때까지 남긴다', () => {
+    const custom: Animator = {
+      ...animator,
+      states: [...animator.states, { name: 'wave', animation: 'dance', x: 0, y: 0 }],
+      parameters: [{ name: 'hello', type: 'trigger' }],
+      transitions: [
+        { from: 'idle', to: 'wave', conditions: [{ param: 'hello' }], exitTime: true },
+        { from: 'wave', to: 'idle', conditions: [], exitTime: true },
+      ],
+    };
+    // 대기 한 바퀴가 2초: 처음(0초)에 당긴 트리거가 2초 뒤 대기가 끝날 때 쓰인다
+    const long = () => 2000;
+    const rt = startAnimator(custom, 0);
+    fireTrigger(rt, 'hello', 0);
+    stepAnimator(custom, rt, 1000, long);
+    expect(rt.state).toBe('idle');
+    expect(rt.triggers.has('hello')).toBe(true);
+    stepAnimator(custom, rt, 2000, long);
+    expect(rt.state).toBe('wave');
+    // 기다리는 전이가 없는 트리거는 예전처럼 잠깐 뒤에 버린다
+    fireTrigger(rt, 'land', 2000);
+    stepAnimator(custom, rt, 2000 + TRIGGER_HOLD_MS + 1, long);
+    expect(rt.triggers.has('land')).toBe(false);
+    // 애니메이션이 끝나고도 다른 조건이 맞지 않아 넘어가지 않으면, 끝난 뒤 잠깐 지나 버린다
+    const blocked: Animator = {
+      ...custom,
+      transitions: [
+        {
+          from: 'idle',
+          to: 'wave',
+          conditions: [{ param: 'hello' }, { param: 'moving', value: true }],
+          exitTime: true,
+        },
+      ],
+    };
+    const rt2 = startAnimator(blocked, 0);
+    fireTrigger(rt2, 'hello', 0);
+    stepAnimator(blocked, rt2, 2000 + TRIGGER_HOLD_MS, long);
+    expect(rt2.triggers.has('hello')).toBe(true);
+    stepAnimator(blocked, rt2, 2000 + TRIGGER_HOLD_MS + 1, long);
+    expect(rt2.triggers.has('hello')).toBe(false);
+  });
+
+  it('Any State 자리를 저장할 수 있다 (없어도 된다)', () => {
+    expect(animatorSchema.safeParse({ ...animator, anyState: { x: -224, y: 8 } }).success).toBe(
+      true,
+    );
+    expect(animatorSchema.safeParse(animator).success).toBe(true);
   });
 });
