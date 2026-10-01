@@ -1,6 +1,6 @@
 import type { CommunitySummary, InviteInfo } from '@metacode/shared';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useState } from 'react';
+import { type CSSProperties, useEffect, useRef, useState } from 'react';
 import { Navigate, useNavigate, useParams } from 'react-router';
 import { ApiError, apiFetch } from './api/client';
 import { queryKeys } from './api/queries';
@@ -18,6 +18,7 @@ import { FriendsPanel } from './features/friends/FriendsPanel';
 import { DmSidebar } from './features/dms/DmSidebar';
 import { PlazaPanel } from './features/metaverse/PlazaPanel';
 import { CallButton } from './features/voice/CallButton';
+import { MembersResizer } from './layout/MembersResizer';
 import { SplitView } from './layout/SplitView';
 import { useUiStore } from './stores/ui';
 import { dmTitle } from '@metacode/client';
@@ -45,6 +46,8 @@ export function CommunityPage() {
   // 좁은 화면에서는 멤버 목록을 자리에 두지 않고 서랍으로 겹쳐 띄운다 (처음엔 닫힘).
   const narrow = useMediaQuery(NARROW_QUERY);
   const membersOpen = narrow ? membersDrawerOpen : !membersHidden;
+  const membersWidth = useUiStore((s) => s.membersWidth);
+  const membersSlot = useRef<HTMLDivElement>(null);
 
   if (!communities.data) return <Loading />;
   // 나갔거나 삭제된 커뮤니티
@@ -105,7 +108,14 @@ export function CommunityPage() {
         )}
       />
       {/* 숨겨도 내리지 않고 폭을 줄여 밀어 넣는다 (여닫는 애니메이션) */}
-      <div className="members-slot" data-open={membersOpen} inert={!membersOpen}>
+      <div
+        ref={membersSlot}
+        className="members-slot"
+        data-open={membersOpen}
+        inert={!membersOpen}
+        style={{ '--members-w': `${membersWidth}px` } as CSSProperties}
+      >
+        <MembersResizer slotRef={membersSlot} />
         <MemberList communityId={community.id} />
       </div>
     </>

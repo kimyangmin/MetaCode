@@ -5947,11 +5947,17 @@ a {
   animation: pop-out 0.16s ease-in forwards;
 }
 
-/* 멤버 목록: 폭을 줄이며 오른쪽으로 밀려 나간다 (닫혀도 그대로 두고 inert) */
+/*
+ * 멤버 목록: 폭을 줄이며 오른쪽으로 밀려 나간다 (닫혀도 그대로 두고 inert).
+ * 폭(--members-w)은 왼쪽 가장자리를 끌어 바꾼다 (layout/MembersResizer.tsx). 창이 좁아지면 가운데(채팅·광장)에
+ * 300px은 남도록 줄여 보여 준다 (100vw - 커뮤니티 막대 72 - 채널 목록 240 - 300, membersWidth.ts와 같게).
+ */
 .members-slot {
+  --members-shown: min(var(--members-w, 232px), max(180px, 100vw - 612px));
+  position: relative;
   display: flex;
   justify-content: flex-start;
-  width: 232px;
+  width: var(--members-shown);
   min-height: 0;
   overflow: hidden;
   transition:
@@ -5961,7 +5967,53 @@ a {
 
 .members-slot > .members {
   flex: none;
+  width: var(--members-shown);
   transition: transform 0.2s ease;
+}
+
+/* 끄는 동안은 손을 바로 따라오게 애니메이션을 끈다 */
+.members-slot[data-resizing],
+.members-slot[data-resizing] > .members {
+  transition: none;
+}
+
+/* 왼쪽 가장자리 끌개: 6px 폭, 올리거나 끄는 동안 가운데 2px 선이 보인다 */
+.members-resize {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 1;
+  width: 6px;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.members-resize::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 2px;
+  width: 2px;
+  background: transparent;
+  transition: background 0.15s ease;
+}
+
+.members-resize:hover::after,
+.members-resize:focus-visible::after,
+.members-slot[data-resizing] .members-resize::after {
+  background: var(--accent);
+}
+
+.members-resize:focus-visible {
+  outline: none;
+}
+
+:root[data-col-resizing],
+:root[data-col-resizing] * {
+  cursor: col-resize !important;
+  user-select: none !important;
 }
 
 .members-slot[data-open='false'] {
@@ -6164,6 +6216,11 @@ a {
   .members-slot[data-open='false'] > .members {
     width: 100%;
     transform: none;
+  }
+
+  /* 서랍은 폭을 바꾸지 않는다 */
+  .members-resize {
+    display: none;
   }
 }
 
