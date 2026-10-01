@@ -3,6 +3,7 @@ import { PlazaStyle } from '../domain/plaza.js';
 import { BUILTIN_ASSETS, builtinAsset } from './builtin.js';
 import {
   type AssetManifest,
+  PALETTE_MAX_COLORS,
   assetManifestSchema,
   assetRefSchema,
   characterAnimation,
@@ -82,6 +83,15 @@ describe('매니페스트 검증', () => {
     expect(problemsOf(tile({ frames: [encodePixels(new Uint8Array(256).fill(2))] }))).toContain(
       '1번 프레임에 팔레트에 없는 색이 있습니다.',
     );
+  });
+
+  it('팔레트는 255색까지 (픽셀 값 255 = 마지막 색)', () => {
+    const palette = (n: number) =>
+      Array.from({ length: n }, (_, i) => `#${i.toString(16).padStart(6, '0')}`);
+    const last = [encodePixels(new Uint8Array(256).fill(PALETTE_MAX_COLORS))];
+    expect(PALETTE_MAX_COLORS).toBe(255);
+    expect(problemsOf(tile({ palette: palette(255), frames: last }))).toEqual([]);
+    expect(problemsOf(tile({ palette: palette(256), frames: last }))).not.toEqual([]);
   });
 
   it('없는 프레임을 가리키는 애니메이션을 거절한다', () => {

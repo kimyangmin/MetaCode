@@ -2069,32 +2069,33 @@ function Playback({ editor, animation }: { editor: PixelDocument; animation: num
     let shown = '';
     const start = performance.now();
     const tick = (now: number) => {
+      // 그리다가 예외가 나도 재생이 멈추지 않게 다음 프레임을 먼저 건다.
+      raf = requestAnimationFrame(tick);
       const canvas = ref.current;
       const current = editor.doc.animations[animation];
+      // rAF의 now는 그 프레임이 시작한 시각이라, 화면이 바쁠 때(에디터를 막 열었을 때 등) start보다 이를 수
+      // 있다. 음수면 프레임 번호가 -1이 되어 없는 프레임을 그리다 예외로 재생이 멈췄고, 미리보기가 비었다.
       const index = current
-        ? Math.floor((now - start) / current.frameMs) % Math.max(1, current.frames.length)
+        ? Math.floor(Math.max(0, now - start) / current.frameMs) %
+          Math.max(1, current.frames.length)
         : 0;
-      // 프레임이나 그림이 바뀔 때만 다시 그린다.
-      const key = `${index}:${editor.version}`;
-      if (canvas && current && current.frames.length > 0 && key !== shown) {
+      const pixels = current?.frames[index];
+      if (!canvas || !pixels) return;
+      // 프레임이나 그림, 캔버스 크기(해상도를 바꾸면 캔버스가 지워짐)가 바뀔 때만 다시 그린다.
+      const key = `${index}:${editor.version}:${canvas.width}x${canvas.height}`;
+      if (key !== shown) {
         shown = key;
         const ctx = canvas.getContext('2d')!;
         ctx.imageSmoothingEnabled = false;
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         ctx.drawImage(
-          frameCanvas(
-            current.frames[index]!,
-            editor.doc.width,
-            editor.doc.height,
-            editor.doc.palette,
-          ),
+          frameCanvas(pixels, editor.doc.width, editor.doc.height, editor.doc.palette),
           0,
           0,
           canvas.width,
           canvas.height,
         );
       }
-      raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);

@@ -1,4 +1,5 @@
 import {
+  PALETTE_MAX_COLORS,
   PlazaStyle,
   assetManifestSchema,
   defaultAnimator,
@@ -166,11 +167,11 @@ describe('PNG 가져오기', () => {
   it('크기가 맞지 않으면 거절하고, 팔레트가 가득 차면 가까운 색을 쓴다', () => {
     expect(indexImage(new Uint8ClampedArray(12), 3, 1, 2, 1, [])).toHaveProperty('error');
     const full = Array.from(
-      { length: 64 },
-      (_, i) => `#${(i * 4).toString(16).padStart(2, '0')}0000`,
+      { length: PALETTE_MAX_COLORS },
+      (_, i) => `#${i.toString(16).padStart(2, '0')}0000`,
     );
     const result = indexImage(Uint8ClampedArray.from(pixel(9, 1, 1)), 1, 1, 1, 1, full);
-    expect('frames' in result && result.frames[0]![0]).toBe(3); // #080000
+    expect('frames' in result && result.frames[0]![0]).toBe(10); // #090000
   });
 });
 

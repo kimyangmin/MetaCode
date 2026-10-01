@@ -1082,7 +1082,8 @@ function AnimatorPreview({
       const source = clip ? owner.get(clip.animation) : undefined;
       const canvas = ref.current;
       if (canvas && source && source.frames.length > 0) {
-        const elapsed = now - rt.since;
+        // rAF의 now는 트리거를 당긴 시각(performance.now())보다 이를 수 있다 (음수면 프레임 번호가 -1)
+        const elapsed = Math.max(0, now - rt.since);
         const step = Math.floor(elapsed / source.frameMs);
         const index =
           state?.loop === false

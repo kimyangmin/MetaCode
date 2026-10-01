@@ -28,7 +28,7 @@ export type ImportResult = { frames: Uint8Array[]; palette: string[] } | { error
 /**
  * 가져온 그림(RGBA)을 팔레트 픽셀 프레임으로. 프레임 크기 그대로이거나, 같은 높이의 프레임을
  * 가로로 이어 붙인 시트여야 한다. 반투명(알파 128 미만)은 투명으로 본다.
- * 팔레트에 없는 색은 자리가 있으면 더하고, 64색이 넘으면 가장 가까운 색으로 바꾼다.
+ * 팔레트에 없는 색은 자리가 있으면 더하고, 255색이 넘으면 가장 가까운 색으로 바꾼다.
  */
 export function indexImage(
   rgba: Uint8ClampedArray,
@@ -104,7 +104,7 @@ type Rgb = [number, number, number];
 
 /**
  * 중간값 자르기(median cut): 색들을 count개 상자로 나누고 상자마다 (많이 쓴 만큼 무게를 둔) 평균색을 고른다.
- * GIF처럼 색이 많은 그림을 팔레트(64색) 안으로 줄일 때 쓴다.
+ * GIF처럼 색이 많은 그림을 팔레트(255색) 안으로 줄일 때 쓴다.
  */
 function medianCut(colors: { rgb: Rgb; weight: number }[], count: number): Rgb[] {
   if (colors.length <= count) return colors.map((c) => c.rgb);
@@ -150,7 +150,7 @@ function medianCut(colors: { rgb: Rgb; weight: number }[], count: number): Rgb[]
 }
 
 /**
- * 여러 장의 RGBA 그림을 같은 팔레트의 픽셀 프레임으로. 지금 팔레트의 색은 그대로 두고, 남은 자리(64색까지)에
+ * 여러 장의 RGBA 그림을 같은 팔레트의 픽셀 프레임으로. 지금 팔레트의 색은 그대로 두고, 남은 자리(255색까지)에
  * 새 색을 더한다. 새 색이 남은 자리보다 많으면 중간값 자르기로 줄이고, 모든 픽셀은 가장 가까운 색이 된다.
  * 반투명(알파 128 미만)은 투명이다.
  */

@@ -4,6 +4,7 @@ import {
   FRAME_MS_MAX,
   FRAME_MS_MIN,
   MOTION_KEYS,
+  PALETTE_MAX_COLORS,
 } from '@metacode/shared';
 import { useEffect, useMemo, useState } from 'react';
 import type { PixelDocument } from './editorModel';
@@ -242,7 +243,8 @@ export function GifImportDialog({
           </p>
         )}
         <p className="form__hint">
-          색은 지금 팔레트에 더하고, 64색이 넘으면 가까운 색으로 줄입니다. 그 애니메이션의 프레임은
+          색은 지금 팔레트에 더하고, {PALETTE_MAX_COLORS}색이 넘으면 가까운 색으로 줄입니다. 그
+          애니메이션의 프레임은
           {source} 장면으로 바뀝니다 (되돌리기로 돌아갈 수 있음). 장면마다 시간이 다르면 같은 장면을
           되풀이해 맞춥니다.
         </p>

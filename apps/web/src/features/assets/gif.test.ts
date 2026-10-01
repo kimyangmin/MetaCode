@@ -1,3 +1,4 @@
+import { PALETTE_MAX_COLORS } from '@metacode/shared';
 import { describe, expect, it } from 'vitest';
 import {
   decodeGif,
@@ -33,11 +34,15 @@ describe('GIF', () => {
   it('색이 많으면 남은 팔레트 자리만큼 줄이고, 원래 색은 그대로 쓴다', () => {
     const rgba = new Uint8ClampedArray(100 * 4);
     for (let i = 0; i < 100; i++) rgba.set([i * 2, 255 - i * 2, 7, 255], i * 4);
-    const base = Array.from({ length: 60 }, (_, i) => `#0000${i.toString(16).padStart(2, '0')}`);
+    // 남은 자리 4칸
+    const base = Array.from(
+      { length: PALETTE_MAX_COLORS - 4 },
+      (_, i) => `#0000${i.toString(16).padStart(2, '0')}`,
+    );
     const { frames, palette: next } = quantizeFrames([rgba], 10, 10, base);
-    expect(next).toHaveLength(64);
-    expect(next.slice(0, 60)).toEqual(base);
-    expect(frames[0]!.every((v) => v >= 1 && v <= 64)).toBe(true);
+    expect(next).toHaveLength(PALETTE_MAX_COLORS);
+    expect(next.slice(0, base.length)).toEqual(base);
+    expect(frames[0]!.every((v) => v >= 1 && v <= PALETTE_MAX_COLORS)).toBe(true);
   });
 
   it('장면 시간은 가운데 값을 10ms 단위로, 범위 안에서', () => {

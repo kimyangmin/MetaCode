@@ -99,7 +99,8 @@ export function isCharacterPlazaHeight(value: number): boolean {
 }
 /** 오브젝트는 가로·세로 1~4타일 */
 export const OBJECT_MAX_TILES = 4;
-export const PALETTE_MAX_COLORS = 64;
+/** 픽셀 값을 한 바이트에 담으므로(0 = 투명) 255색까지 */
+export const PALETTE_MAX_COLORS = 255;
 export const ASSET_NAME_MAX_LENGTH = 32;
 export const FRAME_LIMIT: Record<AssetKind, number> = { tile: 16, object: 8, character: 500 };
 /**
