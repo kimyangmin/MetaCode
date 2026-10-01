@@ -4708,7 +4708,22 @@ a {
 
 .character-settings__turn {
   display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
   gap: 8px;
+}
+
+.character-settings__pose {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  margin: 0;
+}
+
+.character-settings__pose figcaption {
+  color: #1b1e30;
+  font-size: 0.75rem;
+  font-weight: 700;
 }
 
 .character-settings__options {
@@ -4800,6 +4815,442 @@ a {
   .pixel-editor__frames {
     flex-wrap: wrap;
     gap: 8px;
+  }
+}
+
+/* 붓 굵기: + / 값 / − (도구 막대 안) */
+.pixel-editor__brush {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+}
+
+.pixel-editor__brush span,
+.pixel-editor__zoom {
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 머리글의 가져오기·내보내기 메뉴 */
+.pixel-editor__menu-wrap {
+  position: relative;
+}
+
+.pixel-editor__menu-wrap > .button .lucide {
+  width: 14px;
+  height: 14px;
+}
+
+.pixel-editor__menu {
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 20;
+  min-width: 260px;
+}
+
+.pixel-editor__menu button {
+  display: grid;
+  gap: 2px;
+  text-align: left;
+}
+
+.pixel-editor__menu small {
+  color: var(--muted);
+  font-size: 0.75rem;
+  white-space: normal;
+}
+
+/* ── 애니메이터 (features/assets/AnimatorEditor.tsx): 왼쪽 파라미터, 가운데 그래프, 오른쪽 설정·미리보기 ── */
+.animator-editor {
+  grid-row: 2 / 4;
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr) 300px;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
+}
+
+.animator-editor h2 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.animator-editor h3 {
+  margin: 0 0 8px;
+  font-size: 0.9rem;
+}
+
+.animator-editor h4 {
+  margin: 12px 0 6px;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.animator-editor--empty {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  place-items: center;
+  padding: 24px;
+}
+
+.animator-editor__intro {
+  display: grid;
+  gap: 12px;
+  max-width: 520px;
+}
+
+.animator-editor__intro p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.animator-editor__toolbar {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.animator-editor__spacer {
+  flex: 1;
+}
+
+.animator-editor__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.animator-editor .button .lucide,
+.animator-editor .icon-button .lucide {
+  width: 15px;
+  height: 15px;
+}
+
+.animator-editor input,
+.animator-editor select {
+  min-width: 0;
+  padding: 4px 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-input);
+  color: var(--fg);
+  font: inherit;
+  font-size: 0.85rem;
+}
+
+.animator-editor input[type='checkbox'] {
+  padding: 0;
+}
+
+.animator-editor input[aria-invalid] {
+  border-color: var(--danger);
+}
+
+.animator-editor__params,
+.animator-editor__inspector {
+  min-height: 0;
+  padding: 12px 14px;
+  overflow-y: auto;
+  font-size: 0.85rem;
+}
+
+.animator-editor__params {
+  border-right: 1px solid var(--border);
+}
+
+.animator-editor__inspector {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  border-left: 1px solid var(--border);
+}
+
+.animator-editor__param-list,
+.animator-editor__custom,
+.animator-editor__conditions,
+.animator-editor__transitions {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.animator-editor__param-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.animator-editor__param-list small {
+  color: var(--muted);
+}
+
+.animator-editor__custom {
+  margin-bottom: 8px;
+}
+
+.animator-editor__custom li {
+  display: grid;
+  gap: 4px;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.animator-editor__custom input {
+  flex: 1;
+}
+
+.animator-editor__type {
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  font-size: 0.7rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.animator-editor__type[data-type='bool'] {
+  background: color-mix(in srgb, var(--ok) 20%, transparent);
+}
+
+.animator-editor__problems {
+  margin-top: 12px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+  color: var(--danger);
+}
+
+.animator-editor__problems ul {
+  margin: 4px 0 0;
+  padding-left: 16px;
+}
+
+.animator-editor__conditions li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.animator-editor__transitions button {
+  display: grid;
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.animator-editor__transitions button:hover {
+  background: var(--bg-hover);
+}
+
+.animator-editor__transitions small {
+  color: var(--muted);
+}
+
+/* 그래프 */
+.animator-editor__graph {
+  position: relative;
+  min-height: 0;
+  background-color: var(--bg-sidebar);
+  background-image: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--fg) 14%, transparent) 1px,
+    transparent 1px
+  );
+  background-size: 16px 16px;
+}
+
+.animator-editor__graph svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+}
+
+.animator-editor__graph svg[data-linking] {
+  cursor: crosshair;
+}
+
+.animator-editor__hint {
+  position: absolute;
+  right: 12px;
+  bottom: 8px;
+  left: 12px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.75rem;
+  pointer-events: none;
+}
+
+.animator-editor__node {
+  cursor: pointer;
+}
+
+.animator-editor__node rect {
+  fill: var(--bg);
+  stroke: var(--border);
+  stroke-width: 1.5;
+}
+
+.animator-editor__node text {
+  fill: var(--fg);
+  font-size: 13px;
+}
+
+.animator-editor__node-name {
+  font-weight: 700;
+}
+
+.animator-editor__node .animator-editor__node-anim {
+  fill: var(--muted);
+  font-size: 11px;
+}
+
+.animator-editor__node .animator-editor__node-entry {
+  fill: var(--mc-ember);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.animator-editor__node[data-entry] rect {
+  stroke: var(--mc-ember);
+  stroke-width: 2.5;
+}
+
+.animator-editor__node[data-running] rect {
+  fill: color-mix(in srgb, var(--ok) 22%, var(--bg));
+}
+
+.animator-editor__node[data-missing] rect {
+  stroke: var(--danger);
+  stroke-dasharray: 5 3;
+}
+
+.animator-editor__node[data-selected] rect {
+  stroke: var(--accent);
+  stroke-width: 3;
+}
+
+.animator-editor__node--any rect {
+  fill: color-mix(in srgb, var(--mc-fountain) 24%, var(--bg));
+}
+
+.animator-editor__edge {
+  cursor: pointer;
+}
+
+.animator-editor__edge-hit {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 14;
+}
+
+.animator-editor__edge-line {
+  fill: none;
+  stroke: var(--muted);
+  stroke-width: 2;
+}
+
+.animator-editor__edge[data-selected] .animator-editor__edge-line {
+  stroke: var(--accent);
+  stroke-width: 3;
+}
+
+.animator-editor__edge text {
+  fill: var(--muted);
+  font-size: 11px;
+  paint-order: stroke;
+  stroke: var(--bg-sidebar);
+  stroke-width: 3px;
+}
+
+.animator-editor__arrowhead {
+  fill: var(--muted);
+}
+
+.animator-editor__linking {
+  stroke: var(--accent);
+  stroke-width: 2;
+  stroke-dasharray: 6 4;
+}
+
+/* 미리보기 */
+.animator-editor__preview {
+  display: grid;
+  gap: 6px;
+}
+
+.animator-editor__stage {
+  display: grid;
+  place-items: center;
+  min-height: 140px;
+  padding: 8px;
+  border-radius: 8px;
+  background: #84c669;
+}
+
+.animator-editor__stage canvas {
+  image-rendering: pixelated;
+}
+
+.animator-editor__current {
+  margin: 0;
+}
+
+.animator-editor__triggers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.animator-editor__triggers .button {
+  padding: 3px 8px;
+  font-size: 0.75rem;
+}
+
+@media (max-width: 1000px) {
+  .animator-editor {
+    grid-template-columns: minmax(0, 1fr) 260px;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+  }
+
+  .animator-editor__params {
+    grid-column: 1 / -1;
+    grid-row: 3;
+    max-height: 35vh;
+    border-top: 1px solid var(--border);
+    border-right: 0;
+  }
+}
+
+@media (max-width: 768px) {
+  .animator-editor {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(220px, 1fr) auto auto;
+    overflow-y: auto;
+  }
+
+  .animator-editor__inspector {
+    grid-row: 4;
+    border-top: 1px solid var(--border);
+    border-left: 0;
   }
 }
 

@@ -3,6 +3,7 @@ import {
   decodeGif,
   detectPixelScale,
   encodeGif,
+  expandByDelays,
   frameMsOf,
   mirrorPixels,
   oppositeAnimation,
@@ -54,5 +55,13 @@ describe('GIF', () => {
     expect(oppositeAnimation('walk-left')).toBe('walk-right');
     expect(oppositeAnimation('jump-right')).toBe('jump-left');
     expect(oppositeAnimation('emote')).toBeNull();
+  });
+});
+
+describe('장면마다 다른 시간', () => {
+  it('프레임 간격의 배수만큼 같은 장면을 되풀이하고, 너무 길면 8번까지만', () => {
+    expect(expandByDelays(['a', 'b', 'c'], [100, 200, 100], 100)).toEqual(['a', 'b', 'b', 'c']);
+    expect(expandByDelays(['a'], [5000], 100)).toHaveLength(8);
+    expect(expandByDelays(['a', 'b'], [10, 10], 100)).toEqual(['a', 'b']);
   });
 });

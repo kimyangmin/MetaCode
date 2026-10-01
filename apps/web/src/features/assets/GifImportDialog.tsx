@@ -11,6 +11,7 @@ import {
   type Anchor,
   type DecodedGif,
   detectPixelScale,
+  expandByDelays,
   frameMsOf,
   mirrorPixels,
   oppositeAnimation,
@@ -43,13 +44,17 @@ function prepare(file: GifFile, maxSide: number) {
     width = Math.floor(width / extra);
     height = Math.floor(height / extra);
   }
+  const frameMs = frameMsOf(gif.delays, FRAME_MS_MIN, FRAME_MS_MAX);
   return {
     name: file.name,
     width,
     height,
-    frames,
+    // 장면마다 시간이 다르면 같은 장면을 되풀이해 시간을 맞춘다 (저장할 때는 한 장)
+    frames: expandByDelays(frames, gif.delays, frameMs),
+    /** 서로 다른 장면 수 (프레임 한도는 이것으로 센다) */
+    scenes: frames.length,
     scale: scale * extra,
-    frameMs: frameMsOf(gif.delays, FRAME_MS_MIN, FRAME_MS_MAX),
+    frameMs,
   };
 }
 
@@ -65,6 +70,7 @@ export function GifImportDialog({
   current,
   onClose,
   onDone,
+  source = 'GIF',
 }: {
   editor: PixelDocument;
   files: GifFile[];
@@ -72,6 +78,8 @@ export function GifImportDialog({
   current: number;
   onClose(): void;
   onDone(first: number | null, message: string): void;
+  /** 어디서 가져오는지 (제목과 안내에 씀): GIF 또는 유니티 클립 */
+  source?: 'GIF' | '유니티 클립';
 }) {
   const { doc } = editor;
   const character = doc.kind === 'character';
@@ -108,7 +116,7 @@ export function GifImportDialog({
   const tooBig = !character && prepared.some((p) => p.width > doc.width || p.height > doc.height);
   const newMotions = targets.filter((t) => t === NEW_MOTION).length;
   const tooManyMotions = newMotions > freeKeys;
-  const frameTotal = prepared.reduce((sum, p) => sum + p.frames.length, 0);
+  const frameTotal = prepared.reduce((sum, p) => sum + p.scenes, 0);
   const tooManyFrames = frameTotal > FRAME_LIMIT[doc.kind];
 
   const apply = () => {
@@ -175,9 +183,14 @@ export function GifImportDialog({
 
   return (
     <div className="dialog__overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="dialog gif-import" role="dialog" aria-modal="true" aria-label="GIF 가져오기">
+      <div
+        className="dialog gif-import"
+        role="dialog"
+        aria-modal="true"
+        aria-label={`${source} 가져오기`}
+      >
         <header className="dialog__header">
-          <h2>GIF 가져오기</h2>
+          <h2>{source} 가져오기</h2>
         </header>
         <ul className="gif-import__files">
           {prepared.map((p, i) => (
@@ -185,7 +198,7 @@ export function GifImportDialog({
               <div>
                 <strong title={p.name}>{p.name}</strong>
                 <small>
-                  {p.frames.length}장 · {p.width}×{p.height}px
+                  {p.scenes}장 · {p.width}×{p.height}px
                   {p.scale > 1 ? ` (${p.scale}배로 키운 그림을 줄임)` : ''} · {p.frameMs}ms
                 </small>
               </div>
@@ -230,11 +243,13 @@ export function GifImportDialog({
         )}
         <p className="form__hint">
           색은 지금 팔레트에 더하고, 64색이 넘으면 가까운 색으로 줄입니다. 그 애니메이션의 프레임은
-          GIF 장면으로 바뀝니다 (되돌리기로 돌아갈 수 있음).
+          {source} 장면으로 바뀝니다 (되돌리기로 돌아갈 수 있음). 장면마다 시간이 다르면 같은 장면을
+          되풀이해 맞춥니다.
         </p>
         {tooBig && (
           <p className="form__error">
-            GIF가 이 에셋({doc.width}×{doc.height})보다 큽니다. 오브젝트는 크기를 먼저 넓혀 주세요.
+            {source} 그림이 이 에셋({doc.width}×{doc.height})보다 큽니다. 오브젝트는 크기를 먼저
+            넓혀 주세요.
           </p>
         )}
         {tooManyMotions && (

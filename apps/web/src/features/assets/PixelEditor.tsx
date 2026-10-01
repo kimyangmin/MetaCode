@@ -2,6 +2,8 @@ import {
   ASSET_NAME_MAX_LENGTH,
   CHARACTER_MAX_SIZE,
   CHARACTER_MIN_SIZE,
+  CHARACTER_PLAZA_HEIGHTS,
+  CHARACTER_PLAZA_HEIGHT_DEFAULT,
   FRAME_LIMIT,
   FRAME_MS_MAX,
   FRAME_MS_MIN,
@@ -14,6 +16,7 @@ import {
   STANDARD_ANIMATIONS,
   TILE_SIZE,
   assetManifestSchema,
+  decodePixels,
 } from '@metacode/shared';
 import { useQueryClient } from '@tanstack/react-query';
 import {
@@ -28,12 +31,16 @@ import {
 } from 'react';
 import { ApiError } from '../../api/client';
 import { saveAsset } from './api';
+import { AnimatorEditor } from './AnimatorEditor';
 import {
+  BRUSH_MAX,
+  BRUSH_MIN,
   type EditorAnimation,
   type EditorDoc,
   type FrameRef,
   PixelDocument,
   fromManifest,
+  brushCells,
   isMotion,
   requiredOf,
   toManifest,
@@ -41,6 +48,7 @@ import {
 import type { EditorTarget } from './editorStore';
 import { type GifFile, GifImportDialog } from './GifImportDialog';
 import { decodeGif, downloadBytes, encodeGif } from './gif';
+import { canvasPngBytes, frameCanvas } from './pixelCanvas';
 import { downloadCanvas, indexImage, readImageFile } from './png';
 import {
   type Clip,
@@ -58,15 +66,31 @@ import {
   stamp,
 } from './selection';
 import {
+  type RgbaImage,
+  type SheetSprite,
+  type UnitySpriteMeta,
+  clipToFrames,
+  parseAnimClip,
+  parseSpriteMeta,
+  randomGuid,
+  spriteFileId,
+  writeAnimClip,
+  writeSpriteMeta,
+} from './unityAnim';
+import { zipFiles } from './zip';
+import {
   ArrowLeftToLine,
   ArrowRightToLine,
   Check,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Eraser,
   FlipHorizontal2,
   Ghost,
   Lasso,
+  Maximize2,
+  Minus,
   PaintBucket,
   Pencil,
   Pipette,
@@ -75,6 +99,7 @@ import {
   Repeat2,
   Scissors,
   Undo2,
+  Workflow,
   X,
   ZoomIn,
   ZoomOut,
@@ -139,6 +164,36 @@ function saveTrimFeet(on: boolean) {
   }
 }
 
+const BRUSH_KEY = 'metacode:editor-brush';
+
+function readBrush(): number {
+  try {
+    const value = Number(localStorage.getItem(BRUSH_KEY));
+    return value >= BRUSH_MIN && value <= BRUSH_MAX ? Math.round(value) : BRUSH_MIN;
+  } catch {
+    return BRUSH_MIN;
+  }
+}
+
+function saveBrush(size: number) {
+  try {
+    localStorage.setItem(BRUSH_KEY, String(size));
+  } catch {
+    // 기억하지 못해도 이번 편집에는 쓴다.
+  }
+}
+
+/** 처음 열 때의 배율 (그림이 480px 안팎으로 보이게). Ctrl+0이 이 배율로 돌아간다 */
+const fitZoom = (width: number, height: number) =>
+  Math.max(1, Math.min(28, Math.floor(480 / Math.max(width, height))));
+const zoomIn = (z: number) => (z < 2 ? 2 : Math.min(40, z + 2));
+const zoomOut = (z: number) => (z > 2 ? z - 2 : 1);
+/** Ctrl+휠: 이만큼 모이면 한 단계 (트랙패드 모아 벌리기는 조금씩 온다) */
+const WHEEL_STEP = 60;
+
+/** 내보낼 파일 이름 (파일 시스템에서 쓸 수 없는 글자는 뺀다) */
+const fileBase = (name: string) => name.trim().replace(/[\\/:*?"<>|]/g, '_') || 'asset';
+
 const KIND_LABEL = { tile: '타일', object: '오브젝트', character: '캐릭터' } as const;
 
 const ANIMATION_LABEL = new Map<string, string>([
@@ -149,27 +204,6 @@ const ANIMATION_LABEL = new Map<string, string>([
 /** 애니메이션 목록에 보일 이름: 필수·점프는 정해진 이름, 모션은 사용자가 붙인 이름 */
 function animationLabel(animation: EditorAnimation): string {
   return animation.label ?? ANIMATION_LABEL.get(animation.name) ?? animation.name;
-}
-
-function rgb(hex: string): [number, number, number] {
-  const v = parseInt(hex.slice(1), 16);
-  return [(v >> 16) & 0xff, (v >> 8) & 0xff, v & 0xff];
-}
-
-/** 팔레트 픽셀 한 장을 원래 크기 캔버스로 */
-function frameCanvas(pixels: Uint8Array, width: number, height: number, palette: string[]) {
-  const canvas = document.createElement('canvas');
-  canvas.width = width;
-  canvas.height = height;
-  const image = new ImageData(width, height);
-  const colors = palette.map(rgb);
-  pixels.forEach((v, i) => {
-    const c = v > 0 ? colors[v - 1] : undefined;
-    if (!c) return;
-    image.data.set([c[0], c[1], c[2], 255], i * 4);
-  });
-  canvas.getContext('2d')!.putImageData(image, 0, 0);
-  return canvas;
 }
 
 function initialDoc(target: EditorTarget): EditorDoc {
@@ -195,9 +229,14 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
   const [color, setColor] = useState(1);
   const [mirror, setMirror] = useState(false);
   const [onion, setOnion] = useState(false);
-  const [zoom, setZoom] = useState(() =>
-    Math.max(1, Math.min(28, Math.floor(480 / Math.max(doc.width, doc.height)))),
-  );
+  const [zoom, setZoom] = useState(() => fitZoom(doc.width, doc.height));
+  const [brush, setBrush] = useState(readBrush);
+  /** 그림판 위 마우스 자리 (붓 굵기 미리보기) */
+  const [hover, setHover] = useState<Point | null>(null);
+  /** 머리글의 가져오기·내보내기 메뉴 */
+  const [menu, setMenu] = useState<'import' | 'export' | null>(null);
+  const [animatorOpen, setAnimatorOpen] = useState(false);
+  const wheel = useRef(0);
   const [status, setStatus] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [selection, setSelection] = useState<Selection | null>(null);
@@ -208,7 +247,18 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
   const [trimFeet, setTrimFeet] = useState(readTrimFeet);
   const fileRef = useRef<HTMLInputElement>(null);
   const gifRef = useRef<HTMLInputElement>(null);
-  const [gifFiles, setGifFiles] = useState<GifFile[] | null>(null);
+  const unityRef = useRef<HTMLInputElement>(null);
+  const [importing, setImporting] = useState<{
+    files: GifFile[];
+    source: 'GIF' | '유니티 클립';
+  } | null>(null);
+  /** 붓 굵기를 step만큼 (키를 빠르게 여러 번 눌러도 하나씩 쌓이게 앞 값에서 센다) */
+  const stepBrush = (step: number) =>
+    setBrush((size) => {
+      const next = Math.max(BRUSH_MIN, Math.min(BRUSH_MAX, size + step));
+      saveBrush(next);
+      return next;
+    });
 
   // 되돌리기 등으로 애니메이션·프레임 수가 바뀌어도 고른 프레임이 범위 안에 있게 한다.
   const animation = doc.animations[Math.min(selected.animation, doc.animations.length - 1)]!;
@@ -332,6 +382,30 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
+      if (menu && e.key === 'Escape') {
+        e.preventDefault();
+        setMenu(null);
+        return;
+      }
+      // 애니메이터 화면: Esc는 그림으로 돌아가고, 되돌리기만 받는다 (그리기 단축키는 쓰지 않음)
+      if (animatorOpen) {
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          setAnimatorOpen(false);
+          return;
+        }
+        if (target.closest('input, textarea, select')) return;
+        const undoKey = (e.ctrlKey || e.metaKey) && e.key.toLowerCase();
+        if (undoKey === 'z') {
+          e.preventDefault();
+          if (e.shiftKey) editor.redo();
+          else editor.undo();
+        } else if (undoKey === 'y') {
+          e.preventDefault();
+          editor.redo();
+        }
+        return;
+      }
       if (e.key === 'Escape') {
         // 설정 창이 함께 닫히지 않게 한다 (설정 창은 defaultPrevented를 보고 무시한다).
         e.preventDefault();
@@ -358,6 +432,19 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
       } else if (mod && key === 'y') {
         e.preventDefault();
         editor.redo();
+      } else if (
+        mod &&
+        (e.code === 'Equal' || e.code === 'NumpadAdd' || key === '=' || key === '+')
+      ) {
+        // 브라우저 확대 대신 그림판을 키운다
+        e.preventDefault();
+        setZoom(zoomIn);
+      } else if (mod && (e.code === 'Minus' || e.code === 'NumpadSubtract' || key === '-')) {
+        e.preventDefault();
+        setZoom(zoomOut);
+      } else if (mod && (e.code === 'Digit0' || e.code === 'Numpad0')) {
+        e.preventDefault();
+        setZoom(fitZoom(doc.width, doc.height));
       } else if (mod && key === 'a') {
         e.preventDefault();
         select(new Uint8Array(pixels.length).fill(1));
@@ -377,6 +464,8 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
         if (found) setTool(found.id);
         else if (key === 'm') setMirror((v) => !v);
         else if (key === 'o') setOnion((v) => !v);
+        else if (e.code === 'BracketLeft') stepBrush(-1);
+        else if (e.code === 'BracketRight') stepBrush(1);
         else if ((e.key === 'Delete' || e.key === 'Backspace') && active) {
           e.preventDefault();
           deleteSelection();
@@ -398,6 +487,19 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
   // ── 그림판 ──
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const drag = useRef<Drag | null>(null);
+  const stageRef = useRef<HTMLDivElement>(null);
+
+  // Ctrl+휠의 브라우저 확대를 막는다 (React의 onWheel은 passive라 막을 수 없음). 애니메이터를 닫으면
+  // 그림판이 다시 생기므로 그때 다시 건다.
+  useEffect(() => {
+    const stage = stageRef.current;
+    if (!stage) return;
+    const block = (e: WheelEvent) => {
+      if (e.ctrlKey || e.metaKey) e.preventDefault();
+    };
+    stage.addEventListener('wheel', block, { passive: false });
+    return () => stage.removeEventListener('wheel', block);
+  }, [animatorOpen]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -451,18 +553,25 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
       ctx.stroke();
     }
     // 굵은 격자 = 월드 타일 경계. 타일·오브젝트는 16px마다지만, 캐릭터는 해상도와 상관없이
-    // 늘 1타일×2타일을 차지하므로 가로 전체가 한 칸이고 세로 한가운데에만 선이 있다.
-    const step =
-      doc.kind === 'character' ? { x: width, y: height / 2 } : { x: TILE_SIZE, y: TILE_SIZE };
+    // 광장 크기(기본 세로 2타일)를 차지하므로 가로 전체가 한 칸이고, 세로는 발밑에서부터 1타일마다 선이 있다.
     ctx.strokeStyle = 'rgba(128, 128, 128, 0.6)';
     ctx.beginPath();
-    for (let x = step.x; x < width; x += step.x) {
-      ctx.moveTo(x * zoom + 0.5, 0);
-      ctx.lineTo(x * zoom + 0.5, canvas.height);
-    }
-    for (let y = step.y; y < height; y += step.y) {
-      ctx.moveTo(0, y * zoom + 0.5);
-      ctx.lineTo(canvas.width, y * zoom + 0.5);
+    if (doc.kind === 'character') {
+      const tile = height / doc.plazaHeight;
+      for (let y = height - tile; y > 0.5; y -= tile) {
+        const py = Math.round(y * zoom) + 0.5;
+        ctx.moveTo(0, py);
+        ctx.lineTo(canvas.width, py);
+      }
+    } else {
+      for (let x = TILE_SIZE; x < width; x += TILE_SIZE) {
+        ctx.moveTo(x * zoom + 0.5, 0);
+        ctx.lineTo(x * zoom + 0.5, canvas.height);
+      }
+      for (let y = TILE_SIZE; y < height; y += TILE_SIZE) {
+        ctx.moveTo(0, y * zoom + 0.5);
+        ctx.lineTo(canvas.width, y * zoom + 0.5);
+      }
     }
     ctx.stroke();
     // 자르기: 남길 사각형 밖을 어둡게
@@ -511,6 +620,17 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
           if (i === 0) ctx.moveTo(p.x * zoom, p.y * zoom);
           else ctx.lineTo(p.x * zoom, p.y * zoom);
         });
+      });
+    }
+    // 붓 굵기 미리보기: 칠할 사각형 (좌우 대칭이면 반대쪽도)
+    if (hover && (tool === 'pen' || tool === 'eraser') && !drag.current) {
+      const cells = brushCells(hover.x, hover.y, brush);
+      const x0 = cells[0]!.x;
+      const y0 = cells[0]!.y;
+      const boxes = [x0, ...(mirror ? [width - x0 - brush] : [])];
+      outline(() => {
+        for (const bx of boxes)
+          ctx.rect(bx * zoom + 0.5, y0 * zoom + 0.5, brush * zoom - 1, brush * zoom - 1);
       });
     }
   });
@@ -574,11 +694,13 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
     e.currentTarget.setPointerCapture(e.pointerId);
     const value = erase ? 0 : color;
     editor.begin();
-    editor.paint(ref, p.x, p.y, value, mirror);
+    editor.paint(ref, p.x, p.y, value, mirror, brush);
     drag.current = { kind: 'stroke', last: p, value };
   };
 
   const onPointerMove = (e: ReactPointerEvent<HTMLCanvasElement>) => {
+    const at = pointAt(e);
+    if (at.x !== hover?.x || at.y !== hover?.y) setHover(at);
     const current = drag.current;
     if (!current) return;
     if (current.kind === 'lasso') {
@@ -588,7 +710,7 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
     }
     const p = pointAt(e);
     if (current.kind === 'stroke') {
-      editor.line(ref, current.last, p, current.value, mirror);
+      editor.line(ref, current.last, p, current.value, mirror, brush);
       current.last = p;
     } else if (current.kind === 'crop') {
       setCrop({
@@ -686,10 +808,127 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
         })),
       );
       setStatus(null);
-      setGifFiles(decoded);
+      setImporting({ files: decoded, source: 'GIF' });
     } catch {
       setStatus({ kind: 'error', text: 'GIF를 읽지 못했습니다.' });
     }
+  };
+
+  // ── 유니티 ──
+
+  /**
+   * 유니티 .anim(+ 스프라이트 시트 PNG와 그 .meta)을 애니메이션으로. 클립마다 GIF 가져오기와 같은 창에서
+   * 넣을 애니메이션을 고른다. PNG와 .meta는 이름(그림.png ↔ 그림.png.meta)으로, 하나씩이면 그대로 짝짓는다.
+   */
+  const onImportUnity = async (e: ChangeEvent<HTMLInputElement>) => {
+    const files = [...(e.target.files ?? [])];
+    e.target.value = '';
+    if (files.length === 0) return;
+    const lower = (f: File) => f.name.toLowerCase();
+    const anims = files.filter((f) => lower(f).endsWith('.anim'));
+    const metas = files.filter((f) => lower(f).endsWith('.meta'));
+    const pngs = files.filter((f) => lower(f).endsWith('.png'));
+    if (anims.length === 0) {
+      setStatus({ kind: 'error', text: '.anim 파일을 함께 골라 주세요 (그림 PNG와 .meta도).' });
+      return;
+    }
+    try {
+      const metaByGuid = new Map<string, UnitySpriteMeta>();
+      const imageByGuid = new Map<string, RgbaImage>();
+      for (const file of metas) {
+        const meta = parseSpriteMeta(await file.text());
+        if (!meta) continue;
+        metaByGuid.set(meta.guid, meta);
+        const png =
+          pngs.find((p) => `${lower(p)}.meta` === lower(file)) ??
+          (pngs.length === 1 && metas.length === 1 ? pngs[0] : undefined);
+        if (png) imageByGuid.set(meta.guid, await readImageFile(png));
+      }
+      const clips: GifFile[] = [];
+      const errors: string[] = [];
+      for (const file of anims) {
+        const clip = parseAnimClip(await file.text(), file.name.replace(/\.anim$/i, ''));
+        if (!clip) {
+          errors.push(`${file.name}: 스프라이트 애니메이션이 아닙니다.`);
+          continue;
+        }
+        const result = clipToFrames(clip, metaByGuid, imageByGuid);
+        if ('error' in result) errors.push(result.error);
+        else clips.push({ name: `${clip.name}.anim`, gif: result.gif });
+      }
+      if (clips.length === 0) {
+        setStatus({ kind: 'error', text: errors.join(' ') || '가져올 클립이 없습니다.' });
+        return;
+      }
+      setStatus(errors.length > 0 ? { kind: 'error', text: errors.join(' ') } : null);
+      setImporting({ files: clips, source: '유니티 클립' });
+    } catch {
+      setStatus({ kind: 'error', text: '유니티 파일을 읽지 못했습니다.' });
+    }
+  };
+
+  /**
+   * 모든 애니메이션을 유니티에서 쓸 수 있게 ZIP 하나로: 스프라이트 시트 PNG(같은 그림은 한 칸) + 그 .meta
+   * (칸마다 발밑 가운데 기준점, 도트 그대로) + 애니메이션마다 .anim. 폴더째 유니티 Assets에 넣으면 된다.
+   */
+  const onExportUnity = async () => {
+    const manifest = toManifest(editor.doc);
+    const { width, height } = manifest;
+    const count = manifest.frames.length;
+    const cols = Math.max(1, Math.min(count, Math.floor(4096 / width)));
+    const rows = Math.ceil(count / cols);
+    const sheet = globalThis.document.createElement('canvas');
+    sheet.width = cols * width;
+    sheet.height = rows * height;
+    const ctx = sheet.getContext('2d')!;
+    const base = fileBase(doc.name);
+    const sprites: SheetSprite[] = manifest.frames.map((frame, i) => {
+      const col = i % cols;
+      const row = Math.floor(i / cols);
+      const pixels = decodePixels(frame, width * height) ?? new Uint8Array(width * height);
+      ctx.drawImage(
+        frameCanvas(pixels, width, height, manifest.palette),
+        col * width,
+        row * height,
+      );
+      // 유니티 사각형은 아래가 0
+      return {
+        name: `${base}_${i}`,
+        fileID: spriteFileId(i),
+        x: col * width,
+        y: sheet.height - (row + 1) * height,
+        width,
+        height,
+      };
+    });
+    const guid = randomGuid();
+    const encoder = new TextEncoder();
+    const once = new Set(['emote', 'jump-left', 'jump-right']);
+    const clips = Object.entries(manifest.animations).map(([name, animation]) => ({
+      name: `${base}/${name}.anim`,
+      data: encoder.encode(
+        writeAnimClip({
+          name,
+          guid,
+          frames: animation.frames.map(spriteFileId),
+          frameMs: animation.frameMs,
+          loop: animation.key !== undefined ? !!animation.loop : !once.has(name),
+        }),
+      ),
+    }));
+    const zip = zipFiles([
+      { name: `${base}/${base}.png`, data: await canvasPngBytes(sheet) },
+      {
+        name: `${base}/${base}.png.meta`,
+        data: encoder.encode(writeSpriteMeta({ guid, sprites, pixelsPerUnit: TILE_SIZE })),
+      },
+      ...clips,
+    ]);
+    downloadBytes(zip, `${base}-unity.zip`, 'application/zip');
+    setStatus({
+      kind: 'ok',
+      text: `유니티용으로 내보냈습니다 (스프라이트 ${count}칸, 애니메이션 ${clips.length}개).`,
+    });
   };
 
   /** 지금 애니메이션을 움직이는 GIF로 (투명 배경, 작은 그림은 정수배로 키워서) */
@@ -735,28 +974,42 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
           </p>
         )}
         <div className="pixel-editor__actions">
-          <button type="button" className="button" onClick={() => fileRef.current?.click()}>
-            PNG 가져오기
-          </button>
-          <button type="button" className="button" onClick={onExport}>
-            PNG 내보내기
-          </button>
-          <button
-            type="button"
-            className="button"
-            title="움직이는 GIF를 애니메이션으로 (여러 파일이면 파일 이름으로 애니메이션을 정함)"
-            onClick={() => gifRef.current?.click()}
-          >
-            GIF 가져오기
-          </button>
-          <button
-            type="button"
-            className="button"
-            title="지금 애니메이션을 움직이는 GIF로"
-            onClick={onExportGif}
-          >
-            GIF 내보내기
-          </button>
+          <EditorMenu
+            label="가져오기"
+            open={menu === 'import'}
+            onToggle={(open) => setMenu(open ? 'import' : null)}
+            items={[
+              {
+                label: 'PNG',
+                hint: '프레임 크기 그림 또는 가로로 이어 붙인 시트',
+                run: () => fileRef.current?.click(),
+              },
+              {
+                label: 'GIF',
+                hint: '움직이는 GIF를 애니메이션으로 (여러 파일이면 파일 이름으로 정함)',
+                run: () => gifRef.current?.click(),
+              },
+              {
+                label: '유니티 .anim',
+                hint: '.anim과 스프라이트 시트 PNG, 그 .meta를 함께 고르세요',
+                run: () => unityRef.current?.click(),
+              },
+            ]}
+          />
+          <EditorMenu
+            label="내보내기"
+            open={menu === 'export'}
+            onToggle={(open) => setMenu(open ? 'export' : null)}
+            items={[
+              { label: 'PNG', hint: '지금 애니메이션을 가로로 이어 붙인 시트', run: onExport },
+              { label: 'GIF', hint: '지금 애니메이션을 움직이는 GIF로', run: onExportGif },
+              {
+                label: '유니티 .anim (ZIP)',
+                hint: '모든 애니메이션: 스프라이트 시트 PNG + .meta + .anim',
+                run: () => void onExportUnity(),
+              },
+            ]}
+          />
           <button type="button" className="button" onClick={requestClose}>
             닫기
           </button>
@@ -786,573 +1039,662 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
             hidden
             onChange={(e) => void onImportGif(e)}
           />
+          <input
+            ref={unityRef}
+            type="file"
+            accept=".anim,.png,.meta"
+            multiple
+            hidden
+            onChange={(e) => void onImportUnity(e)}
+          />
         </div>
       </header>
 
-      <div className="pixel-editor__body">
-        <aside className="pixel-editor__tools" aria-label="도구">
-          {TOOLS.map((t) => (
-            <button
-              key={t.id}
-              type="button"
-              className="pixel-editor__tool"
-              aria-pressed={tool === t.id}
-              aria-label={t.label}
-              title={`${t.label} (${t.key.toUpperCase()})`}
-              onClick={() => setTool(t.id)}
-            >
-              {t.icon}
-            </button>
-          ))}
-          <hr />
-          <button
-            type="button"
-            className="pixel-editor__tool"
-            aria-pressed={mirror}
-            title="좌우 대칭 (M)"
-            aria-label="좌우 대칭"
-            onClick={() => setMirror((v) => !v)}
-          >
-            <FlipHorizontal2 aria-hidden />
-          </button>
-          <button
-            type="button"
-            className="pixel-editor__tool"
-            aria-pressed={onion}
-            title="앞 프레임 겹쳐 보기 (O)"
-            aria-label="앞 프레임 겹쳐 보기"
-            onClick={() => setOnion((v) => !v)}
-          >
-            <Ghost aria-hidden />
-          </button>
-          <hr />
-          <button
-            type="button"
-            className="pixel-editor__tool"
-            disabled={!editor.canUndo}
-            title="되돌리기 (Ctrl+Z)"
-            aria-label="되돌리기"
-            onClick={() => editor.undo()}
-          >
-            <Undo2 aria-hidden />
-          </button>
-          <button
-            type="button"
-            className="pixel-editor__tool"
-            disabled={!editor.canRedo}
-            title="다시 하기 (Ctrl+Shift+Z)"
-            aria-label="다시 하기"
-            onClick={() => editor.redo()}
-          >
-            <Redo2 aria-hidden />
-          </button>
-          <hr />
-          <button
-            type="button"
-            className="pixel-editor__tool"
-            title="크게"
-            aria-label="크게"
-            onClick={() => setZoom((z) => (z < 2 ? 2 : Math.min(40, z + 2)))}
-          >
-            <ZoomIn aria-hidden />
-          </button>
-          <button
-            type="button"
-            className="pixel-editor__tool"
-            title="작게"
-            aria-label="작게"
-            onClick={() => setZoom((z) => (z > 2 ? z - 2 : 1))}
-          >
-            <ZoomOut aria-hidden />
-          </button>
-        </aside>
-
-        <div className="pixel-editor__main">
-          {cropRect ? (
-            <div className="pixel-editor__bar" role="toolbar" aria-label="자르기">
-              <span>
-                남길 곳 {cropRect.w}×{cropRect.h}px
-              </span>
-              <button
-                type="button"
-                className="button button--primary"
-                onClick={() => applyCrop(true)}
-                title="Enter"
-              >
-                모든 프레임 자르기
-              </button>
-              <button type="button" className="button" onClick={() => applyCrop(false)}>
-                이 프레임만
-              </button>
-              {canFit && (
-                <label className="pixel-editor__check">
-                  <input
-                    type="checkbox"
-                    checked={cropFit}
-                    onChange={(e) => setCropFit(e.target.checked)}
-                  />
-                  그림 크기도 맞추기
-                </label>
-              )}
-              <button type="button" className="button" onClick={() => setCrop(null)} title="Esc">
-                취소
-              </button>
-            </div>
-          ) : tool === 'crop' ? (
-            <div className="pixel-editor__bar">
-              <span className="form__hint">남길 곳을 끌어서 고르세요. 밖은 지워집니다.</span>
-            </div>
-          ) : tool === 'lasso' || active ? (
-            <div className="pixel-editor__bar" role="toolbar" aria-label="선택 영역">
-              {!active && (
-                <span className="form__hint">
-                  둘러 그려서 고르고, 고른 곳을 끌어 옮깁니다 (방향키로 한 칸씩).
-                </span>
-              )}
-              <button
-                type="button"
-                className="button"
-                disabled={!active}
-                onClick={copySelection}
-                title="Ctrl+C"
-              >
-                복사
-              </button>
-              <button
-                type="button"
-                className="button"
-                disabled={!active}
-                onClick={() => {
-                  if (copySelection()) deleteSelection();
-                }}
-                title="Ctrl+X"
-              >
-                잘라내기
-              </button>
-              <button
-                type="button"
-                className="button"
-                disabled={!clipboard}
-                onClick={paste}
-                title="Ctrl+V: 복사한 자리에 붙입니다"
-              >
-                붙여넣기
-              </button>
-              <button
-                type="button"
-                className="button"
-                disabled={!active}
-                onClick={deleteSelection}
-                title="Delete"
-              >
-                지우기
-              </button>
-              <button
-                type="button"
-                className="button"
-                onClick={() => {
-                  select(new Uint8Array(pixels.length).fill(1));
-                  setTool('lasso');
-                }}
-                title="Ctrl+A"
-              >
-                전체 선택
-              </button>
-              <button
-                type="button"
-                className="button"
-                disabled={!active}
-                onClick={() => setSelection(null)}
-                title="Esc"
-              >
-                선택 해제
-              </button>
-            </div>
-          ) : null}
-          <div className="pixel-editor__stage">
-            <canvas
-              ref={canvasRef}
-              className="pixel-editor__canvas"
-              width={doc.width * zoom}
-              height={doc.height * zoom}
-              onPointerDown={onPointerDown}
-              onPointerMove={onPointerMove}
-              onPointerUp={endDrag}
-              onPointerCancel={endDrag}
-              onContextMenu={(e) => e.preventDefault()}
-            />
-          </div>
-        </div>
-
-        <aside className="pixel-editor__side">
-          <section>
-            <h3>팔레트</h3>
-            <div className="pixel-editor__palette">
-              {doc.palette.map((hex, i) => (
+      {animatorOpen && doc.kind === 'character' ? (
+        <AnimatorEditor editor={editor} onClose={() => setAnimatorOpen(false)} />
+      ) : (
+        <>
+          <div className="pixel-editor__body">
+            <aside className="pixel-editor__tools" aria-label="도구">
+              {TOOLS.map((t) => (
                 <button
-                  key={i}
+                  key={t.id}
                   type="button"
-                  className="pixel-editor__swatch"
-                  style={{ background: hex }}
-                  aria-pressed={color === i + 1 && tool !== 'eraser'}
-                  title={hex}
-                  onClick={() => {
-                    setColor(i + 1);
-                    if (tool === 'eraser' || tool === 'picker') setTool('pen');
-                  }}
-                />
-              ))}
-            </div>
-            <div className="pixel-editor__row">
-              <input
-                type="color"
-                value={doc.palette[color - 1] ?? '#000000'}
-                onChange={(e) => editor.setColor(color, e.target.value)}
-                aria-label="고른 색 바꾸기"
-              />
-              <button
-                type="button"
-                className="button"
-                disabled={doc.palette.length >= PALETTE_MAX_COLORS}
-                onClick={() => {
-                  const added = editor.addColor(doc.palette[color - 1] ?? '#000000');
-                  if (added) setColor(added);
-                }}
-              >
-                색 추가
-              </button>
-              <button
-                type="button"
-                className="button"
-                disabled={doc.palette.length <= 1}
-                onClick={() => {
-                  if (!window.confirm('이 색을 지울까요? 이 색으로 칠한 곳은 투명해집니다.'))
-                    return;
-                  editor.removeColor(color);
-                  setColor((c) => Math.max(1, Math.min(c, doc.palette.length)));
-                }}
-              >
-                색 지우기
-              </button>
-            </div>
-            <p className="form__hint">
-              {doc.palette.length}/{PALETTE_MAX_COLORS}색 · 오른쪽 버튼으로 지웁니다
-            </p>
-          </section>
-
-          {doc.kind === 'tile' && (
-            <section>
-              <h3>타일</h3>
-              <label className="pixel-editor__check">
-                <input
-                  type="checkbox"
-                  checked={doc.solid}
-                  onChange={(e) => editor.setSolid(e.target.checked)}
-                />
-                지나갈 수 없음 (벽, 물, 나무 등. 횡스크롤에서는 딛고 서는 땅)
-              </label>
-              <label className="pixel-editor__check">
-                <input
-                  type="checkbox"
-                  checked={doc.platform}
-                  onChange={(e) => editor.setPlatform(e.target.checked)}
-                />
-                발판 (횡스크롤: 위에서만 딛고 아래에서는 뛰어 지나감)
-              </label>
-            </section>
-          )}
-
-          {doc.kind === 'object' && <ObjectSettings editor={editor} />}
-
-          {doc.kind === 'character' && (
-            <CharacterStyleSettings
-              editor={editor}
-              onChange={() => setSelected({ animation: 0, frame: 0 })}
-            />
-          )}
-
-          {doc.kind === 'character' && <CharacterSizeSettings editor={editor} />}
-
-          {doc.kind === 'character' && (
-            <section>
-              <h3>발 아래 정리</h3>
-              <label className="pixel-editor__check">
-                <input
-                  type="checkbox"
-                  checked={trimFeet}
-                  onChange={(e) => {
-                    setTrimFeet(e.target.checked);
-                    saveTrimFeet(e.target.checked);
-                  }}
-                />
-                저장할 때 발 아래 빈 줄 자동 정리
-              </label>
-              <div className="pixel-editor__row">
-                <button
-                  type="button"
-                  className="button"
-                  onClick={() => {
-                    const trimmed = editor.trimBelowFeet();
-                    setStatus({
-                      kind: 'ok',
-                      text: trimmed.animations
-                        ? trimMessage(trimmed)
-                        : '발 아래에 정리할 빈 줄이 없습니다.',
-                    });
-                  }}
+                  className="pixel-editor__tool"
+                  aria-pressed={tool === t.id}
+                  aria-label={t.label}
+                  title={`${t.label} (${t.key.toUpperCase()})`}
+                  onClick={() => setTool(t.id)}
                 >
-                  지금 정리
+                  {t.icon}
+                </button>
+              ))}
+              <div
+                className="pixel-editor__brush"
+                role="group"
+                aria-label="붓 굵기"
+                title="붓 굵기 ([ ])"
+              >
+                <button
+                  type="button"
+                  className="pixel-editor__tool"
+                  disabled={brush >= BRUSH_MAX}
+                  aria-label="붓 굵게"
+                  title="붓 굵게 (])"
+                  onClick={() => stepBrush(1)}
+                >
+                  <Plus aria-hidden />
+                </button>
+                <span aria-live="polite">{brush}px</span>
+                <button
+                  type="button"
+                  className="pixel-editor__tool"
+                  disabled={brush <= BRUSH_MIN}
+                  aria-label="붓 가늘게"
+                  title="붓 가늘게 ([)"
+                  onClick={() => stepBrush(-1)}
+                >
+                  <Minus aria-hidden />
                 </button>
               </div>
-              <p className="form__hint">
-                광장은 그림의 맨 아래를 발밑으로 세웁니다. 애니메이션마다 모든 프레임에서 함께 비어
-                있는 아래 줄만큼 그림을 내려서 캐릭터가 떠 보이지 않게 합니다 (걷기의 들썩임은
-                그대로).
-              </p>
-            </section>
-          )}
+              <hr />
+              <button
+                type="button"
+                className="pixel-editor__tool"
+                aria-pressed={mirror}
+                title="좌우 대칭 (M)"
+                aria-label="좌우 대칭"
+                onClick={() => setMirror((v) => !v)}
+              >
+                <FlipHorizontal2 aria-hidden />
+              </button>
+              <button
+                type="button"
+                className="pixel-editor__tool"
+                aria-pressed={onion}
+                title="앞 프레임 겹쳐 보기 (O)"
+                aria-label="앞 프레임 겹쳐 보기"
+                onClick={() => setOnion((v) => !v)}
+              >
+                <Ghost aria-hidden />
+              </button>
+              <hr />
+              <button
+                type="button"
+                className="pixel-editor__tool"
+                disabled={!editor.canUndo}
+                title="되돌리기 (Ctrl+Z)"
+                aria-label="되돌리기"
+                onClick={() => editor.undo()}
+              >
+                <Undo2 aria-hidden />
+              </button>
+              <button
+                type="button"
+                className="pixel-editor__tool"
+                disabled={!editor.canRedo}
+                title="다시 하기 (Ctrl+Shift+Z)"
+                aria-label="다시 하기"
+                onClick={() => editor.redo()}
+              >
+                <Redo2 aria-hidden />
+              </button>
+              <hr />
+              <button
+                type="button"
+                className="pixel-editor__tool"
+                title="크게 (Ctrl + 또는 Ctrl+휠)"
+                aria-label="크게"
+                onClick={() => setZoom(zoomIn)}
+              >
+                <ZoomIn aria-hidden />
+              </button>
+              <button
+                type="button"
+                className="pixel-editor__tool"
+                title="작게 (Ctrl − 또는 Ctrl+휠)"
+                aria-label="작게"
+                onClick={() => setZoom(zoomOut)}
+              >
+                <ZoomOut aria-hidden />
+              </button>
+              <button
+                type="button"
+                className="pixel-editor__tool"
+                title="처음 크기로 (Ctrl 0)"
+                aria-label="처음 크기로"
+                onClick={() => setZoom(fitZoom(doc.width, doc.height))}
+              >
+                <Maximize2 aria-hidden />
+              </button>
+              <span className="pixel-editor__zoom" aria-live="polite">
+                ×{zoom}
+              </span>
+            </aside>
 
-          <section>
-            <h3>애니메이션</h3>
-            {doc.kind === 'character' && (
-              <p className="form__hint">
-                {sideCharacter
-                  ? '✓·✗ 표시가 있는 것은 모두 그려야 저장할 수 있습니다 (걷기·첨부 모션은 2프레임 이상, 점프는 1프레임 이상). 오른쪽만 그리면 왼쪽은 광장에서 좌우 반전됩니다.'
-                  : '✓·✗ 표시가 있는 것은 모두 그려야 저장할 수 있습니다 (걷기·첨부 모션은 2프레임 이상).'}
-              </p>
-            )}
-            <ul className="pixel-editor__animations">
-              {doc.animations.map((a, i) => (
-                <li key={a.name}>
+            <div className="pixel-editor__main">
+              {cropRect ? (
+                <div className="pixel-editor__bar" role="toolbar" aria-label="자르기">
+                  <span>
+                    남길 곳 {cropRect.w}×{cropRect.h}px
+                  </span>
                   <button
                     type="button"
-                    aria-current={i === ref.animation}
-                    onClick={() => setSelected({ animation: i, frame: 0 })}
+                    className="button button--primary"
+                    onClick={() => applyCrop(true)}
+                    title="Enter"
                   >
-                    {requiredNames.has(a.name) && (
-                      <span
-                        className={missingNames.has(a.name) ? 'mark mark--todo' : 'mark mark--done'}
-                      >
-                        {missingNames.has(a.name) ? (
-                          <X role="img" aria-label="덜 그림" />
-                        ) : (
-                          <Check role="img" aria-label="다 그림" />
-                        )}
-                      </span>
-                    )}
-                    {a.key !== undefined && (
-                      <kbd className="pixel-editor__motion-key" title={`광장에서 ${a.key} 키`}>
-                        {a.key}
-                      </kbd>
-                    )}
-                    {animationLabel(a)}
-                    {a.loop && (
-                      <Repeat2 className="pixel-editor__loop" role="img" aria-label="반복" />
-                    )}
-                    <small>{a.frames.length}프레임</small>
+                    모든 프레임 자르기
                   </button>
-                </li>
-              ))}
-            </ul>
-            {doc.kind === 'character' && (
-              <div className="pixel-editor__row">
-                <button
-                  type="button"
-                  className="button"
-                  disabled={editor.freeMotionKeys().length === 0 || !editor.canAddAnimation()}
-                  title="광장에서 숫자 키(1~9, 0)로 트는 모션"
-                  onClick={() => {
-                    const at = editor.addMotion();
-                    if (at !== null) setSelected({ animation: at, frame: 0 });
-                  }}
-                >
-                  <Plus aria-hidden /> 모션
-                </button>
-                {!sideCharacter && !editor.hasJump() && (
+                  <button type="button" className="button" onClick={() => applyCrop(false)}>
+                    이 프레임만
+                  </button>
+                  {canFit && (
+                    <label className="pixel-editor__check">
+                      <input
+                        type="checkbox"
+                        checked={cropFit}
+                        onChange={(e) => setCropFit(e.target.checked)}
+                      />
+                      그림 크기도 맞추기
+                    </label>
+                  )}
                   <button
                     type="button"
                     className="button"
-                    disabled={!editor.canAddAnimation()}
-                    title="횡스크롤 광장에서 공중에 있을 때 (없으면 걷기의 두 번째 프레임)"
+                    onClick={() => setCrop(null)}
+                    title="Esc"
+                  >
+                    취소
+                  </button>
+                </div>
+              ) : tool === 'crop' ? (
+                <div className="pixel-editor__bar">
+                  <span className="form__hint">남길 곳을 끌어서 고르세요. 밖은 지워집니다.</span>
+                </div>
+              ) : tool === 'lasso' || active ? (
+                <div className="pixel-editor__bar" role="toolbar" aria-label="선택 영역">
+                  {!active && (
+                    <span className="form__hint">
+                      둘러 그려서 고르고, 고른 곳을 끌어 옮깁니다 (방향키로 한 칸씩).
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    className="button"
+                    disabled={!active}
+                    onClick={copySelection}
+                    title="Ctrl+C"
+                  >
+                    복사
+                  </button>
+                  <button
+                    type="button"
+                    className="button"
+                    disabled={!active}
                     onClick={() => {
-                      const at = editor.addJump();
-                      if (at !== null) setSelected({ animation: at, frame: 0 });
+                      if (copySelection()) deleteSelection();
+                    }}
+                    title="Ctrl+X"
+                  >
+                    잘라내기
+                  </button>
+                  <button
+                    type="button"
+                    className="button"
+                    disabled={!clipboard}
+                    onClick={paste}
+                    title="Ctrl+V: 복사한 자리에 붙입니다"
+                  >
+                    붙여넣기
+                  </button>
+                  <button
+                    type="button"
+                    className="button"
+                    disabled={!active}
+                    onClick={deleteSelection}
+                    title="Delete"
+                  >
+                    지우기
+                  </button>
+                  <button
+                    type="button"
+                    className="button"
+                    onClick={() => {
+                      select(new Uint8Array(pixels.length).fill(1));
+                      setTool('lasso');
+                    }}
+                    title="Ctrl+A"
+                  >
+                    전체 선택
+                  </button>
+                  <button
+                    type="button"
+                    className="button"
+                    disabled={!active}
+                    onClick={() => setSelection(null)}
+                    title="Esc"
+                  >
+                    선택 해제
+                  </button>
+                </div>
+              ) : null}
+              <div
+                className="pixel-editor__stage"
+                onWheel={(e) => {
+                  // Ctrl+휠(트랙패드 모아 벌리기)은 그림판 배율. 브라우저 확대는 아래 리스너가 막는다.
+                  if (!e.ctrlKey && !e.metaKey) return;
+                  wheel.current += e.deltaY;
+                  while (Math.abs(wheel.current) >= WHEEL_STEP) {
+                    setZoom(wheel.current < 0 ? zoomIn : zoomOut);
+                    wheel.current -= Math.sign(wheel.current) * WHEEL_STEP;
+                  }
+                }}
+                ref={stageRef}
+              >
+                <canvas
+                  ref={canvasRef}
+                  className="pixel-editor__canvas"
+                  width={doc.width * zoom}
+                  height={doc.height * zoom}
+                  onPointerDown={onPointerDown}
+                  onPointerMove={onPointerMove}
+                  onPointerUp={endDrag}
+                  onPointerCancel={endDrag}
+                  onPointerLeave={() => setHover(null)}
+                  onContextMenu={(e) => e.preventDefault()}
+                />
+              </div>
+            </div>
+
+            <aside className="pixel-editor__side">
+              <section>
+                <h3>팔레트</h3>
+                <div className="pixel-editor__palette">
+                  {doc.palette.map((hex, i) => (
+                    <button
+                      key={i}
+                      type="button"
+                      className="pixel-editor__swatch"
+                      style={{ background: hex }}
+                      aria-pressed={color === i + 1 && tool !== 'eraser'}
+                      title={hex}
+                      onClick={() => {
+                        setColor(i + 1);
+                        if (tool === 'eraser' || tool === 'picker') setTool('pen');
+                      }}
+                    />
+                  ))}
+                </div>
+                <div className="pixel-editor__row">
+                  <input
+                    type="color"
+                    value={doc.palette[color - 1] ?? '#000000'}
+                    onChange={(e) => editor.setColor(color, e.target.value)}
+                    aria-label="고른 색 바꾸기"
+                  />
+                  <button
+                    type="button"
+                    className="button"
+                    disabled={doc.palette.length >= PALETTE_MAX_COLORS}
+                    onClick={() => {
+                      const added = editor.addColor(doc.palette[color - 1] ?? '#000000');
+                      if (added) setColor(added);
                     }}
                   >
-                    <Plus aria-hidden /> 점프
+                    색 추가
                   </button>
-                )}
-              </div>
-            )}
-            <label className="pixel-editor__row">
-              프레임 간격
-              <input
-                type="number"
-                min={FRAME_MS_MIN}
-                max={FRAME_MS_MAX}
-                step={10}
-                value={animation.frameMs}
-                onChange={(e) => {
-                  const ms = Math.round(Number(e.target.value));
-                  if (ms >= FRAME_MS_MIN && ms <= FRAME_MS_MAX)
-                    editor.setFrameMs(ref.animation, ms);
-                }}
-              />
-              ms
-            </label>
-          </section>
+                  <button
+                    type="button"
+                    className="button"
+                    disabled={doc.palette.length <= 1}
+                    onClick={() => {
+                      if (!window.confirm('이 색을 지울까요? 이 색으로 칠한 곳은 투명해집니다.'))
+                        return;
+                      editor.removeColor(color);
+                      setColor((c) => Math.max(1, Math.min(c, doc.palette.length)));
+                    }}
+                  >
+                    색 지우기
+                  </button>
+                </div>
+                <p className="form__hint">
+                  {doc.palette.length}/{PALETTE_MAX_COLORS}색 · 오른쪽 버튼으로 지웁니다
+                </p>
+              </section>
 
-          {doc.kind === 'character' && isMotion(animation) && (
-            <MotionSettings
-              editor={editor}
-              index={ref.animation}
-              animation={animation}
-              onRemove={() => {
-                editor.removeAnimation(ref.animation);
-                setSelected({ animation: 0, frame: 0 });
-              }}
-            />
-          )}
-          {doc.kind === 'character' &&
-            !isMotion(animation) &&
-            !requiredNames.has(animation.name) && (
+              {doc.kind === 'tile' && (
+                <section>
+                  <h3>타일</h3>
+                  <label className="pixel-editor__check">
+                    <input
+                      type="checkbox"
+                      checked={doc.solid}
+                      onChange={(e) => editor.setSolid(e.target.checked)}
+                    />
+                    지나갈 수 없음 (벽, 물, 나무 등. 횡스크롤에서는 딛고 서는 땅)
+                  </label>
+                  <label className="pixel-editor__check">
+                    <input
+                      type="checkbox"
+                      checked={doc.platform}
+                      onChange={(e) => editor.setPlatform(e.target.checked)}
+                    />
+                    발판 (횡스크롤: 위에서만 딛고 아래에서는 뛰어 지나감)
+                  </label>
+                </section>
+              )}
+
+              {doc.kind === 'object' && <ObjectSettings editor={editor} />}
+
+              {doc.kind === 'character' && (
+                <CharacterStyleSettings
+                  editor={editor}
+                  onChange={() => setSelected({ animation: 0, frame: 0 })}
+                />
+              )}
+
+              {doc.kind === 'character' && <CharacterSizeSettings editor={editor} />}
+
+              {doc.kind === 'character' && (
+                <section>
+                  <h3>애니메이터</h3>
+                  <p className="form__hint">
+                    {doc.animator
+                      ? `상태 ${doc.animator.states.length}개 · 전이 ${doc.animator.transitions.length}개. 광장에서 이 그래프대로 애니메이션을 틉니다.`
+                      : '없으면 대기·걷기·점프·첨부 모션을 정해진 규칙대로 틉니다. 상태 그래프로 언제 무엇을 틀지 직접 정할 수 있습니다 (유니티 Animator처럼).'}
+                  </p>
+                  <button type="button" className="button" onClick={() => setAnimatorOpen(true)}>
+                    <Workflow aria-hidden /> 애니메이터 열기
+                  </button>
+                </section>
+              )}
+
+              {doc.kind === 'character' && (
+                <section>
+                  <h3>발 아래 정리</h3>
+                  <label className="pixel-editor__check">
+                    <input
+                      type="checkbox"
+                      checked={trimFeet}
+                      onChange={(e) => {
+                        setTrimFeet(e.target.checked);
+                        saveTrimFeet(e.target.checked);
+                      }}
+                    />
+                    저장할 때 발 아래 빈 줄 자동 정리
+                  </label>
+                  <div className="pixel-editor__row">
+                    <button
+                      type="button"
+                      className="button"
+                      onClick={() => {
+                        const trimmed = editor.trimBelowFeet();
+                        setStatus({
+                          kind: 'ok',
+                          text: trimmed.animations
+                            ? trimMessage(trimmed)
+                            : '발 아래에 정리할 빈 줄이 없습니다.',
+                        });
+                      }}
+                    >
+                      지금 정리
+                    </button>
+                  </div>
+                  <p className="form__hint">
+                    광장은 그림의 맨 아래를 발밑으로 세웁니다. 애니메이션마다 모든 프레임에서 함께
+                    비어 있는 아래 줄만큼 그림을 내려서 캐릭터가 떠 보이지 않게 합니다 (걷기의
+                    들썩임은 그대로).
+                  </p>
+                </section>
+              )}
+
               <section>
-                <h3>{animationLabel(animation)}</h3>
-                <p className="form__hint">{leftoverHint(animation.name, sideCharacter)}</p>
-                <button
-                  type="button"
-                  className="button button--danger"
-                  onClick={() => {
+                <h3>애니메이션</h3>
+                {doc.kind === 'character' && (
+                  <p className="form__hint">
+                    {sideCharacter
+                      ? '✓·✗ 표시가 있는 것은 모두 그려야 저장할 수 있습니다 (걷기·첨부 모션은 2프레임 이상, 점프는 1프레임 이상). 오른쪽만 그리면 왼쪽은 광장에서 좌우 반전됩니다.'
+                      : '✓·✗ 표시가 있는 것은 모두 그려야 저장할 수 있습니다 (걷기·첨부 모션은 2프레임 이상).'}
+                  </p>
+                )}
+                <ul className="pixel-editor__animations">
+                  {doc.animations.map((a, i) => (
+                    <li key={a.name}>
+                      <button
+                        type="button"
+                        aria-current={i === ref.animation}
+                        onClick={() => setSelected({ animation: i, frame: 0 })}
+                      >
+                        {requiredNames.has(a.name) && (
+                          <span
+                            className={
+                              missingNames.has(a.name) ? 'mark mark--todo' : 'mark mark--done'
+                            }
+                          >
+                            {missingNames.has(a.name) ? (
+                              <X role="img" aria-label="덜 그림" />
+                            ) : (
+                              <Check role="img" aria-label="다 그림" />
+                            )}
+                          </span>
+                        )}
+                        {a.key !== undefined && (
+                          <kbd className="pixel-editor__motion-key" title={`광장에서 ${a.key} 키`}>
+                            {a.key}
+                          </kbd>
+                        )}
+                        {animationLabel(a)}
+                        {a.loop && (
+                          <Repeat2 className="pixel-editor__loop" role="img" aria-label="반복" />
+                        )}
+                        <small>{a.frames.length}프레임</small>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+                {doc.kind === 'character' && (
+                  <div className="pixel-editor__row">
+                    <button
+                      type="button"
+                      className="button"
+                      disabled={editor.freeMotionKeys().length === 0 || !editor.canAddAnimation()}
+                      title="광장에서 숫자 키(1~9, 0)로 트는 모션"
+                      onClick={() => {
+                        const at = editor.addMotion();
+                        if (at !== null) setSelected({ animation: at, frame: 0 });
+                      }}
+                    >
+                      <Plus aria-hidden /> 모션
+                    </button>
+                    {!sideCharacter && !editor.hasJump() && (
+                      <button
+                        type="button"
+                        className="button"
+                        disabled={!editor.canAddAnimation()}
+                        title="횡스크롤 광장에서 공중에 있을 때 (없으면 걷기의 두 번째 프레임)"
+                        onClick={() => {
+                          const at = editor.addJump();
+                          if (at !== null) setSelected({ animation: at, frame: 0 });
+                        }}
+                      >
+                        <Plus aria-hidden /> 점프
+                      </button>
+                    )}
+                  </div>
+                )}
+                <label className="pixel-editor__row">
+                  프레임 간격
+                  <input
+                    type="number"
+                    min={FRAME_MS_MIN}
+                    max={FRAME_MS_MAX}
+                    step={10}
+                    value={animation.frameMs}
+                    onChange={(e) => {
+                      const ms = Math.round(Number(e.target.value));
+                      if (ms >= FRAME_MS_MIN && ms <= FRAME_MS_MAX)
+                        editor.setFrameMs(ref.animation, ms);
+                    }}
+                  />
+                  ms
+                </label>
+              </section>
+
+              {doc.kind === 'character' && isMotion(animation) && (
+                <MotionSettings
+                  editor={editor}
+                  index={ref.animation}
+                  animation={animation}
+                  onRemove={() => {
                     editor.removeAnimation(ref.animation);
                     setSelected({ animation: 0, frame: 0 });
                   }}
-                >
-                  이 애니메이션 지우기
-                </button>
+                />
+              )}
+              {doc.kind === 'character' &&
+                !isMotion(animation) &&
+                !requiredNames.has(animation.name) && (
+                  <section>
+                    <h3>{animationLabel(animation)}</h3>
+                    <p className="form__hint">{leftoverHint(animation.name, sideCharacter)}</p>
+                    <button
+                      type="button"
+                      className="button button--danger"
+                      onClick={() => {
+                        editor.removeAnimation(ref.animation);
+                        setSelected({ animation: 0, frame: 0 });
+                      }}
+                    >
+                      이 애니메이션 지우기
+                    </button>
+                  </section>
+                )}
+
+              <section>
+                <h3>미리보기</h3>
+                <Playback editor={editor} animation={ref.animation} />
               </section>
-            )}
+            </aside>
+          </div>
 
-          <section>
-            <h3>미리보기</h3>
-            <Playback editor={editor} animation={ref.animation} />
-          </section>
-        </aside>
-      </div>
-
-      <footer className="pixel-editor__frames" aria-label="프레임">
-        <ol>
-          {animation.frames.map((frame, i) => (
-            <li key={i}>
+          <footer className="pixel-editor__frames" aria-label="프레임">
+            <ol>
+              {animation.frames.map((frame, i) => (
+                <li key={i}>
+                  <button
+                    type="button"
+                    aria-current={i === ref.frame}
+                    onClick={() => selectFrame(i)}
+                    title={`${i + 1}번 프레임`}
+                  >
+                    <FrameThumb
+                      pixels={frame}
+                      doc={doc}
+                      revision={i === ref.frame ? editor.version : 0}
+                    />
+                    <span>{i + 1}</span>
+                  </button>
+                </li>
+              ))}
+            </ol>
+            <div className="pixel-editor__frame-actions">
+              <div className="pixel-editor__frame-nav" role="group" aria-label="프레임 넘기기">
+                <button
+                  type="button"
+                  className="button"
+                  disabled={animation.frames.length <= 1}
+                  onClick={() => stepFrame(-1)}
+                  aria-label="앞 프레임"
+                  title="앞 프레임 (←)"
+                >
+                  <ChevronLeft aria-hidden />
+                </button>
+                <span className="pixel-editor__frame-count" aria-live="polite">
+                  {ref.frame + 1} / {animation.frames.length}
+                </span>
+                <button
+                  type="button"
+                  className="button"
+                  disabled={animation.frames.length <= 1}
+                  onClick={() => stepFrame(1)}
+                  aria-label="다음 프레임"
+                  title="다음 프레임 (→)"
+                >
+                  <ChevronRight aria-hidden />
+                </button>
+              </div>
               <button
                 type="button"
-                aria-current={i === ref.frame}
-                onClick={() => selectFrame(i)}
-                title={`${i + 1}번 프레임`}
+                className="button"
+                disabled={frameCount >= FRAME_LIMIT[doc.kind]}
+                onClick={() => {
+                  const at = editor.addFrame(ref, false);
+                  if (at !== null) selectFrame(at);
+                }}
               >
-                <FrameThumb
-                  pixels={frame}
-                  doc={doc}
-                  revision={i === ref.frame ? editor.version : 0}
-                />
-                <span>{i + 1}</span>
+                빈 프레임
               </button>
-            </li>
-          ))}
-        </ol>
-        <div className="pixel-editor__frame-actions">
-          <div className="pixel-editor__frame-nav" role="group" aria-label="프레임 넘기기">
-            <button
-              type="button"
-              className="button"
-              disabled={animation.frames.length <= 1}
-              onClick={() => stepFrame(-1)}
-              aria-label="앞 프레임"
-              title="앞 프레임 (←)"
-            >
-              <ChevronLeft aria-hidden />
-            </button>
-            <span className="pixel-editor__frame-count" aria-live="polite">
-              {ref.frame + 1} / {animation.frames.length}
-            </span>
-            <button
-              type="button"
-              className="button"
-              disabled={animation.frames.length <= 1}
-              onClick={() => stepFrame(1)}
-              aria-label="다음 프레임"
-              title="다음 프레임 (→)"
-            >
-              <ChevronRight aria-hidden />
-            </button>
-          </div>
-          <button
-            type="button"
-            className="button"
-            disabled={frameCount >= FRAME_LIMIT[doc.kind]}
-            onClick={() => {
-              const at = editor.addFrame(ref, false);
-              if (at !== null) selectFrame(at);
-            }}
-          >
-            빈 프레임
-          </button>
-          <button
-            type="button"
-            className="button"
-            disabled={frameCount >= FRAME_LIMIT[doc.kind]}
-            onClick={() => {
-              const at = editor.addFrame(ref, true);
-              if (at !== null) selectFrame(at);
-            }}
-          >
-            복제
-          </button>
-          {/* 순서 옮기기: 고른 프레임을 앞·뒤 프레임과 맞바꾼다 (넘기기와 헷갈리지 않게 따로 둔다) */}
-          <button
-            type="button"
-            className="button"
-            disabled={ref.frame === 0}
-            title="이 프레임을 한 칸 앞으로 옮기기"
-            onClick={() => {
-              editor.moveFrame(ref, ref.frame - 1);
-              selectFrame(ref.frame - 1);
-            }}
-          >
-            <ArrowLeftToLine aria-hidden /> 앞으로 옮기기
-          </button>
-          <button
-            type="button"
-            className="button"
-            disabled={ref.frame >= animation.frames.length - 1}
-            title="이 프레임을 한 칸 뒤로 옮기기"
-            onClick={() => {
-              editor.moveFrame(ref, ref.frame + 1);
-              selectFrame(ref.frame + 1);
-            }}
-          >
-            뒤로 옮기기 <ArrowRightToLine aria-hidden />
-          </button>
-          <button
-            type="button"
-            className="button button--danger"
-            disabled={animation.frames.length <= 1}
-            onClick={() => editor.removeFrame(ref)}
-          >
-            프레임 지우기
-          </button>
-          <span className="form__hint">
-            {frameCount}/{FRAME_LIMIT[doc.kind]}장 (같은 그림은 한 장)
-          </span>
-        </div>
-      </footer>
-      {gifFiles && (
+              <button
+                type="button"
+                className="button"
+                disabled={frameCount >= FRAME_LIMIT[doc.kind]}
+                onClick={() => {
+                  const at = editor.addFrame(ref, true);
+                  if (at !== null) selectFrame(at);
+                }}
+              >
+                복제
+              </button>
+              {/* 순서 옮기기: 고른 프레임을 앞·뒤 프레임과 맞바꾼다 (넘기기와 헷갈리지 않게 따로 둔다) */}
+              <button
+                type="button"
+                className="button"
+                disabled={ref.frame === 0}
+                title="이 프레임을 한 칸 앞으로 옮기기"
+                onClick={() => {
+                  editor.moveFrame(ref, ref.frame - 1);
+                  selectFrame(ref.frame - 1);
+                }}
+              >
+                <ArrowLeftToLine aria-hidden /> 앞으로 옮기기
+              </button>
+              <button
+                type="button"
+                className="button"
+                disabled={ref.frame >= animation.frames.length - 1}
+                title="이 프레임을 한 칸 뒤로 옮기기"
+                onClick={() => {
+                  editor.moveFrame(ref, ref.frame + 1);
+                  selectFrame(ref.frame + 1);
+                }}
+              >
+                뒤로 옮기기 <ArrowRightToLine aria-hidden />
+              </button>
+              <button
+                type="button"
+                className="button button--danger"
+                disabled={animation.frames.length <= 1}
+                onClick={() => editor.removeFrame(ref)}
+              >
+                프레임 지우기
+              </button>
+              <span className="form__hint">
+                {frameCount}/{FRAME_LIMIT[doc.kind]}장 (같은 그림은 한 장)
+              </span>
+            </div>
+          </footer>
+        </>
+      )}
+      {importing && (
         <GifImportDialog
           editor={editor}
-          files={gifFiles}
+          files={importing.files}
+          source={importing.source}
           current={ref.animation}
-          onClose={() => setGifFiles(null)}
+          onClose={() => setImporting(null)}
           onDone={(first, message) => {
-            setGifFiles(null);
+            setImporting(null);
             if (first !== null) setSelected({ animation: first, frame: 0 });
             setStatus({ kind: 'ok', text: message });
           }}
@@ -1522,11 +1864,89 @@ function CharacterSizeSettings({ editor }: { editor: PixelDocument }) {
         px
       </div>
       <p className="form__hint">
-        가로·세로 각각 {CHARACTER_MIN_SIZE}~{CHARACTER_MAX_SIZE}px입니다. 광장에서는 세로가 늘
-        2타일이고 가로는 그림 비율대로라, 해상도를 올리면 같은 자리에 더 촘촘하게 그려집니다. 크기를
-        바꾸면 그림은 발밑 가운데를 기준으로 남습니다.
+        가로·세로 각각 {CHARACTER_MIN_SIZE}~{CHARACTER_MAX_SIZE}px입니다. 광장에서는 아래의 광장
+        크기(세로)에 맞춰 그리고 가로는 그림 비율대로라, 해상도를 올리면 같은 자리에 더 촘촘하게
+        그려집니다. 크기를 바꾸면 그림은 발밑 가운데를 기준으로 남습니다.
+      </p>
+      <label className="pixel-editor__row">
+        광장 크기
+        <select
+          value={doc.plazaHeight}
+          onChange={(e) => editor.setPlazaHeight(Number(e.target.value))}
+          aria-label="광장에서 캐릭터 세로 크기"
+        >
+          {CHARACTER_PLAZA_HEIGHTS.map((h) => (
+            <option key={h} value={h}>
+              세로 {h}타일{h === CHARACTER_PLAZA_HEIGHT_DEFAULT ? ' (기본)' : ''}
+            </option>
+          ))}
+        </select>
+      </label>
+      <p className="form__hint">
+        광장에서 이 캐릭터를 얼마나 크게 그릴지 정합니다 (그림판의 굵은 가로선이 1타일). 부딪히고
+        걷는 범위는 크기와 상관없이 발밑만 봅니다.
       </p>
     </section>
+  );
+}
+
+interface MenuItem {
+  label: string;
+  hint: string;
+  run(): void;
+}
+
+/** 머리글의 펼치는 메뉴 (가져오기, 내보내기). 바깥을 누르면 닫힌다 (Esc는 에디터의 키 처리가 닫음) */
+function EditorMenu({
+  label,
+  open,
+  onToggle,
+  items,
+}: {
+  label: string;
+  open: boolean;
+  onToggle(open: boolean): void;
+  items: MenuItem[];
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (!ref.current?.contains(e.target as Node)) onToggle(false);
+    };
+    window.addEventListener('mousedown', onDown);
+    return () => window.removeEventListener('mousedown', onDown);
+  }, [open, onToggle]);
+  return (
+    <div className="pixel-editor__menu-wrap" ref={ref}>
+      <button
+        type="button"
+        className="button"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => onToggle(!open)}
+      >
+        {label} <ChevronDown aria-hidden />
+      </button>
+      {open && (
+        <div className="menu pixel-editor__menu" role="menu">
+          {items.map((item) => (
+            <button
+              key={item.label}
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                onToggle(false);
+                item.run();
+              }}
+            >
+              <strong>{item.label}</strong>
+              <small>{item.hint}</small>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 

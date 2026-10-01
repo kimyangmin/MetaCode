@@ -1,7 +1,21 @@
 import { z } from 'zod';
 import { PlazaStyle } from '../domain/plaza.js';
 import { TILE_SIZE } from '../plaza/layout.js';
+import { type Animator, AnimatorParamType, animatorProblems, animatorSchema } from './animator.js';
+import {
+  ASSET_NAME_PATTERN,
+  MOTION_KEYS,
+  MOTION_LABEL_MAX_LENGTH,
+  type MotionKey,
+} from './keys.js';
 import { decodePixels, isBlank } from './pixels.js';
+
+export {
+  ASSET_NAME_PATTERN,
+  MOTION_KEYS,
+  MOTION_LABEL_MAX_LENGTH,
+  type MotionKey,
+} from './keys.js';
 
 /**
  * 에셋 = 픽셀 데이터 + 매니페스트(크기, 팔레트, 프레임, 애니메이션)를 담은 JSON 하나.
@@ -17,11 +31,27 @@ export const AssetKind = {
 export type AssetKind = (typeof AssetKind)[keyof typeof AssetKind];
 
 /**
- * 캐릭터가 광장에서 차지하는 크기 (가로 1타일, 세로 2타일). 기준점은 발밑 가운데.
- * 매니페스트 해상도와 상관없이 늘 이 크기로 그리므로, 해상도를 올려도 충돌·이동·카메라는 그대로다.
+ * 캐릭터가 광장에서 차지하는 기본 크기 (가로 1타일, 세로 2타일). 기준점은 발밑 가운데.
+ * 매니페스트 해상도와 상관없이 이 크기로 그리므로, 해상도를 올려도 충돌·이동·카메라는 그대로다.
+ * 캐릭터를 만든 사람이 광장 크기(plazaHeight)를 정하면 세로가 그만큼이 된다 (충돌은 여전히 발 영역만).
  */
 export const CHARACTER_WORLD_WIDTH = TILE_SIZE;
 export const CHARACTER_WORLD_HEIGHT = TILE_SIZE * 2;
+
+/** 광장에서 캐릭터 세로 크기 (타일). 0.5타일 단위로 1~4, 기본 2 */
+export const CHARACTER_PLAZA_HEIGHT_MIN = 1;
+export const CHARACTER_PLAZA_HEIGHT_MAX = 4;
+export const CHARACTER_PLAZA_HEIGHT_STEP = 0.5;
+export const CHARACTER_PLAZA_HEIGHT_DEFAULT = CHARACTER_WORLD_HEIGHT / TILE_SIZE;
+
+/** 광장 크기로 고를 수 있는 값 (1, 1.5, …, 4) */
+export const CHARACTER_PLAZA_HEIGHTS: readonly number[] = Array.from(
+  {
+    length:
+      (CHARACTER_PLAZA_HEIGHT_MAX - CHARACTER_PLAZA_HEIGHT_MIN) / CHARACTER_PLAZA_HEIGHT_STEP + 1,
+  },
+  (_, i) => CHARACTER_PLAZA_HEIGHT_MIN + i * CHARACTER_PLAZA_HEIGHT_STEP,
+);
 
 /**
  * 캐릭터 한 프레임의 해상도. 가로·세로 각각 16~512px이고 비율은 자유다 (기본 16×32).
@@ -34,7 +64,7 @@ export const CHARACTER_DEFAULT_SIZE = {
   width: CHARACTER_WORLD_WIDTH,
   height: CHARACTER_WORLD_HEIGHT,
 } as const;
-/** 넓은 그림이라도 광장에서 이보다 넓게 그리지 않는다 (4타일) */
+/** 넓은 그림이라도 광장에서 이보다 넓게 그리지 않는다 (기본 크기에서 4타일, 광장 크기에 비례) */
 export const CHARACTER_WORLD_MAX_WIDTH = TILE_SIZE * 4;
 
 /** 캐릭터로 쓸 수 있는 해상도인지 */
@@ -45,28 +75,36 @@ export function isCharacterSize(width: number, height: number): boolean {
 }
 
 /**
- * 광장에서 캐릭터를 그릴 크기 (월드 px). 세로는 늘 2타일이고 가로는 그림 비율대로다
- * (16×32면 1타일×2타일, 64×64면 2타일×2타일). 아주 넓은 그림은 가로 4타일에 맞춰 함께 줄인다.
- * 충돌·이동 검증은 발 영역만 보므로 그림 크기와 상관없다.
+ * 광장에서 캐릭터를 그릴 크기 (월드 px). 세로는 광장 크기(기본 2타일)이고 가로는 그림 비율대로다
+ * (16×32면 1타일×2타일, 64×64면 2타일×2타일). 아주 넓은 그림은 가로가 세로의 두 배(기본 4타일)에 맞춰
+ * 함께 줄인다. 충돌·이동 검증은 발 영역만 보므로 그림 크기와 상관없다.
  */
 export function characterWorldSize(
   width: number,
   height: number,
+  plazaHeight: number = CHARACTER_PLAZA_HEIGHT_DEFAULT,
 ): {
   width: number;
   height: number;
 } {
-  const scale = Math.min(CHARACTER_WORLD_HEIGHT / height, CHARACTER_WORLD_MAX_WIDTH / width);
+  const worldHeight = plazaHeight * TILE_SIZE;
+  const maxWidth = (CHARACTER_WORLD_MAX_WIDTH / CHARACTER_WORLD_HEIGHT) * worldHeight;
+  const scale = Math.min(worldHeight / height, maxWidth / width);
   return { width: width * scale, height: height * scale };
+}
+
+/** 광장 크기로 쓸 수 있는 값인지 (1~4타일, 0.5 단위) */
+export function isCharacterPlazaHeight(value: number): boolean {
+  return CHARACTER_PLAZA_HEIGHTS.includes(value);
 }
 /** 오브젝트는 가로·세로 1~4타일 */
 export const OBJECT_MAX_TILES = 4;
 export const PALETTE_MAX_COLORS = 64;
 export const ASSET_NAME_MAX_LENGTH = 32;
-export const FRAME_LIMIT: Record<AssetKind, number> = { tile: 16, object: 8, character: 64 };
+export const FRAME_LIMIT: Record<AssetKind, number> = { tile: 16, object: 8, character: 500 };
 /**
  * 에셋 하나의 픽셀 총량 (해상도 × 프레임 수). 매니페스트를 그대로 DB에 넣고 광장에서 내려받으므로,
- * 해상도를 풀어 준 대신 총량을 막는다 (512×512이면 32프레임까지).
+ * 해상도를 풀어 준 대신 총량을 막는다 (512×512이면 32프레임, 128×128이면 500프레임까지).
  */
 export const ASSET_PIXEL_BUDGET = 512 * 512 * 32;
 /**
@@ -155,20 +193,72 @@ export interface CharacterAnimationRef {
   mirrored: boolean;
 }
 
+/** characterAnimation이 보는 매니페스트 부분. 프레임이 있으면 빈 애니메이션을 건너뛴다 */
+type CharacterAnimationSource = Pick<AssetManifest, 'animations'> &
+  Partial<Pick<AssetManifest, 'frames' | 'width' | 'height' | 'style'>>;
+
+/** 매니페스트마다 빈 애니메이션(모든 프레임이 투명)의 이름. 매니페스트가 버려지면 함께 버려진다 */
+const blankAnimations = new WeakMap<object, ReadonlySet<string>>();
+
+/**
+ * 모든 프레임이 비어 있는 애니메이션. 탑다운으로 시작한 캐릭터를 횡스크롤용으로 바꾸면 쓰지 않게 된 아래·위·
+ * 왼쪽이 빈 채로 남는데, 그것을 그리면 미리보기·광장에서 캐릭터가 사라져 보였다.
+ */
+function blankAnimationNames(manifest: CharacterAnimationSource): ReadonlySet<string> {
+  const { frames, width, height } = manifest;
+  if (!frames || !width || !height) return new Set();
+  const cached = blankAnimations.get(manifest);
+  if (cached) return cached;
+  const size = width * height;
+  const blankFrames = frames.map((frame) => {
+    const pixels = decodePixels(frame, size);
+    return !pixels || isBlank(pixels);
+  });
+  const names = new Set(
+    Object.entries(manifest.animations)
+      .filter(([, a]) => a.frames.every((i) => blankFrames[i] ?? true))
+      .map(([name]) => name),
+  );
+  blankAnimations.set(manifest, names);
+  return names;
+}
+
 /**
  * 캐릭터에서 이 이름의 애니메이션. 횡스크롤용 캐릭터는 오른쪽만 그려도 되므로:
  * - 왼쪽(-left)이 없으면 같은 동작의 오른쪽을 좌우 반전해서 쓴다 (왼쪽을 따로 그렸으면 그것)
- * - 위·아래가 없으면 오른쪽을 쓴다 (처음 나타날 때 방향이 아래이거나, 목록이 아래 모습을 보여 줄 때)
+ * - 위·아래가 없으면 오른쪽을 쓴다 (처음 나타날 때 방향이 아래이거나, 목록이 아래 모습을 보여 줄 때).
+ *   횡스크롤용 캐릭터는 아래·위를 그렸더라도 오른쪽을 먼저 쓴다 (옆에서 보는 캐릭터라서)
+ * - 모든 프레임이 빈 애니메이션은 없는 것으로 본다 (매니페스트에 프레임이 있을 때)
  */
 export function characterAnimation(
-  manifest: Pick<AssetManifest, 'animations'>,
+  manifest: CharacterAnimationSource,
   name: string,
 ): CharacterAnimationRef | undefined {
-  const own = manifest.animations[name];
-  if (own) return { animation: own, mirrored: false };
+  const blank = blankAnimationNames(manifest);
+  const usable = (n: string) => (blank.has(n) ? undefined : manifest.animations[n]);
   const match = /^(.+)-(left|down|up)$/.exec(name);
-  const right = match ? manifest.animations[`${match[1]}-right`] : undefined;
+  const right = match ? usable(`${match[1]}-right`) : undefined;
+  const sideways = manifest.style === PlazaStyle.SideScroll && match && match[2] !== 'left';
+  if (sideways && right) return { animation: right, mirrored: false };
+  const own = usable(name);
+  if (own) return { animation: own, mirrored: false };
   return right ? { animation: right, mirrored: match![2] === 'left' } : undefined;
+}
+
+/**
+ * 애니메이터 상태가 가리키는 애니메이션을 그 방향으로 찾는다: `walk`면 `walk-<방향>`(characterAnimation
+ * 규칙: 횡스크롤용 왼쪽은 오른쪽 반전), 방향이 붙은 것이 없으면 그 이름 그대로.
+ * 방향 없이 그린 애니메이션(첨부 모션 등)을 왼쪽을 볼 때 뒤집을지는 그리는 쪽이 정한다 (mirrored는 false).
+ */
+export function animatorClip(
+  manifest: CharacterAnimationSource,
+  animation: string,
+  dir: (typeof CHARACTER_DIRECTIONS)[number],
+): (CharacterAnimationRef & { directional: boolean }) | undefined {
+  const directional = characterAnimation(manifest, `${animation}-${dir}`);
+  if (directional) return { ...directional, directional: true };
+  const own = manifest.animations[animation];
+  return own ? { animation: own, mirrored: false, directional: false } : undefined;
 }
 
 /** 캐릭터가 쓰는 광장 방식. 없으면 탑다운 (방식을 고르기 전에 만든 캐릭터) */
@@ -186,14 +276,6 @@ export function characterFitsStyle(
 ): boolean {
   return characterStyle(manifest) === style || style === PlazaStyle.SideScroll;
 }
-
-/**
- * 캐릭터 모션: 필수 애니메이션 말고 직접 추가해서 광장에서 숫자 키로 트는 애니메이션 (춤, 인사 등).
- * 키는 숫자 1~9, 0이라 한 캐릭터에 열 개까지다.
- */
-export const MOTION_KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'] as const;
-export type MotionKey = (typeof MOTION_KEYS)[number];
-export const MOTION_LABEL_MAX_LENGTH = 16;
 
 const hexColor = z.string().regex(/^#[0-9a-f]{6}$/, '색은 #rrggbb 형식이어야 합니다.');
 
@@ -222,7 +304,7 @@ const manifestShape = z.object({
   height: z.number().int().positive(),
   palette: z.array(hexColor).min(1).max(PALETTE_MAX_COLORS),
   frames: z.array(z.string().max(MAX_FRAME_BASE64)).min(1).max(FRAME_LIMIT.character),
-  animations: z.record(z.string().regex(/^[a-z][a-z0-9-]{0,31}$/), animationSchema),
+  animations: z.record(z.string().regex(ASSET_NAME_PATTERN), animationSchema),
   /** 타일: 지나갈 수 없는 칸인지 (횡스크롤에서는 땅·벽) */
   solid: z.boolean().optional(),
   /** 타일: 횡스크롤의 발판인지 (위에서 내려올 때만 딛고, 아래·옆에서는 지나간다. 탑다운에서는 막지 않음) */
@@ -231,6 +313,10 @@ const manifestShape = z.object({
   footprint: z.array(z.union([z.literal(0), z.literal(1)])).optional(),
   /** 캐릭터: 쓰는 광장 방식. 필수 애니메이션이 달라진다 (REQUIRED_CHARACTER_ANIMATIONS). 없으면 탑다운 */
   style: z.enum([PlazaStyle.TopDown, PlazaStyle.SideScroll]).optional(),
+  /** 캐릭터: 광장에서의 세로 크기 (타일, 0.5 단위 1~4). 없으면 2 */
+  plazaHeight: z.number().optional(),
+  /** 캐릭터: 애니메이터 (상태 그래프). 없으면 대기·걷기·점프·첨부 모션을 정해진 규칙대로 튼다 */
+  animator: animatorSchema.optional(),
   /** 캐릭터: 색을 바꿀 수 있는 부위 → [밝은 면, 그림자, 외곽선] 픽셀 값 */
   colorSlots: z
     .partialRecord(z.enum(COLOR_SLOTS), z.array(z.number().int().min(1)).length(3))
@@ -246,24 +332,40 @@ export function decodeFrames(manifest: AssetManifest): (Uint8Array | null)[] {
 }
 
 export interface CharacterMotion {
-  /** 애니메이션 이름 */
+  /** 애니메이션 이름 (애니메이터 파라미터면 파라미터 이름) */
   name: string;
   key: MotionKey;
   label: string;
+  /** 반복 모션, 애니메이터의 불 값 파라미터면 켜고 끄기 */
   loop: boolean;
+  /** 애니메이터 파라미터면 그 종류 (트리거를 당기거나 불 값을 뒤집는다). 없으면 애니메이션을 바로 튼다 */
+  parameter?: AnimatorParamType;
 }
 
-/** 캐릭터의 모션 (키 순서: 1, 2, …, 9, 0) */
-export function characterMotions(manifest: Pick<AssetManifest, 'animations'>): CharacterMotion[] {
-  return Object.entries(manifest.animations)
+/** 캐릭터의 모션 (키 순서: 1, 2, …, 9, 0). 숫자 키가 달린 애니메이션과 애니메이터 파라미터 */
+export function characterMotions(
+  manifest: Pick<AssetManifest, 'animations'> & { animator?: Animator },
+): CharacterMotion[] {
+  const animations = Object.entries(manifest.animations)
     .filter(([, animation]) => animation.key !== undefined)
     .map(([name, animation]) => ({
       name,
       key: animation.key!,
       label: animation.label ?? name,
       loop: animation.loop ?? false,
-    }))
-    .sort((a, b) => MOTION_KEYS.indexOf(a.key) - MOTION_KEYS.indexOf(b.key));
+    }));
+  const parameters = (manifest.animator?.parameters ?? [])
+    .filter((p) => p.key !== undefined)
+    .map((p) => ({
+      name: p.name,
+      key: p.key!,
+      label: p.label ?? p.name,
+      loop: p.type === AnimatorParamType.Bool,
+      parameter: p.type,
+    }));
+  return [...animations, ...parameters].sort(
+    (a, b) => MOTION_KEYS.indexOf(a.key) - MOTION_KEYS.indexOf(b.key),
+  );
 }
 
 /** 캐릭터에 빠진 애니메이션 (없거나, 프레임이 모자라거나, 빈 프레임이 있음) */
@@ -351,9 +453,31 @@ export function manifestProblems(manifest: AssetManifest): string[] {
       else if (keys.has(animation.key)) found.push(`모션 키 ${animation.key}가 겹칩니다.`);
       else keys.add(animation.key);
     }
+    // 애니메이터 파라미터의 숫자 키도 모션 키와 겹칠 수 없다.
+    for (const parameter of manifest.animator?.parameters ?? []) {
+      if (parameter.key === undefined) continue;
+      if (keys.has(parameter.key)) found.push(`모션 키 ${parameter.key}가 겹칩니다.`);
+      keys.add(parameter.key);
+    }
     return found;
   };
   problems.push(...motionProblems());
+
+  if (manifest.animator) {
+    if (kind !== AssetKind.Character) problems.push('애니메이터는 캐릭터만 쓸 수 있습니다.');
+    else
+      problems.push(
+        ...animatorProblems(manifest.animator, new Set(Object.keys(manifest.animations))),
+      );
+  }
+  if (manifest.plazaHeight !== undefined) {
+    if (kind !== AssetKind.Character) problems.push('광장 크기는 캐릭터만 쓸 수 있습니다.');
+    else if (!isCharacterPlazaHeight(manifest.plazaHeight)) {
+      problems.push(
+        `광장 크기는 ${CHARACTER_PLAZA_HEIGHT_MIN}~${CHARACTER_PLAZA_HEIGHT_MAX}타일(${CHARACTER_PLAZA_HEIGHT_STEP} 단위)이어야 합니다.`,
+      );
+    }
+  }
 
   if (kind === AssetKind.Character) {
     const missing = missingAnimations(manifest);

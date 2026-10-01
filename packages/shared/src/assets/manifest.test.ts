@@ -9,9 +9,11 @@ import {
   characterFitsStyle,
   characterMotions,
   characterStyle,
+  characterWorldSize,
   footprintCells,
   missingAnimations,
 } from './manifest.js';
+import { defaultAnimator } from './animator.js';
 import { colorRamp, decodePixels, encodePixels } from './pixels.js';
 
 const tile = (overrides: Partial<AssetManifest> = {}): AssetManifest => ({
@@ -331,5 +333,104 @@ describe('RLE로 담은 프레임', () => {
     expect(encoded.startsWith('~')).toBe(false);
     expect(decodePixels(encoded)).toEqual(noise);
     expect(decodePixels(encodePixels(new Uint8Array(4096)), 100)).toBeNull();
+  });
+});
+
+describe('빈 애니메이션과 횡스크롤 방향', () => {
+  const base = builtinAsset('builtin:char-short')!;
+  const blank = encodePixels(new Uint8Array(base.width * base.height));
+  const frames = [...base.frames, blank];
+  const blankIndex = frames.length - 1;
+  const rightOnly = Object.fromEntries(
+    Object.entries(base.animations).filter(([name]) => !/-(left|up|down)$/.test(name)),
+  );
+  // 탑다운으로 시작해 횡스크롤로 바꾸면 쓰지 않게 된 아래·위가 빈 채로 남는다
+  const side: AssetManifest = {
+    ...base,
+    style: PlazaStyle.SideScroll,
+    frames,
+    animations: {
+      ...rightOnly,
+      'jump-right': base.animations['walk-right']!,
+      'walk-down': { frames: [blankIndex, blankIndex], frameMs: 150 },
+      'idle-down': { frames: [blankIndex], frameMs: 150 },
+    },
+  };
+
+  it('빈 애니메이션은 없는 것으로 보고 오른쪽을 쓴다', () => {
+    expect(characterAnimation(side, 'walk-down')).toEqual({
+      animation: rightOnly['walk-right'],
+      mirrored: false,
+    });
+    expect(characterAnimation(side, 'idle-down')?.animation).toBe(rightOnly['idle-right']);
+  });
+
+  it('횡스크롤용은 아래·위를 그렸어도 오른쪽을 먼저 쓴다', () => {
+    const drawnDown = {
+      ...side,
+      animations: { ...side.animations, 'walk-down': base.animations['walk-down']! },
+    };
+    expect(characterAnimation(drawnDown, 'walk-down')?.animation).toBe(rightOnly['walk-right']);
+    // 탑다운용은 그린 아래를 그대로 쓴다
+    expect(characterAnimation(base, 'walk-down')?.animation).toBe(base.animations['walk-down']);
+  });
+});
+
+describe('광장 크기', () => {
+  const base = builtinAsset('builtin:char-short')!;
+
+  it('세로 크기를 정하면 가로도 비율대로, 넓은 그림의 가로 한도도 함께 커진다', () => {
+    expect(characterWorldSize(16, 32)).toEqual({ width: 16, height: 32 });
+    expect(characterWorldSize(16, 32, 3)).toEqual({ width: 24, height: 48 });
+    expect(characterWorldSize(512, 16, 1).width).toBe(32);
+  });
+
+  it('0.5타일 단위 1~4타일만, 캐릭터만 쓸 수 있다', () => {
+    expect(problemsOf({ ...base, plazaHeight: 3.5 })).toEqual([]);
+    expect(problemsOf({ ...base, plazaHeight: 2.2 }).join()).toMatch(/광장 크기는 1~4타일/);
+    expect(problemsOf({ ...base, plazaHeight: 5 }).join()).toMatch(/광장 크기는 1~4타일/);
+    expect(problemsOf(tile({ plazaHeight: 2 }))).toContain('광장 크기는 캐릭터만 쓸 수 있습니다.');
+  });
+});
+
+describe('애니메이터가 있는 캐릭터', () => {
+  const base = builtinAsset('builtin:char-short')!;
+  const animator = {
+    ...defaultAnimator(new Set(Object.keys(base.animations))),
+    parameters: [
+      { name: 'wave', type: 'trigger' as const, key: '2' as const, label: '인사' },
+      { name: 'sit', type: 'bool' as const, key: '1' as const },
+    ],
+  };
+
+  it('숫자 키가 달린 파라미터도 모션 목록에 나온다', () => {
+    const manifest = { ...base, animator };
+    expect(problemsOf(manifest)).toEqual([]);
+    expect(characterMotions(manifest)).toEqual([
+      { name: 'sit', key: '1', label: 'sit', loop: true, parameter: 'bool' },
+      { name: 'wave', key: '2', label: '인사', loop: false, parameter: 'trigger' },
+    ]);
+  });
+
+  it('파라미터 키가 모션 키와 겹치거나, 없는 애니메이션을 가리키면 거절한다', () => {
+    const frame = base.animations['idle-down']!.frames[0]!;
+    const clash = {
+      ...base,
+      animations: {
+        ...base.animations,
+        dance: { frames: [frame], frameMs: 100, key: '1' as const },
+      },
+      animator,
+    };
+    expect(problemsOf(clash).join()).toMatch(/모션 키 1가 겹칩니다/);
+    const broken = {
+      ...base,
+      animator: {
+        ...animator,
+        states: [...animator.states, { name: 'fly', animation: 'fly', x: 0, y: 0 }],
+      },
+    };
+    expect(problemsOf(broken).join()).toMatch(/애니메이션 fly이\(가\) 없습니다/);
+    expect(problemsOf(tile({ animator })).join()).toMatch(/애니메이터는 캐릭터만/);
   });
 });
