@@ -265,14 +265,16 @@ export function stepAnimator(
 /**
  * 예전 규칙(대기·걷기·점프·첨부 모션)과 똑같이 도는 그래프. 에디터의 "기본 그래프로 시작"이 만든다.
  * 점프는 그 애니메이션이 있을 때만 넣는다 (없으면 광장이 걷기의 두 번째 프레임을 쓰는 것과 달라지므로).
+ * 첨부 모션도 있을 때만 넣는다 (없으면 광장은 제자리에서 뛰기만 한다).
  */
 export function defaultAnimator(animationNames: ReadonlySet<string>): Animator {
   const hasJump = animatorAnimationExists(animationNames, 'jump');
+  const hasEmote = animatorAnimationExists(animationNames, 'emote');
   const states: AnimatorState[] = [
     { name: 'idle', animation: 'idle', x: 0, y: 0 },
     { name: 'walk', animation: 'walk', x: 240, y: 0 },
     ...(hasJump ? [{ name: 'jump', animation: 'jump', loop: false, x: 240, y: 160 }] : []),
-    { name: 'emote', animation: 'emote', loop: false, x: 0, y: 160 },
+    ...(hasEmote ? [{ name: 'emote', animation: 'emote', loop: false, x: 0, y: 160 }] : []),
   ];
   const transitions: AnimatorTransition[] = [
     { from: 'idle', to: 'walk', conditions: [{ param: 'moving', value: true }] },
@@ -283,8 +285,12 @@ export function defaultAnimator(animationNames: ReadonlySet<string>): Animator {
           { from: 'jump', to: 'idle', conditions: [{ param: 'airborne', value: false }] },
         ]
       : []),
-    { from: ANY_STATE, to: 'emote', conditions: [{ param: 'emote' }] },
-    { from: 'emote', to: 'idle', conditions: [], exitTime: true },
+    ...(hasEmote
+      ? [
+          { from: ANY_STATE, to: 'emote', conditions: [{ param: 'emote' }] },
+          { from: 'emote', to: 'idle', conditions: [], exitTime: true },
+        ]
+      : []),
   ];
   return { entry: 'idle', states, parameters: [], transitions };
 }

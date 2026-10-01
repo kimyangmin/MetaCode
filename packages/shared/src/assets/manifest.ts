@@ -38,13 +38,13 @@ export type AssetKind = (typeof AssetKind)[keyof typeof AssetKind];
 export const CHARACTER_WORLD_WIDTH = TILE_SIZE;
 export const CHARACTER_WORLD_HEIGHT = TILE_SIZE * 2;
 
-/** 광장에서 캐릭터 세로 크기 (타일). 0.5타일 단위로 1~4, 기본 2 */
+/** 광장에서 캐릭터 세로 크기 (타일). 0.5타일 단위로 1~6, 기본 2 */
 export const CHARACTER_PLAZA_HEIGHT_MIN = 1;
-export const CHARACTER_PLAZA_HEIGHT_MAX = 4;
+export const CHARACTER_PLAZA_HEIGHT_MAX = 6;
 export const CHARACTER_PLAZA_HEIGHT_STEP = 0.5;
 export const CHARACTER_PLAZA_HEIGHT_DEFAULT = CHARACTER_WORLD_HEIGHT / TILE_SIZE;
 
-/** 광장 크기로 고를 수 있는 값 (1, 1.5, …, 4) */
+/** 광장 크기로 고를 수 있는 값 (1, 1.5, …, 6) */
 export const CHARACTER_PLAZA_HEIGHTS: readonly number[] = Array.from(
   {
     length:
@@ -93,7 +93,7 @@ export function characterWorldSize(
   return { width: width * scale, height: height * scale };
 }
 
-/** 광장 크기로 쓸 수 있는 값인지 (1~4타일, 0.5 단위) */
+/** 광장 크기로 쓸 수 있는 값인지 (1~6타일, 0.5 단위) */
 export function isCharacterPlazaHeight(value: number): boolean {
   return CHARACTER_PLAZA_HEIGHTS.includes(value);
 }
@@ -155,23 +155,28 @@ const jump = (dir: (typeof SIDE_DIRECTIONS)[number]) => ({
   minFrames: 1,
   label: `점프 (${DIRECTION_LABEL[dir]})`,
 });
-const EMOTE: RequiredAnimation = { name: 'emote', minFrames: 2, label: '첨부 모션' };
+/**
+ * 첨부 모션: 첨부 메시지를 보냈을 때 한 번 트는 애니메이션. 필수가 아니다: 없으면(또는 비었으면) 광장에서
+ * 제자리에서 뛰기만 하고, 있으면 그 애니메이션만 튼다 (뛰지 않음).
+ */
+export const EMOTE_ANIMATION: RequiredAnimation = {
+  name: 'emote',
+  minFrames: 1,
+  label: '첨부 모션',
+};
 
 /**
  * 캐릭터를 저장하려면 모두 그려야 하는 애니메이션. 캐릭터가 쓰는 광장 방식(manifest.style)마다 다르다.
- * - 탑다운: 대기·걷기 4방향 + 첨부 모션
- * - 횡스크롤: 오른쪽을 보는 대기·걷기·점프 + 첨부 모션. 옆에서 보므로 위·아래가 없고, 왼쪽은 그리지 않으면
+ * - 탑다운: 대기·걷기 4방향
+ * - 횡스크롤: 오른쪽을 보는 대기·걷기·점프. 옆에서 보므로 위·아래가 없고, 왼쪽은 그리지 않으면
  *   오른쪽을 좌우 반전해서 쓴다 (characterAnimation). 공중 모습이 늘 보여서 점프가 필수다.
+ * 첨부 모션(EMOTE_ANIMATION)은 필수가 아니다.
  */
 export const REQUIRED_CHARACTER_ANIMATIONS: Readonly<
   Record<PlazaStyle, readonly RequiredAnimation[]>
 > = {
-  [PlazaStyle.TopDown]: [
-    ...CHARACTER_DIRECTIONS.map(idle),
-    ...CHARACTER_DIRECTIONS.map(walk),
-    EMOTE,
-  ],
-  [PlazaStyle.SideScroll]: [idle('right'), walk('right'), jump('right'), EMOTE],
+  [PlazaStyle.TopDown]: [...CHARACTER_DIRECTIONS.map(idle), ...CHARACTER_DIRECTIONS.map(walk)],
+  [PlazaStyle.SideScroll]: [idle('right'), walk('right'), jump('right')],
 };
 
 /**
@@ -182,10 +187,11 @@ export const JUMP_ANIMATIONS = ['jump-left', 'jump-right'] as const;
 
 /** 대기·걷기·점프·첨부 모션처럼 이름이 정해진 애니메이션 (모션 키를 달 수 없다) */
 export const STANDARD_ANIMATIONS: ReadonlyMap<string, RequiredAnimation> = new Map(
-  [...REQUIRED_CHARACTER_ANIMATIONS[PlazaStyle.TopDown], ...SIDE_DIRECTIONS.map(jump)].map((a) => [
-    a.name,
-    a,
-  ]),
+  [
+    ...REQUIRED_CHARACTER_ANIMATIONS[PlazaStyle.TopDown],
+    ...SIDE_DIRECTIONS.map(jump),
+    EMOTE_ANIMATION,
+  ].map((a) => [a.name, a]),
 );
 
 /** 찾은 애니메이션과, 그 그림을 좌우 반전해서 그려야 하는지 */
@@ -314,7 +320,7 @@ const manifestShape = z.object({
   footprint: z.array(z.union([z.literal(0), z.literal(1)])).optional(),
   /** 캐릭터: 쓰는 광장 방식. 필수 애니메이션이 달라진다 (REQUIRED_CHARACTER_ANIMATIONS). 없으면 탑다운 */
   style: z.enum([PlazaStyle.TopDown, PlazaStyle.SideScroll]).optional(),
-  /** 캐릭터: 광장에서의 세로 크기 (타일, 0.5 단위 1~4). 없으면 2 */
+  /** 캐릭터: 광장에서의 세로 크기 (타일, 0.5 단위 1~6). 없으면 2 */
   plazaHeight: z.number().optional(),
   /** 캐릭터: 애니메이터 (상태 그래프). 없으면 대기·걷기·점프·첨부 모션을 정해진 규칙대로 튼다 */
   animator: animatorSchema.optional(),

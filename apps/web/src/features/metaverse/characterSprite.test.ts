@@ -1,6 +1,6 @@
 import { builtinAsset } from '@metacode/shared/builtin-assets';
 import { describe, expect, it } from 'vitest';
-import { PlazaStyle } from '@metacode/shared';
+import { PlazaStyle, encodePixels } from '@metacode/shared';
 import { airbornePose, animationName, characterPose, emoteDurationMs } from './characterSprite';
 
 const manifest = builtinAsset('builtin:char-long')!;
@@ -21,6 +21,18 @@ describe('캐릭터 애니메이션', () => {
     const emote = manifest.animations.emote!;
     expect(emoteDurationMs(manifest)).toBe(emote.frames.length * emote.frameMs);
     expect(characterPose(manifest, 'emote', 'down', 60_000).frame).toBe(emote.frames.at(-1));
+  });
+
+  it('첨부 모션이 없거나 모두 비어 있으면 길이가 0이다 (광장은 그때 제자리에서 뛰기만 한다)', () => {
+    const rest = { ...manifest.animations };
+    delete rest.emote;
+    expect(emoteDurationMs({ ...manifest, animations: rest })).toBe(0);
+    const frames = [
+      ...manifest.frames,
+      encodePixels(new Uint8Array(manifest.width * manifest.height)),
+    ];
+    const blank = { frames: [frames.length - 1, frames.length - 1], frameMs: 100 };
+    expect(emoteDurationMs({ ...manifest, frames, animations: { ...rest, emote: blank } })).toBe(0);
   });
 
   it('캐릭터 모션은 첨부 모션 다음이고, 끝나는 시각이 지나면 대기·걷기로 돌아간다', () => {

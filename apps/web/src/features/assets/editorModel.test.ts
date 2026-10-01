@@ -10,7 +10,9 @@ import { describe, expect, it } from 'vitest';
 import {
   BRUSH_MAX,
   PixelDocument,
+  animationNameFrom,
   brushCells,
+  freeAnimationName,
   fromManifest,
   newDoc,
   toManifest,
@@ -33,8 +35,9 @@ describe('문서와 매니페스트', () => {
 
   it('새 캐릭터는 필수 애니메이션이 모두 있지만 비어 있어서 저장할 수 없다', () => {
     const manifest = toManifest(newDoc('character', '새 캐릭터'));
-    expect(Object.keys(manifest.animations)).toHaveLength(9);
-    expect(missingAnimations(manifest)).toHaveLength(9);
+    // 대기·걷기 4방향 (첨부 모션은 필수가 아니라서 처음엔 없다)
+    expect(Object.keys(manifest.animations)).toHaveLength(8);
+    expect(missingAnimations(manifest)).toHaveLength(8);
   });
 
   it('새 오브젝트는 아래 줄만 막는다', () => {
@@ -371,7 +374,9 @@ describe('캐릭터 광장 방식', () => {
     const doc = new PixelDocument(fromManifest(builtinAsset('builtin:char-short')!));
     doc.setStyle(PlazaStyle.SideScroll);
     const names = doc.doc.animations.map((a) => a.name);
-    expect(names.slice(0, 4)).toEqual(['idle-right', 'walk-right', 'jump-right', 'emote']);
+    expect(names.slice(0, 3)).toEqual(['idle-right', 'walk-right', 'jump-right']);
+    // 내장 캐릭터의 첨부 모션은 필수가 아니어도 그대로 남는다
+    expect(names).toContain('emote');
     expect(names).toContain('idle-left');
     expect(names).not.toContain('jump-left');
     expect(doc.missingAnimations()).toEqual([]);
@@ -400,15 +405,10 @@ describe('캐릭터 광장 방식', () => {
     expect(doc.doc.style).toBe(PlazaStyle.SideScroll);
   });
 
-  it('새 횡스크롤 캐릭터는 4개 애니메이션이 비어 있다', () => {
+  it('새 횡스크롤 캐릭터는 3개 애니메이션이 비어 있다', () => {
     const manifest = toManifest(newDoc('character', '옆', undefined, PlazaStyle.SideScroll));
-    expect(Object.keys(manifest.animations)).toEqual([
-      'idle-right',
-      'walk-right',
-      'jump-right',
-      'emote',
-    ]);
-    expect(missingAnimations(manifest)).toHaveLength(4);
+    expect(Object.keys(manifest.animations)).toEqual(['idle-right', 'walk-right', 'jump-right']);
+    expect(missingAnimations(manifest)).toHaveLength(3);
   });
 });
 
@@ -434,6 +434,56 @@ describe('GIF로 애니메이션 채우기', () => {
     expect(doc.doc.animations.at(-1)).toMatchObject({ key: '1', label: 'dance', loop: true });
     doc.undo();
     expect(doc.doc.animations.some((a) => a.label === 'dance')).toBe(false);
+  });
+
+  it('숫자 키 없는 새 애니메이션으로도 넣는다 (애니메이터용, 이름은 파일 이름에서, 겹치면 -2)', () => {
+    const doc = new PixelDocument(fromManifest(builtinAsset('builtin:char-short')!));
+    const { width, height, palette } = doc.doc;
+    const frame = new Uint8Array(width * height);
+    frame[0] = 1;
+    const count = doc.doc.animations.length;
+    const keys = doc.freeMotionKeys().length;
+    const first = doc.importAnimations(
+      [
+        { target: { animation: 'Dance Loop' }, frames: [frame], frameMs: 120, mirror: true },
+        { target: { animation: 'dance-loop' }, frames: [frame], frameMs: 120, mirror: true },
+        { target: { animation: '춤' }, frames: [frame], frameMs: 120, mirror: true },
+      ],
+      palette,
+      (p) => p,
+    );
+    expect(first).toBe(count);
+    expect(doc.doc.animations.slice(count).map((a) => a.name)).toEqual([
+      'dance-loop',
+      'dance-loop-2',
+      'anim',
+    ]);
+    expect(doc.doc.animations.slice(count).every((a) => a.key === undefined)).toBe(true);
+    expect(doc.freeMotionKeys()).toHaveLength(keys);
+    expect(assetManifestSchema.safeParse(toManifest(doc.doc)).success).toBe(true);
+  });
+});
+
+describe('첨부 모션', () => {
+  it('새 캐릭터에는 없고, 더하면 대기 첫 프레임으로 시작한다 (한 번만)', () => {
+    const doc = new PixelDocument(newDoc('character', '새'));
+    expect(doc.hasEmote()).toBe(false);
+    const at = doc.addEmote()!;
+    const emote = doc.doc.animations[at]!;
+    expect(emote.name).toBe('emote');
+    expect(emote.frames[0]).toEqual(
+      doc.doc.animations.find((a) => a.name === 'idle-down')!.frames[0],
+    );
+    expect(doc.addEmote()).toBeNull();
+  });
+});
+
+describe('애니메이션 이름 만들기', () => {
+  it('영문 소문자로 시작하고 소문자·숫자·-만 남긴다', () => {
+    expect(animationNameFrom('Walk_Left 2')).toBe('walk-left-2');
+    expect(animationNameFrom('2dance')).toBe('dance');
+    expect(animationNameFrom('춤')).toBe('anim');
+    expect(freeAnimationName('dance', new Set(['dance', 'dance-2']))).toBe('dance-3');
   });
 });
 
