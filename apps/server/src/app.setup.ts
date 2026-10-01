@@ -8,9 +8,9 @@ import type { Env } from './config/env.js';
 
 /**
  * 요청 본문 한도. 에셋 매니페스트를 JSON으로 그대로 받으므로 express 기본값(100KB)으로는 모자란다.
- * 에셋의 프레임 데이터는 ASSET_ENCODED_MAX(12M글자)까지다 (512×1024 캐릭터도 도트 그림이면 RLE로 훨씬 작다).
+ * 에셋의 프레임 데이터는 ASSET_ENCODED_MAX(약 400만 글자)까지다 (256×512 캐릭터도 도트 그림이면 RLE로 훨씬 작다).
  */
-const BODY_LIMIT = '16mb';
+const BODY_LIMIT = '6mb';
 
 /** main.ts와 테스트가 같은 설정으로 앱을 띄우도록 공통 설정을 한 곳에 둔다. */
 export function setupApp(app: NestExpressApplication): void {
