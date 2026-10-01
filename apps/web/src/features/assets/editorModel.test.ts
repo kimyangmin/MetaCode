@@ -1,7 +1,20 @@
-import { PlazaStyle, assetManifestSchema, missingAnimations } from '@metacode/shared';
+import {
+  PALETTE_MAX_COLORS,
+  PlazaStyle,
+  assetManifestSchema,
+  defaultAnimator,
+  missingAnimations,
+} from '@metacode/shared';
 import { builtinAsset } from '@metacode/shared/builtin-assets';
 import { describe, expect, it } from 'vitest';
-import { PixelDocument, fromManifest, newDoc, toManifest } from './editorModel';
+import {
+  BRUSH_MAX,
+  PixelDocument,
+  brushCells,
+  fromManifest,
+  newDoc,
+  toManifest,
+} from './editorModel';
 import { indexImage } from './png';
 
 const at = { animation: 0, frame: 0 };
@@ -154,11 +167,11 @@ describe('PNG 가져오기', () => {
   it('크기가 맞지 않으면 거절하고, 팔레트가 가득 차면 가까운 색을 쓴다', () => {
     expect(indexImage(new Uint8ClampedArray(12), 3, 1, 2, 1, [])).toHaveProperty('error');
     const full = Array.from(
-      { length: 64 },
-      (_, i) => `#${(i * 4).toString(16).padStart(2, '0')}0000`,
+      { length: PALETTE_MAX_COLORS },
+      (_, i) => `#${i.toString(16).padStart(2, '0')}0000`,
     );
     const result = indexImage(Uint8ClampedArray.from(pixel(9, 1, 1)), 1, 1, 1, 1, full);
-    expect('frames' in result && result.frames[0]![0]).toBe(3); // #080000
+    expect('frames' in result && result.frames[0]![0]).toBe(10); // #090000
   });
 });
 
@@ -421,5 +434,76 @@ describe('GIF로 애니메이션 채우기', () => {
     expect(doc.doc.animations.at(-1)).toMatchObject({ key: '1', label: 'dance', loop: true });
     doc.undo();
     expect(doc.doc.animations.some((a) => a.label === 'dance')).toBe(false);
+  });
+});
+
+describe('붓 굵기', () => {
+  it('굵기만큼 정사각형으로 칠하고, 짝수 굵기는 왼쪽 위로 한 칸 더 간다', () => {
+    expect(brushCells(5, 5, 1)).toEqual([{ x: 5, y: 5 }]);
+    expect(brushCells(5, 5, 3)).toHaveLength(9);
+    expect(brushCells(5, 5, 2)).toEqual([
+      { x: 5, y: 5 },
+      { x: 6, y: 5 },
+      { x: 5, y: 6 },
+      { x: 6, y: 6 },
+    ]);
+    expect(brushCells(0, 0, 99)).toHaveLength(BRUSH_MAX * BRUSH_MAX);
+  });
+
+  it('굵은 붓은 그림 밖은 건너뛰고, 좌우 대칭과 선 긋기에도 같은 굵기를 쓴다', () => {
+    const editor = new PixelDocument(newDoc('tile', '바닥'));
+    editor.begin();
+    editor.paint(at, 0, 0, 1, false, 3);
+    // 가운데가 (0, 0)이라 그림 안의 2×2만 칠한다
+    expect([...editor.frame(at)!].filter((v) => v === 1)).toHaveLength(4);
+    editor.begin();
+    editor.line(at, { x: 4, y: 8 }, { x: 6, y: 8 }, 2, true, 2);
+    const pixels = editor.frame(at)!;
+    expect(pixels[8 * 16 + 4]).toBe(2);
+    expect(pixels[9 * 16 + 7]).toBe(2);
+    // 좌우 대칭 자리 (15 - 4 = 11)
+    expect(pixels[8 * 16 + 11]).toBe(2);
+    editor.undo();
+    editor.undo();
+    expect(editor.frame(at)!.every((v) => v === 0)).toBe(true);
+  });
+});
+
+describe('광장 크기와 애니메이터', () => {
+  it('기본 크기는 저장하지 않고, 바꾼 크기와 애니메이터는 저장한 뒤 다시 불러온다', () => {
+    const source = builtinAsset('builtin:char-short')!;
+    const editor = new PixelDocument(fromManifest(source));
+    expect(toManifest(editor.doc).plazaHeight).toBeUndefined();
+    editor.setPlazaHeight(3);
+    const animator = defaultAnimator(new Set(Object.keys(source.animations)));
+    editor.setAnimator(animator);
+    const saved = toManifest(editor.doc);
+    expect(saved).toMatchObject({ plazaHeight: 3, animator });
+    expect(assetManifestSchema.safeParse(saved).success).toBe(true);
+    expect(fromManifest(saved)).toMatchObject({ plazaHeight: 3, animator });
+    // 되돌리기 두 번이면 처음 그대로
+    editor.undo();
+    editor.undo();
+    expect(editor.doc.animator).toBeUndefined();
+    expect(editor.doc.plazaHeight).toBe(2);
+  });
+
+  it('같은 key로 이어서 고치면 되돌리기 한 단계, 캐릭터가 아니면 애니메이터를 두지 않는다', () => {
+    const source = builtinAsset('builtin:char-short')!;
+    const editor = new PixelDocument(fromManifest(source));
+    const animator = defaultAnimator(new Set(Object.keys(source.animations)));
+    editor.setAnimator(animator);
+    const moved = (x: number) => ({
+      ...animator,
+      states: animator.states.map((s) => (s.name === 'idle' ? { ...s, x } : s)),
+    });
+    editor.setAnimator(moved(10), 'move:idle');
+    editor.setAnimator(moved(20), 'move:idle');
+    editor.undo();
+    expect(editor.doc.animator).toBe(animator);
+
+    const tile = new PixelDocument(newDoc('tile', '바닥'));
+    tile.setAnimator(animator);
+    expect(tile.doc.animator).toBeUndefined();
   });
 });

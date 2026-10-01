@@ -1,9 +1,11 @@
 import {
   type AssetAnimation,
   type AssetManifest,
+  type AnimatorState,
   type Direction,
   type ProfileCharacter,
   PlazaStyle,
+  animatorClip,
   characterAnimation,
   characterKey,
   characterPalette,
@@ -57,12 +59,15 @@ export function characterLook(
 }
 
 /**
- * 캐릭터를 월드 크기(1타일×2타일)로 맞춘다. 매니페스트 해상도는 16×16부터 512×512까지 제각각이라
- * 텍스처 크기 그대로 그리면 캐릭터마다 크기가 달라진다. 텍스처를 바꾼 뒤에도 다시 불러야 한다
- * (setTexture는 배율을 그대로 두므로 원본 크기가 달라지면 화면 크기도 달라진다).
+ * 캐릭터를 월드 크기(기본 1타일×2타일, 만든 사람이 정한 광장 크기)로 맞춘다. 매니페스트 해상도는
+ * 16×16부터 512×512까지 제각각이라 텍스처 크기 그대로 그리면 캐릭터마다 크기가 달라진다. 텍스처를 바꾼
+ * 뒤에도 다시 불러야 한다 (setTexture는 배율을 그대로 두므로 원본 크기가 달라지면 화면 크기도 달라진다).
  */
-export function fitCharacter<T extends Phaser.GameObjects.Image>(sprite: T): T {
-  const size = characterWorldSize(sprite.frame.width, sprite.frame.height);
+export function fitCharacter<T extends Phaser.GameObjects.Image>(
+  sprite: T,
+  manifest: Pick<AssetManifest, 'plazaHeight'>,
+): T {
+  const size = characterWorldSize(sprite.frame.width, sprite.frame.height, manifest.plazaHeight);
   return sprite.setDisplaySize(size.width, size.height) as T;
 }
 
@@ -131,6 +136,34 @@ export function airbornePose(
   if (!walk) return { frame: 0, flip: false };
   const { frames } = walk.animation;
   return { frame: frames[Math.min(1, frames.length - 1)]!, flip: walk.mirrored };
+}
+
+/** 애니메이터 상태의 애니메이션이 한 번 도는 시간 ("끝나면 넘어가기"에 쓴다). 없으면 0 */
+export function animatorCycleMs(
+  manifest: AssetManifest,
+  state: AnimatorState,
+  dir: Direction,
+): number {
+  const clip = animatorClip(manifest, state.animation, dir);
+  return clip ? clip.animation.frames.length * clip.animation.frameMs : 0;
+}
+
+/**
+ * 애니메이터 상태의 모습. 방향이 붙은 애니메이션은 보는 방향의 것(횡스크롤용 왼쪽은 오른쪽 반전),
+ * 방향 없이 그린 것은 첨부 모션처럼 횡스크롤용이 왼쪽을 볼 때 뒤집는다. 반복하지 않는 상태는 한 번 틀고
+ * 마지막 프레임에 머문다.
+ */
+export function animatorPose(
+  manifest: AssetManifest,
+  state: AnimatorState,
+  dir: Direction,
+  elapsedMs: number,
+): CharacterPose {
+  const clip = animatorClip(manifest, state.animation, dir);
+  if (!clip) return characterPose(manifest, `idle-${dir}`, dir, 0);
+  const once = state.loop === false;
+  const frame = once ? frameOnce(clip.animation, elapsedMs) : frameAt(clip.animation, elapsedMs);
+  return { frame, flip: clip.directional ? clip.mirrored : facesLeft(manifest, dir) };
 }
 
 /**

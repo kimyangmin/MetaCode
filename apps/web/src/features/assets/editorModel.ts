@@ -1,7 +1,9 @@
 import {
+  type Animator,
   type AssetKind,
   type AssetManifest,
   CHARACTER_DEFAULT_SIZE,
+  CHARACTER_PLAZA_HEIGHT_DEFAULT,
   CHARACTER_MAX_SIZE,
   CHARACTER_MIN_SIZE,
   DEFAULT_ANIMATION,
@@ -59,6 +61,25 @@ export interface EditorDoc {
   colorSlots?: AssetManifest['colorSlots'];
   /** 캐릭터가 쓰는 광장 방식 (필수 애니메이션이 다름). 캐릭터가 아니면 의미 없음 */
   style: PlazaStyle;
+  /** 캐릭터: 광장에서의 세로 크기 (타일) */
+  plazaHeight: number;
+  /** 캐릭터: 애니메이터 (없으면 정해진 규칙대로 튼다). 고칠 때는 통째로 바꾼다 (되돌리기가 사본을 함께 씀) */
+  animator?: Animator;
+}
+
+/** 붓 굵기 (정사각형 한 변, px) */
+export const BRUSH_MIN = 1;
+export const BRUSH_MAX = 32;
+
+/** (x, y)를 가운데로 하는 굵기 size의 붓이 칠하는 칸들 (짝수 굵기는 왼쪽 위로 한 칸 더) */
+export function brushCells(x: number, y: number, size: number): { x: number; y: number }[] {
+  const n = Math.max(BRUSH_MIN, Math.min(BRUSH_MAX, Math.round(size)));
+  const start = -Math.floor((n - 1) / 2);
+  const cells: { x: number; y: number }[] = [];
+  for (let dy = 0; dy < n; dy++) {
+    for (let dx = 0; dx < n; dx++) cells.push({ x: x + start + dx, y: y + start + dy });
+  }
+  return cells;
 }
 
 /** 새로 그릴 때의 팔레트: Kenney Tiny Town 색 위주 */
@@ -139,6 +160,7 @@ export function newDoc(
     platform: false,
     footprint: defaultFootprint(width, height),
     style,
+    plazaHeight: CHARACTER_PLAZA_HEIGHT_DEFAULT,
   };
 }
 
@@ -185,6 +207,8 @@ export function fromManifest(manifest: AssetManifest): EditorDoc {
     footprint: manifest.footprint ? [...manifest.footprint] : Array<number>(cells).fill(0),
     colorSlots: manifest.colorSlots,
     style,
+    plazaHeight: manifest.plazaHeight ?? CHARACTER_PLAZA_HEIGHT_DEFAULT,
+    ...(manifest.animator ? { animator: manifest.animator } : {}),
   };
 }
 
@@ -230,6 +254,11 @@ export function toManifest(doc: EditorDoc): AssetManifest {
     ...(doc.kind === 'character' && doc.style === PlazaStyle.SideScroll
       ? { style: doc.style }
       : {}),
+    // 기본 크기도 적지 않는다 (크기를 고르기 전에 만든 캐릭터와 같게)
+    ...(doc.kind === 'character' && doc.plazaHeight !== CHARACTER_PLAZA_HEIGHT_DEFAULT
+      ? { plazaHeight: doc.plazaHeight }
+      : {}),
+    ...(doc.kind === 'character' && doc.animator ? { animator: doc.animator } : {}),
   };
 }
 
@@ -381,22 +410,25 @@ export class PixelDocument {
     return this.frame(ref)?.[y * this.doc.width + x] ?? 0;
   }
 
-  /** 점 하나 (begin() 다음에 여러 번 부른다). mirror면 좌우 대칭 자리에도 칠한다 */
-  paint(ref: FrameRef, x: number, y: number, value: number, mirror = false): void {
+  /**
+   * 붓 한 번 (begin() 다음에 여러 번 부른다). size는 붓 굵기(정사각형 한 변)이고, mirror면 좌우 대칭 자리에도
+   * 칠한다.
+   */
+  paint(ref: FrameRef, x: number, y: number, value: number, mirror = false, size = 1): void {
     const current = this.frame(ref);
     const { width, height } = this.doc;
     if (!current) return;
-    const targets = (mirror ? [x, width - 1 - x] : [x]).filter(
-      (px) => px >= 0 && y >= 0 && px < width && y < height && current[y * width + px] !== value,
-    );
+    const cells = brushCells(x, y, size);
+    const targets = (
+      mirror ? [...cells, ...cells.map((c) => ({ ...c, x: width - 1 - c.x }))] : cells
+    )
+      .filter((c) => c.x >= 0 && c.y >= 0 && c.x < width && c.y < height)
+      .map((c) => c.y * width + c.x)
+      .filter((i) => current[i] !== value);
     if (targets.length === 0) return;
     const pixels = this.writable(ref)!;
-    let touched = false;
-    for (const px of targets) {
-      pixels[y * width + px] = value;
-      touched = true;
-    }
-    if (touched) this.changed();
+    for (const i of targets) pixels[i] = value;
+    this.changed();
   }
 
   /** 선: 마우스를 빨리 움직여도 점이 끊기지 않게 두 점 사이를 잇는다 (브레젠험) */
@@ -406,6 +438,7 @@ export class PixelDocument {
     to: { x: number; y: number },
     value: number,
     mirror = false,
+    size = 1,
   ) {
     let { x, y } = from;
     const dx = Math.abs(to.x - x);
@@ -414,7 +447,7 @@ export class PixelDocument {
     const sy = y < to.y ? 1 : -1;
     let err = dx + dy;
     for (;;) {
-      this.paint(ref, x, y, value, mirror);
+      this.paint(ref, x, y, value, mirror, size);
       if (x === to.x && y === to.y) break;
       const e2 = 2 * err;
       if (e2 >= dy) {
@@ -735,6 +768,26 @@ export class PixelDocument {
       const names = new Set(required.map((r) => r.name));
       doc.animations = [...first, ...doc.animations.filter((a) => !names.has(a.name))];
     });
+  }
+
+  /** 캐릭터의 광장 크기 (세로 타일) */
+  setPlazaHeight(plazaHeight: number): void {
+    if (this.doc.kind !== 'character' || this.doc.plazaHeight === plazaHeight) return;
+    this.edit((doc) => {
+      doc.plazaHeight = plazaHeight;
+    });
+  }
+
+  /**
+   * 애니메이터를 바꾼다 (없애려면 undefined). 그래프 편집은 매번 새 객체를 넘긴다 (되돌리기 사본이 예전 것을
+   * 함께 쓰므로 그 자리에서 고치지 않는다). key가 같으면(상태 끌기, 이름 입력) 되돌리기 한 단계로 묶는다.
+   */
+  setAnimator(animator: Animator | undefined, key?: string): void {
+    if (this.doc.kind !== 'character') return;
+    this.edit((doc) => {
+      if (animator) doc.animator = animator;
+      else delete doc.animator;
+    }, key);
   }
 
   setName(name: string): void {

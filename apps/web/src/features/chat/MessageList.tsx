@@ -18,6 +18,7 @@ import {
 import { type AppSocket, useRealtime } from '../../realtime/RealtimeProvider';
 import { openProfile } from '../../stores/profile';
 import { Avatar } from '../../ui/Avatar';
+import { isTouchDevice } from '../../ui/useMediaQuery';
 import { ConfirmDialog } from '../../ui/ConfirmDialog';
 import { isManager } from '@metacode/shared';
 import { useCommunities } from '../communities/hooks';
@@ -585,13 +586,17 @@ function MessageItem({
   );
 }
 
-/** 내가 보낸 메시지 고치기: Enter 저장, Shift+Enter 줄바꿈, Esc 취소 (한글 조합 중 Enter는 무시) */
+/**
+ * 내가 보낸 메시지 고치기: Enter 저장, Shift+Enter 줄바꿈, Esc 취소 (한글 조합 중 Enter는 무시).
+ * 손가락으로 쓰는 기기에서는 입력창과 같이 Enter가 줄바꿈이고 저장 버튼으로 저장한다.
+ */
 function MessageEditor({ message, onDone }: { message: MessageDto; onDone(): void }) {
   const { socket } = useRealtime();
   const [text, setText] = useState(message.content);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const input = useRef<HTMLTextAreaElement>(null);
+  const [touch] = useState(isTouchDevice);
 
   // 열면 커서를 글 끝에 둔다 (이어서 고치기 쉽게).
   useEffect(() => {
@@ -619,7 +624,7 @@ function MessageEditor({ message, onDone }: { message: MessageDto; onDone(): voi
     if (e.key === 'Escape') {
       e.preventDefault();
       onDone();
-    } else if (e.key === 'Enter' && !e.shiftKey) {
+    } else if (e.key === 'Enter' && !e.shiftKey && !touch) {
       e.preventDefault();
       void save();
     }
@@ -638,7 +643,7 @@ function MessageEditor({ message, onDone }: { message: MessageDto; onDone(): voi
         aria-label="메시지 고치기"
       />
       <p className="form__hint">
-        Enter 저장 · Esc 취소
+        {!touch && 'Enter 저장 · Esc 취소'}
         <button type="button" className="message__editor-action" onClick={onDone}>
           취소
         </button>
