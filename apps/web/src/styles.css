@@ -10,11 +10,10 @@
 }
 
 /*
- * 로그인 화면과 설정 창 전용 색 (앱 전체의 :root 토큰은 건드리지 않는다).
- * 내장 도트 에셋 팔레트(Kenney Tiny Town)에서 가져왔다: 밤하늘·잉크(외곽선)·모닥불·분수·잔디·새벽돌.
+ * MetaCode 팔레트 원색. 내장 도트 에셋 팔레트(Kenney Tiny Town)에서 가져왔다:
+ * 밤하늘·잉크(외곽선)·모닥불·분수·잔디·새벽돌. 앱 어디서나 쓸 수 있다 (채팅의 "맨 아래로" 버튼 등).
  */
-.login,
-.settings-overlay {
+:root {
   --mc-night: #1b1e30;
   --mc-ink: #262b44;
   --mc-ember: #fdbe53;
@@ -22,7 +21,14 @@
   --mc-fountain: #2fa8e0;
   --mc-moss: #84c669;
   --mc-stone: #e9edf5;
+}
 
+/*
+ * 로그인 화면과 설정 창 전용 색 (앱 전체의 :root 토큰 --bg, --accent 등은 건드리지 않는다).
+ * 라이트/다크에 따라 바뀌는 바탕·글자색을 위 팔레트로 정한다.
+ */
+.login,
+.settings-overlay {
   /* 라이트: 새벽돌 바탕, 잉크 글자 */
   --mc-bg: var(--mc-stone);
   --mc-surface: #ffffff;
@@ -768,21 +774,70 @@ a.button {
   transform: translateX(-50%);
 }
 
-/* 위로 많이 올라가 있을 때 맨 아래(최신)로 돌아가는 버튼 */
+/*
+ * 위로 많이 올라가 있을 때 맨 아래(최신)로 돌아가는 버튼. 아이콘만 있는 둥근 사각형이고,
+ * 로그인 버튼처럼 모닥불색 바탕 + 아래 그림자로 눌리는 도트 버튼 느낌을 낸다. 그 사이 온 메시지 수는 오른쪽 위 작은 표시.
+ */
 .jump-to-bottom {
   position: absolute;
   right: 20px;
-  bottom: 12px;
+  bottom: 14px;
   z-index: 3;
-  padding: 6px 14px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: var(--accent);
-  color: var(--accent-fg);
-  font: inherit;
-  font-size: 0.85rem;
-  box-shadow: 0 4px 14px rgb(0 0 0 / 0.3);
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  background: var(--mc-ember);
+  color: var(--mc-ink);
+  box-shadow:
+    0 3px 0 var(--mc-ember-edge),
+    0 6px 16px rgb(0 0 0 / 0.25);
   cursor: pointer;
+  transition:
+    transform 80ms ease-out,
+    box-shadow 80ms ease-out;
+}
+
+.jump-to-bottom .lucide {
+  width: 20px;
+  height: 20px;
+  stroke-width: 2.5;
+}
+
+.jump-to-bottom:hover {
+  filter: brightness(1.04);
+}
+
+.jump-to-bottom:active {
+  transform: translateY(2px);
+  box-shadow:
+    0 1px 0 var(--mc-ember-edge),
+    0 3px 8px rgb(0 0 0 / 0.2);
+}
+
+.jump-to-bottom:focus-visible {
+  outline: 2px solid var(--mc-fountain);
+  outline-offset: 3px;
+}
+
+.jump-to-bottom__count {
+  position: absolute;
+  top: -7px;
+  right: -7px;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  border: 2px solid var(--bg);
+  border-radius: 10px;
+  background: var(--mc-fountain);
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
 }
 
 .message-list {
@@ -5192,13 +5247,11 @@ a {
 }
 
 .message__reply .lucide,
-.message__forwarded .lucide,
-.jump-to-bottom .lucide {
+.message__forwarded .lucide {
   align-self: center;
 }
 
 .message__forwarded,
-.jump-to-bottom,
 .chip,
 .menu button,
 .call-button,
