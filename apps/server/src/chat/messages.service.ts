@@ -9,6 +9,7 @@ import {
   type MessagePage,
   REPLY_PREVIEW_LENGTH,
   SocketEvent,
+  isManager,
 } from '@metacode/shared';
 import { AttachmentsService, toAttachmentDto } from '../attachments/attachments.service.js';
 import type { Attachment } from '../generated/prisma/client.js';
@@ -163,11 +164,15 @@ export class MessagesService {
   }
 
   /**
-   * 내가 보낸 메시지 지우기. 첨부는 DB에서 함께 지워지고(연쇄 삭제) 저장소 파일은 여기서 지운다.
+   * 메시지 지우기: 내가 보낸 메시지, 또는 커뮤니티 채널이면 소유자·관리자는 남의 메시지도.
+   * 첨부는 DB에서 함께 지워지고(연쇄 삭제) 저장소 파일은 여기서 지운다.
    * 이 메시지에 답장한 메시지의 원래 메시지 표시는 비워진다(replyTo = null).
    */
   async remove(userId: string, messageId: string): Promise<void> {
-    const own = await this.findOwn(userId, messageId, '지울');
+    const { message: own, channel } = await this.findVisible(userId, messageId);
+    if (own.authorId !== userId && !(await this.managesChannel(userId, channel.communityId))) {
+      throw new ForbiddenException('내가 보낸 메시지만 지울 수 있습니다.');
+    }
     const attachments = await this.prisma.attachment.findMany({
       where: { messageId },
       select: { objectKey: true, thumbnailKey: true },
@@ -190,6 +195,15 @@ export class MessagesService {
 
   /** 볼 수 있는 채널의 내가 보낸 메시지. 볼 수 없으면 404, 남의 메시지면 403 */
   private async findOwn(userId: string, messageId: string, action: string) {
+    const { message } = await this.findVisible(userId, messageId);
+    if (message.authorId !== userId) {
+      throw new ForbiddenException(`내가 보낸 메시지만 ${action} 수 있습니다.`);
+    }
+    return message;
+  }
+
+  /** 볼 수 있는 채널의 메시지와 그 채널. 볼 수 없으면 404 */
+  private async findVisible(userId: string, messageId: string) {
     const message = await this.prisma.message.findUnique({
       where: { id: messageId },
       select: {
@@ -200,11 +214,14 @@ export class MessagesService {
       },
     });
     if (!message) throw new NotFoundException('메시지를 찾을 수 없습니다.');
-    await this.access.getChannel(userId, message.channelId);
-    if (message.authorId !== userId) {
-      throw new ForbiddenException(`내가 보낸 메시지만 ${action} 수 있습니다.`);
-    }
-    return message;
+    const channel = await this.access.getChannel(userId, message.channelId);
+    return { message, channel };
+  }
+
+  /** 커뮤니티 채널이고 내가 그 커뮤니티의 소유자·관리자인지 (DM은 늘 false) */
+  private async managesChannel(userId: string, communityId: string | null): Promise<boolean> {
+    if (!communityId) return false;
+    return isManager((await this.access.getMembership(userId, communityId)).role);
   }
 
   /** 최신 메시지부터 limit개. before를 주면 그보다 오래된 것 */

@@ -237,6 +237,44 @@ describe('수정과 삭제', () => {
     });
   });
 
+  it('커뮤니티 소유자·관리자는 남의 메시지도 지울 수 있다', async () => {
+    const { alice, bob, community, general } = await setup();
+    const carol = await loginUser(t);
+    const invite = await alice.json<InviteInfo>(`/communities/${community.id}/invites`, post());
+    await carol.json(`/invites/${invite.code}/accept`, post());
+    const aliceSocket = await connect(alice);
+    const bobSocket = await connect(bob);
+    const carolSocket = await connect(carol);
+
+    // 소유자(alice)가 bob의 메시지를 지운다.
+    const byBob = await sendOk(bobSocket, { channelId: general, content: '밥 글' });
+    const deleted = nextEvent(bobSocket, SocketEvent.MessageDeleted);
+    expect(await remove(aliceSocket, byBob.id)).toEqual({ ok: true, data: null });
+    expect(await deleted).toMatchObject({ messageId: byBob.id });
+
+    // 일반 멤버(carol)는 못 지우다가, 관리자가 되면 지울 수 있다. 남의 글을 고치지는 못한다.
+    const byAlice = await sendOk(aliceSocket, { channelId: general, content: '앨리스 글' });
+    expect(await remove(carolSocket, byAlice.id)).toMatchObject({
+      ok: false,
+      error: '내가 보낸 메시지만 지울 수 있습니다.',
+    });
+    await alice.fetch(`/communities/${community.id}/members/${carol.me.id}/admin`, {
+      method: 'PUT',
+      body: JSON.stringify({ admin: true }),
+    });
+    expect(await edit(carolSocket, byAlice.id, '가로채기')).toMatchObject({ ok: false });
+    expect(await remove(carolSocket, byAlice.id)).toEqual({ ok: true, data: null });
+  });
+
+  it('DM에서는 남의 메시지를 지울 수 없다', async () => {
+    const { alice, bob } = await setup();
+    const dm = await bob.json<DmSummary>('/dms', post({ userIds: [alice.me.id] }));
+    const aliceSocket = await connect(alice);
+    const bobSocket = await connect(bob);
+    const message = await sendOk(bobSocket, { channelId: dm.id, content: 'DM 글' });
+    expect(await remove(aliceSocket, message.id)).toMatchObject({ ok: false });
+  });
+
   it('지우면 채널에 알리고(남은 최신 메시지와 함께), 첨부와 답장의 원래 메시지 표시도 사라진다', async () => {
     const { alice, bob, general } = await setup();
     const aliceSocket = await connect(alice);
