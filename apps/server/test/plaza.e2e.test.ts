@@ -4,6 +4,8 @@ import {
   type InviteInfo,
   type PlazaId,
   type PlazaSnapshot,
+  MOVE_SEND_INTERVAL_MS,
+  MOVE_SPEED,
   type SocketAck,
   SocketEvent,
   TILE_SIZE,
@@ -167,6 +169,34 @@ describe('이동', () => {
       expect(await corrected).toMatchObject({ plazaId, x: start.x, y: start.y });
     }
     await expectNoEvent(bobSocket, SocketEvent.PlazaMoved);
+  });
+
+  it('지연으로 몰려 온 이동은 받아들이지만, 계속 너무 빠르게 보내면 되돌린다', async () => {
+    const { alice, bob, plazaId } = await setup();
+    const aliceSocket = await connect(alice);
+    const bobSocket = await connect(bob);
+    const start = (await watchOk(aliceSocket, plazaId)).occupants.find(
+      (o) => o.user.id === alice.me.id,
+    )!;
+    await watchOk(bobSocket, plazaId);
+    // 100ms 동안 걷는 거리(9.6px)만큼 옆과 제자리를 오간다.
+    const square = BUILTIN_LAYOUTS['fountain-square'];
+    const step = (MOVE_SPEED * MOVE_SEND_INTERVAL_MS) / 1000;
+    const aside = isWalkable(square, start.x + step, start.y) ? start.x + step : start.x - step;
+    const xAt = (i: number) => (i % 2 === 0 ? aside : start.x);
+
+    // 300ms 분량이 한꺼번에 도착해도 (남겨 둔 시간으로) 모두 받아들인다
+    const received: number[] = [];
+    bobSocket.on(SocketEvent.PlazaMoved, (m) => received.push(m.x));
+    const noCorrection = expectNoEvent(aliceSocket, SocketEvent.PlazaCorrected);
+    for (let i = 0; i < 3; i++) move(aliceSocket, plazaId, xAt(i), start.y);
+    await noCorrection;
+    expect(received).toEqual([xAt(0), xAt(1), xAt(2)]);
+
+    // 3초 분량을 한꺼번에 보내면(속도 조작) 남겨 둔 시간을 다 쓰고 되돌린다
+    const corrected = nextEvent(aliceSocket, SocketEvent.PlazaCorrected);
+    for (let i = 3; i < 33; i++) move(aliceSocket, plazaId, xAt(i), start.y);
+    await corrected;
   });
 
   it('광장을 열지 않은 연결의 이동은 무시한다', async () => {
