@@ -87,3 +87,34 @@ describe('맵 문서', () => {
     expect(mapDefinitionSchema.safeParse(saved).success).toBe(true);
   });
 });
+
+describe('맵 채우기', () => {
+  const doc = (tiles: string[]) =>
+    new MapDocument({
+      width: 12,
+      height: 12,
+      tiles,
+      ground: new Uint8Array(144).fill(1),
+      overlay: new Uint8Array(144),
+      objects: [],
+      spawn: { x: 0, y: 0, w: 2, h: 2 },
+    });
+
+  it('같은 타일이면 아무것도 바꾸지 않고 되돌리기 단계도 만들지 않는다', () => {
+    const map = doc(['builtin:tt-0']);
+    map.fill('ground', 3, 3, 'builtin:tt-0');
+    expect(map.canUndo).toBe(false);
+    expect(map.dirty).toBe(false);
+  });
+
+  it('타일 목록이 가득 차서 정리하게 돼도 채운 타일이 남는다', () => {
+    // 쓰지 않는 타일로 목록을 가득 채운다 (격자는 첫 타일만 씀)
+    const tiles = Array.from({ length: 255 }, (_, i) => `builtin:tt-${i}`);
+    const map = doc(tiles);
+    map.fill('ground', 3, 3, 'builtin:side-grass');
+    expect(map.tileAt('ground', 0, 0)).toBe('builtin:side-grass');
+    expect(map.tileAt('ground', 11, 11)).toBe('builtin:side-grass');
+    map.undo();
+    expect(map.tileAt('ground', 0, 0)).toBe('builtin:tt-0');
+  });
+});

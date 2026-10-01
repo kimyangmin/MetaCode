@@ -48,12 +48,15 @@ function prepare(file: GifFile, maxSide: number) {
     height = Math.floor(height / extra);
   }
   const frameMs = frameMsOf(gif.delays, FRAME_MS_MIN, FRAME_MS_MAX);
+  // 장면마다 시간이 다르면 같은 장면을 되풀이해 시간을 맞춘다 (저장할 때는 한 장). 다만 애니메이션 하나가
+  // 가리킬 수 있는 프레임 수(FRAME_LIMIT.character)를 넘으면 되풀이하지 않는다: 예전엔 장면이 많은 GIF가
+  // 몇 배로 늘어나 저장할 때 알아보기 힘든 오류로 막혔다.
+  const expanded = expandByDelays(frames, gif.delays, frameMs);
   return {
     name: file.name,
     width,
     height,
-    // 장면마다 시간이 다르면 같은 장면을 되풀이해 시간을 맞춘다 (저장할 때는 한 장)
-    frames: expandByDelays(frames, gif.delays, frameMs),
+    frames: expanded.length <= FRAME_LIMIT.character ? expanded : frames,
     /** 서로 다른 장면 수 (프레임 한도는 이것으로 센다) */
     scenes: frames.length,
     scale: scale * extra,
@@ -105,6 +108,7 @@ export function GifImportDialog({
   };
   const [targets, setTargets] = useState(() => files.map((f) => defaultTarget(f.name)));
   const [mirror, setMirror] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -129,10 +133,8 @@ export function GifImportDialog({
   const tooManyFrames = frameTotal > FRAME_LIMIT[doc.kind];
 
   const apply = () => {
-    if (character && (width !== doc.width || height !== doc.height)) {
-      editor.resizeCharacter(width, height);
-    }
-    const target = editor.doc;
+    // 캐릭터는 그림이 들어가게 해상도를 넓힌 크기로 프레임을 만든다 (해상도는 가져오기와 한 단계로 바꾼다)
+    const target = { kind: doc.kind, width, height, palette: doc.palette };
     const anchor: Anchor =
       target.kind === 'character'
         ? 'bottom-center'
@@ -184,9 +186,19 @@ export function GifImportDialog({
         mirror,
       };
     });
-    const first = editor.importAnimations(entries, palette, (pixels) =>
-      mirrorPixels(pixels, target.width, target.height),
+    const mirrorOf = (pixels: Uint8Array) => mirrorPixels(pixels, target.width, target.height);
+    const size = character ? { width, height } : undefined;
+    // 지금 있는 프레임과 합쳐 한도를 넘는지 사본에 해 보고 넘으면 가져오지 않는다
+    const total = editor.frameCountIf((probe) =>
+      probe.importAnimations(entries, palette, mirrorOf, size),
     );
+    if (total > FRAME_LIMIT[doc.kind]) {
+      setError(
+        `가져오면 프레임이 ${total}장이 되어 한도(${FRAME_LIMIT[doc.kind]}장)를 넘습니다. 쓰지 않는 애니메이션을 지우거나 넣을 곳을 바꿔 주세요.`,
+      );
+      return;
+    }
+    const first = editor.importAnimations(entries, palette, mirrorOf, size);
     onDone(
       first,
       `${frameTotal}장을 가져왔습니다.${
@@ -219,9 +231,10 @@ export function GifImportDialog({
               <select
                 value={targets[i]}
                 aria-label={`${p.name}을 넣을 애니메이션`}
-                onChange={(e) =>
-                  setTargets((list) => list.map((t, j) => (j === i ? e.target.value : t)))
-                }
+                onChange={(e) => {
+                  setError(null);
+                  setTargets((list) => list.map((t, j) => (j === i ? e.target.value : t)));
+                }}
               >
                 {doc.animations.map((a, index) => (
                   <option key={a.name} value={index}>
@@ -282,6 +295,7 @@ export function GifImportDialog({
             {doc.animations.length}개).
           </p>
         )}
+        {error && <p className="form__error">{error}</p>}
         {tooManyFrames && (
           <p className="form__error">
             프레임이 너무 많습니다 ({frameTotal}장, {FRAME_LIMIT[doc.kind]}장까지).

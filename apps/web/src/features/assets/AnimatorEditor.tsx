@@ -186,23 +186,35 @@ function AnimatorGraph({
     const minY = Math.min(...animator.states.map((s) => s.y));
     return { x: 260 - minX, y: 80 - minY };
   });
-  /** Any State 상자 자리 (저장하지 않는다) */
-  const [anyAt, setAnyAt] = useState(() => ({
-    x: Math.min(...animator.states.map((s) => s.x)) - 220,
-    y: Math.min(...animator.states.map((s) => s.y)),
+  /**
+   * Any State 상자 자리: 애니메이터에 저장한 자리, 없으면(예전에 만든 그래프) 처음 연 때의 상태들 왼쪽.
+   * 끌면 애니메이터에 저장한다 (예전엔 저장하지 않아 다시 열면 늘 처음 자리로 돌아갔다).
+   */
+  const [fallbackAny] = useState(() => ({
+    x: snap(Math.min(...animator.states.map((s) => s.x)) - 220),
+    y: snap(Math.min(...animator.states.map((s) => s.y))),
   }));
+  const anyAt = animator.anyState ?? fallbackAny;
   const drag = useRef<
     | {
         kind: 'state';
         name: string;
         start: { x: number; y: number };
         from: { x: number; y: number };
+        /** 끌기 한 번 = 되돌리기 한 단계 (같은 상태를 다시 끌면 따로 되돌린다) */
+        id: number;
       }
-    | { kind: 'any'; start: { x: number; y: number }; from: { x: number; y: number } }
+    | {
+        kind: 'any';
+        start: { x: number; y: number };
+        from: { x: number; y: number };
+        id: number;
+      }
     | { kind: 'pan'; start: { x: number; y: number }; from: { x: number; y: number } }
     | null
   >(null);
   const svgRef = useRef<SVGSVGElement>(null);
+  const dragSeq = useRef(0);
   const [runtimeState, setRuntimeState] = useState<string | null>(null);
 
   const commit = (next: Animator, key?: string) => editor.setAnimator(next, key);
@@ -327,12 +339,18 @@ function AnimatorGraph({
     const at = nodeAt(name);
     drag.current =
       name === ANY_STATE
-        ? { kind: 'any', start: { x: e.clientX, y: e.clientY }, from: { ...at } }
+        ? {
+            kind: 'any',
+            start: { x: e.clientX, y: e.clientY },
+            from: { ...at },
+            id: ++dragSeq.current,
+          }
         : {
             kind: 'state',
             name,
             start: { x: e.clientX, y: e.clientY },
             from: { x: at.x, y: at.y },
+            id: ++dragSeq.current,
           };
   };
 
@@ -356,13 +374,17 @@ function AnimatorGraph({
     if (current.kind === 'pan') {
       setOffset({ x: current.from.x + dx, y: current.from.y + dy });
     } else if (current.kind === 'any') {
-      setAnyAt({ x: snap(current.from.x + dx), y: snap(current.from.y + dy) });
+      const x = snap(current.from.x + dx);
+      const y = snap(current.from.y + dy);
+      if (x !== anyAt.x || y !== anyAt.y) {
+        commit({ ...animator, anyState: { x, y } }, `move:${ANY_STATE}:${current.id}`);
+      }
     } else {
       const x = snap(current.from.x + dx);
       const y = snap(current.from.y + dy);
       const state = byName.get(current.name);
       if (state && (state.x !== x || state.y !== y)) {
-        updateState(current.name, { x, y }, `move:${current.name}`);
+        updateState(current.name, { x, y }, `move:${current.name}:${current.id}`);
       }
     }
   };
@@ -518,7 +540,9 @@ function AnimatorGraph({
         <ul className="animator-editor__custom">
           {animator.parameters.map((p, i) => (
             <ParameterRow
-              key={i}
+              // 이름으로 묶는다: 번호로 묶으면 위의 파라미터를 지웠을 때 아래 줄의 이름 칸이 지운 파라미터의
+              // 이름을 들고 있다가, 포커스가 빠질 때 아래 파라미터를 그 이름으로 바꿨다.
+              key={p.name}
               parameter={p}
               usedKeys={usedKeys}
               taken={(name) => params.has(name) && name !== p.name}
@@ -1085,11 +1109,13 @@ function AnimatorPreview({
   );
   const [moving, setMoving] = useState(false);
   const [airborne, setAirborne] = useState(false);
+  /** 직접 만든 불 값 파라미터 (이름 → 값). 매 프레임 그래프에 넣고, 처음부터면 함께 끈다 */
+  const [flags, setFlags] = useState<Record<string, boolean>>({});
   const [shown, setShown] = useState(animator.entry);
   // 그리는 루프는 한 번만 걸고, 바뀐 값은 이 ref로 읽는다.
-  const live = useRef({ animator, dir, moving, airborne });
+  const live = useRef({ animator, dir, moving, airborne, flags });
   useEffect(() => {
-    live.current = { animator, dir, moving, airborne };
+    live.current = { animator, dir, moving, airborne, flags };
   });
   const { width, height } = editor.doc;
   const longest = Math.max(width, height);
@@ -1101,7 +1127,7 @@ function AnimatorPreview({
     let drawn = '';
     let shownState = '';
     const tick = (now: number) => {
-      const { animator: graph, dir: facing, moving: walk, airborne: air } = live.current;
+      const { animator: graph, dir: facing, moving: walk, airborne: air, flags: on } = live.current;
       runtime.current ??= startAnimator(graph, now);
       const doc = editor.doc;
       // 문서의 애니메이션을 매니페스트 꼴로 (프레임 번호는 애니메이션 안의 순서)
@@ -1116,6 +1142,9 @@ function AnimatorPreview({
       const rt = runtime.current;
       setAnimatorBool(rt, 'moving', walk);
       setAnimatorBool(rt, 'airborne', air);
+      for (const p of graph.parameters) {
+        if (p.type === AnimatorParamType.Bool) setAnimatorBool(rt, p.name, on[p.name] ?? false);
+      }
       stepAnimator(graph, rt, now, (state) => {
         const clip = animatorClip(shape, state.animation, facing);
         return clip ? clip.animation.frames.length * clip.animation.frameMs : 0;
@@ -1208,6 +1237,8 @@ function AnimatorPreview({
           aria-label="처음부터"
           onClick={() => {
             runtime.current = null;
+            // 그래프와 함께 불 값도 처음으로 (예전엔 체크 표시는 남고 값만 꺼져 서로 달랐다)
+            setFlags({});
           }}
         >
           <RotateCcw aria-hidden />
@@ -1225,10 +1256,8 @@ function AnimatorPreview({
         <label key={p.name} className="pixel-editor__check">
           <input
             type="checkbox"
-            defaultChecked={false}
-            onChange={(e) => {
-              if (runtime.current) setAnimatorBool(runtime.current, p.name, e.target.checked);
-            }}
+            checked={flags[p.name] ?? false}
+            onChange={(e) => setFlags((f) => ({ ...f, [p.name]: e.target.checked }))}
           />
           {p.name}
         </label>

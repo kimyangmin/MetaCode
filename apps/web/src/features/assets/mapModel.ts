@@ -127,8 +127,9 @@ export class MapDocument {
     return this.redoStack.length > 0;
   }
 
-  markSaved(): void {
-    this.savedVersion = this.version;
+  /** 저장한 것으로 표시한다 (version을 주면 그 버전을: 기다리는 동안 더 고친 것은 저장하지 않은 것으로) */
+  markSaved(version = this.version): void {
+    this.savedVersion = version;
   }
 
   begin(): void {
@@ -205,12 +206,17 @@ export class MapDocument {
   /** 같은 타일로 이어진 영역 칠하기 (상하좌우) */
   fill(layer: TileLayer, x: number, y: number, ref: AssetRef): void {
     if (!this.inside(x, y)) return;
-    const grid = this.doc[layer];
     const { width, height } = this.doc;
-    const target = grid[y * width + x]!;
+    // 바꿀 것이 없으면 되돌리기 단계를 만들지 않는다.
+    if (this.tileAt(layer, x, y) === ref) return;
     this.begin();
+    // 타일 목록이 가득 차면 tileValue가 목록을 정리하며 격자를 새로 만들므로, 격자와 칠할 값은 그 뒤에 읽는다
+    // (예전엔 정리 전의 격자에 칠해서 채우기가 사라졌다).
     const value = this.tileValue(ref);
-    if (value === null || value === target) return;
+    if (value === null) return;
+    const grid = this.doc[layer];
+    const target = grid[y * width + x]!;
+    if (value === target) return;
     const stack = [y * width + x];
     while (stack.length > 0) {
       const i = stack.pop()!;
