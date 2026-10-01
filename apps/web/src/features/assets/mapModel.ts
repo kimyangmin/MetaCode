@@ -6,6 +6,7 @@ import {
   MAP_TILE_KINDS_MAX,
   type MapDefinition,
   type MapObject,
+  PlazaStyle,
   TILE_SIZE,
   decodePixels,
   encodePixels,
@@ -22,7 +23,11 @@ export interface MapDoc {
   overlay: Uint8Array;
   objects: MapObject[];
   spawn: { x: number; y: number; w: number; h: number };
+  /** 광장 방식. 없으면 탑다운 */
+  style?: PlazaStyle;
 }
+
+export const isSideDoc = (doc: Pick<MapDoc, 'style'>) => doc.style === PlazaStyle.SideScroll;
 
 /** 오브젝트 그림 크기 (타일 단위). 모르는 에셋은 1×1로 본다 */
 export type SizeOf = (ref: AssetRef) => { w: number; h: number };
@@ -40,6 +45,7 @@ export function fromDefinition(map: MapDefinition): MapDoc {
     overlay: decodePixels(map.overlay) ?? new Uint8Array(cells),
     objects: map.objects.map((o) => ({ ...o })),
     spawn: { ...map.spawn },
+    ...(map.style ? { style: map.style } : {}),
   };
 }
 
@@ -54,6 +60,7 @@ export function toDefinition(doc: MapDoc): MapDefinition {
     overlay: encodePixels(compact.overlay),
     objects: doc.objects.map((o) => ({ ...o })),
     spawn: { ...doc.spawn },
+    ...(doc.style ? { style: doc.style } : {}),
   };
 }
 
@@ -238,7 +245,10 @@ export class MapDocument {
     return found;
   }
 
-  /** 지우개: 그 칸의 오브젝트, 없으면 장식 타일을 지운다 (begin() 다음에 여러 번) */
+  /**
+   * 지우개: 그 칸의 오브젝트, 없으면 장식 타일을 지운다 (begin() 다음에 여러 번).
+   * 횡스크롤은 빈칸이 하늘이라 바닥 타일도 지운다 (탑다운 바닥은 늘 칠해져 있어야 한다).
+   */
   erase(x: number, y: number, sizeOf: SizeOf): void {
     const index = this.objectAt(x, y, sizeOf);
     if (index !== -1) {
@@ -246,7 +256,8 @@ export class MapDocument {
       this.changed();
       return;
     }
-    this.paint('overlay', x, y, null);
+    if (isSideDoc(this.doc) && !this.tileAt('overlay', x, y)) this.paint('ground', x, y, null);
+    else this.paint('overlay', x, y, null);
   }
 
   setSpawn(spawn: MapDoc['spawn']): void {
@@ -259,14 +270,16 @@ export class MapDocument {
     this.changed();
   }
 
-  /** 크기 바꾸기: 왼쪽 위를 기준으로 자르거나 늘린다. 늘린 칸은 잔디, 밖으로 나간 오브젝트는 뺀다 */
+  /**
+   * 크기 바꾸기: 왼쪽 위를 기준으로 자르거나 늘린다. 늘린 칸은 잔디(횡스크롤은 하늘), 밖으로 나간 오브젝트는 뺀다
+   */
   resize(width: number, height: number): void {
     width = Math.max(MAP_MIN_SIZE, Math.min(MAP_MAX_SIZE, Math.round(width)));
     height = Math.max(MAP_MIN_SIZE, Math.min(MAP_MAX_SIZE, Math.round(height)));
     const old = this.doc;
     if (width === old.width && height === old.height) return;
     this.begin();
-    const grass = this.tileValue(DEFAULT_GROUND) ?? 0;
+    const grass = isSideDoc(old) ? 0 : (this.tileValue(DEFAULT_GROUND) ?? 0);
     const ground = new Uint8Array(width * height).fill(grass);
     const overlay = new Uint8Array(width * height);
     for (let y = 0; y < Math.min(height, old.height); y++) {

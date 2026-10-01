@@ -4,8 +4,10 @@ import {
   type AssetRef,
   DEFAULT_ANIMATION,
   type MapDefinition,
+  PlazaStyle,
   TILE_SIZE,
   decodePixels,
+  mapStyle,
   objectBounds,
 } from '@metacode/shared';
 import type Phaser from 'phaser';
@@ -66,6 +68,13 @@ interface AnimatedPiece {
 /** 층 깊이: 바닥 < 움직이는 바닥 타일 < 장식 < 움직이는 장식 타일 < (클릭 표시, 그림자, 캐릭터·오브젝트는 발밑 y) */
 const LAYER_DEPTH = { ground: 0, overlay: 0.2 } as const;
 
+/**
+ * 횡스크롤 깊이: 바닥 층(땅·배경) < 오브젝트(배경 소품) < 캐릭터(SIDE_ACTOR_DEPTH) < 장식 층(앞에 겹치는 풀 등).
+ * 옆에서 보므로 발밑 y로 앞뒤를 정하지 않는다.
+ */
+export const SIDE_ACTOR_DEPTH = 1000;
+const SIDE_DEPTH = { ground: 0, object: 0.3, overlay: 5000 } as const;
+
 let mapCount = 0;
 
 /**
@@ -77,11 +86,14 @@ export class MapView {
   private readonly animated: AnimatedPiece[] = [];
   private readonly canvasKeys: string[] = [];
 
+  private readonly side: boolean;
+
   constructor(
     private readonly scene: Phaser.Scene,
     map: MapDefinition,
     assetOf: AssetLookup,
   ) {
+    this.side = mapStyle(map) === PlazaStyle.SideScroll;
     const id = ++mapCount;
     for (const layer of ['ground', 'overlay'] as const) this.drawLayer(map, layer, assetOf, id);
     for (const object of map.objects) {
@@ -93,7 +105,8 @@ export class MapView {
       const image = scene.add
         .image(bounds.left, bounds.bottom, key, animation?.frames[0] ?? 0)
         .setOrigin(0, 1)
-        .setDepth(bounds.bottom);
+        // 횡스크롤의 오브젝트는 캐릭터 뒤 배경이다 (오브젝트끼리는 아래쪽 끝이 앞)
+        .setDepth(this.side ? SIDE_DEPTH.object + bounds.bottom / 1e6 : bounds.bottom);
       this.pieces.push(image);
       if (animation && isAnimated(animation)) this.animate(image, animation);
     }
@@ -136,7 +149,7 @@ export class MapView {
         const piece = this.scene.add
           .image(tx, ty, key, tile.animation.frames[0])
           .setOrigin(0, 0)
-          .setDepth(LAYER_DEPTH[layer] + 0.1);
+          .setDepth(this.depthOf(layer) + 0.1);
         this.pieces.push(piece);
         this.animate(piece, tile.animation);
         return;
@@ -160,7 +173,11 @@ export class MapView {
     const key = `map-${id}-${layer}`;
     this.scene.textures.addCanvas(key, canvas);
     this.canvasKeys.push(key);
-    this.pieces.push(this.scene.add.image(0, 0, key).setOrigin(0, 0).setDepth(LAYER_DEPTH[layer]));
+    this.pieces.push(this.scene.add.image(0, 0, key).setOrigin(0, 0).setDepth(this.depthOf(layer)));
+  }
+
+  private depthOf(layer: 'ground' | 'overlay'): number {
+    return this.side ? SIDE_DEPTH[layer] : LAYER_DEPTH[layer];
   }
 
   private animate(image: Phaser.GameObjects.Image, animation: AssetAnimation) {

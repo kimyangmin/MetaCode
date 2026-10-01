@@ -1,4 +1,4 @@
-import { PlazaMap } from '../domain/plaza.js';
+import { PlazaMap, PlazaStyle } from '../domain/plaza.js';
 import type { MapLayout } from '../plaza/layout.js';
 import { builtinAsset } from './builtin-data.js';
 import type { AssetRef } from './manifest.js';
@@ -98,6 +98,10 @@ class MapBuilder {
     return this;
   }
 
+  objectsAt(): readonly MapObject[] {
+    return this.objects;
+  }
+
   /** 비어 있는 풀밭 칸에 새싹·버섯을 드문드문 (오브젝트 근처는 빼고) */
   sprinkle(): this {
     const grass = new Set([GRASS, GRASS_TUFT].map((ref) => this.tiles.indexOf(ref) + 1));
@@ -112,7 +116,11 @@ class MapBuilder {
     return this;
   }
 
-  build(spawn: MapDefinition['spawn']): MapDefinition {
+  isEmpty(layer: 'ground' | 'overlay', x: number, y: number): boolean {
+    return this[layer][y * this.width + x] === 0;
+  }
+
+  build(spawn: MapDefinition['spawn'], style?: PlazaStyle): MapDefinition {
     return {
       width: this.width,
       height: this.height,
@@ -121,12 +129,13 @@ class MapBuilder {
       overlay: encodePixels(this.overlay),
       objects: this.objects,
       spawn,
+      ...(style ? { style } : {}),
     };
   }
 }
 
 /** 오브젝트가 차지하는 칸 근처에는 장식을 뿌리지 않는다 */
-function near(objects: MapObject[], x: number, y: number) {
+function near(objects: readonly MapObject[], x: number, y: number) {
   return objects.some((o) => x >= o.x - 1 && x <= o.x + 3 && y >= o.y - 3 && y <= o.y + 1);
 }
 
@@ -201,13 +210,83 @@ function campfire(): MapDefinition {
   return map.sprinkle().build({ x: 5, y: 8, w: 6, h: 2 });
 }
 
+const SIDE = {
+  grass: 'builtin:side-grass',
+  dirt: 'builtin:side-dirt',
+  stone: 'builtin:side-stone',
+  rock: 'builtin:side-rock',
+  crate: 'builtin:side-crate',
+  plank: 'builtin:side-plank',
+  tuft: 'builtin:side-grass-tuft',
+  flowers: 'builtin:side-flowers',
+} as const satisfies Record<string, AssetRef>;
+
+/**
+ * 옆에서 본 분수 광장: 횡스크롤 커뮤니티마다 하나. 가운데 돌바닥에 분수·벤치·가로등, 양쪽은 한 칸씩 오르는 언덕,
+ * 하늘에는 점프로 오르는 나무 발판. 가로는 홀수라 분수가 한가운데에 온다.
+ */
+function fountainSide(): MapDefinition {
+  const width = 63;
+  const height = 20;
+  const map = new MapBuilder(width, height);
+  const middle = (width - 1) / 2;
+  /** 땅 윗면의 줄: 가운데는 평평하고 양쪽 끝으로 갈수록 한 칸씩 오른다 */
+  const surface = (x: number) => {
+    const edge = Math.min(x, width - 1 - x);
+    return edge < 5 ? 13 : edge < 9 ? 14 : edge < 13 ? 15 : 16;
+  };
+  const plaza = (x: number) => Math.abs(x - middle) <= 12;
+  for (let x = 0; x < width; x++) {
+    const top = surface(x);
+    map.paint('ground', x, top, plaza(x) ? SIDE.stone : SIDE.grass);
+    for (let y = top + 1; y < height - 1; y++) map.paint('ground', x, y, SIDE.dirt);
+    map.paint('ground', x, height - 1, SIDE.rock);
+  }
+  /** 가운데를 기준으로 양쪽에 같은 것을 둔다 (w = 그림 폭, 타일) */
+  const mirrored = (place: (x: number) => void, x: number, w = 1) => {
+    place(x);
+    place(width - x - w);
+  };
+  const stand = (asset: AssetRef) => (x: number) => map.object(asset, x, surface(x) - 1);
+
+  map.object('builtin:fountain', middle - 1, surface(middle) - 1);
+  mirrored(stand('builtin:bench'), 24, 2);
+  mirrored(stand('builtin:lamp'), 21);
+  mirrored(stand('builtin:lamp'), 11);
+  mirrored(stand('builtin:pine'), 16);
+  mirrored(stand('builtin:pine'), 7);
+  mirrored(stand('builtin:big-tree'), 2, 2);
+  // 뛰어넘을 나무 상자
+  mirrored((x) => map.paint('ground', x, surface(x) - 1, SIDE.crate), 10);
+  // 떠 있는 발판: 세 칸씩 위로 (점프 한 번에 오르는 높이). 위아래 발판이 두 칸씩 겹쳐서
+  // 겹친 곳 아래에서 제자리 점프만 해도 (발판은 아래에서 뛰어 지나가므로) 한 층씩 오른다.
+  for (const [x, y, w] of [
+    [17, 13, 5],
+    [20, 10, 7],
+  ] as const) {
+    mirrored((left) => map.fill('ground', left, y, w, 1, SIDE.plank), x, w);
+  }
+  map.fill('ground', middle - 6, 7, 13, 1, SIDE.plank);
+
+  // 풀과 꽃: 땅 위 빈칸에 드문드문 (오브젝트와 상자 자리는 빼고)
+  for (let x = 0; x < width; x++) {
+    const y = surface(x) - 1;
+    if (plaza(x) || !map.isEmpty('ground', x, y) || near(map.objectsAt(), x, y)) continue;
+    const n = noise(x, y, 5);
+    if (n < 0.35) map.paint('overlay', x, y, n < 0.12 ? SIDE.flowers : SIDE.tuft);
+  }
+  return map.build({ x: middle - 5, y: 12, w: 11, h: 4 }, PlazaStyle.SideScroll);
+}
+
 /** 내장 맵 (default 테마). 커뮤니티가 맵을 따로 만들지 않았으면 이것을 쓴다 */
 export const BUILTIN_MAPS: Readonly<Record<PlazaMap, MapDefinition>> = {
   [PlazaMap.FountainSquare]: fountainSquare(),
   [PlazaMap.Campfire]: campfire(),
+  [PlazaMap.FountainSide]: fountainSide(),
 };
 
 export const BUILTIN_LAYOUTS: Readonly<Record<PlazaMap, MapLayout>> = {
   [PlazaMap.FountainSquare]: buildCollision(BUILTIN_MAPS[PlazaMap.FountainSquare], builtinAsset),
   [PlazaMap.Campfire]: buildCollision(BUILTIN_MAPS[PlazaMap.Campfire], builtinAsset),
+  [PlazaMap.FountainSide]: buildCollision(BUILTIN_MAPS[PlazaMap.FountainSide], builtinAsset),
 };

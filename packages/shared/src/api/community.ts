@@ -1,5 +1,6 @@
 import { type MapDefinition, mapDefinitionSchema } from '../assets/map.js';
 import { z } from 'zod';
+import { PlazaStyle } from '../domain/plaza.js';
 import type { ChannelSummary } from './channel.js';
 import type { UserProfile } from './user.js';
 
@@ -11,15 +12,23 @@ export const CommunityRole = {
 
 export type CommunityRole = (typeof CommunityRole)[keyof typeof CommunityRole];
 
+const communityNameSchema = z.string().trim().min(1, '이름을 입력해 주세요.').max(50);
+
+export const plazaStyleSchema = z.enum([PlazaStyle.TopDown, PlazaStyle.SideScroll]);
+
 export const createCommunitySchema = z.object({
-  name: z.string().trim().min(1, '이름을 입력해 주세요.').max(50),
+  name: communityNameSchema,
+  /** 광장 방식. 보내지 않으면 탑다운 */
+  plazaStyle: plazaStyleSchema.default(PlazaStyle.TopDown),
 });
 
-export type CreateCommunityRequest = z.infer<typeof createCommunitySchema>;
+export type CreateCommunityRequest = z.input<typeof createCommunitySchema>;
 
-/** 커뮤니티 설정의 일반 항목 (이름) */
-export const updateCommunitySchema = createCommunitySchema;
-export type UpdateCommunityRequest = z.infer<typeof updateCommunitySchema>;
+/** 커뮤니티 설정: 이름(일반), 광장 방식(광장). 바꿀 것만 보낸다 */
+export const updateCommunitySchema = z
+  .object({ name: communityNameSchema.optional(), plazaStyle: plazaStyleSchema.optional() })
+  .refine((v) => v.name !== undefined || v.plazaStyle !== undefined, '바꿀 항목이 없습니다.');
+export type UpdateCommunityRequest = z.input<typeof updateCommunitySchema>;
 
 /** 커뮤니티 이미지: 아이콘(왼쪽 막대, 초대 화면)과 배너(채널 목록 위) */
 export const COMMUNITY_IMAGE_KINDS = ['icon', 'banner'] as const;
@@ -46,6 +55,8 @@ export interface CommunitySummary {
   iconUrl: string | null;
   /** 올린 배너 (없으면 이름만) */
   bannerUrl: string | null;
+  /** 광장 방식 (탑다운, 횡스크롤) */
+  plazaStyle: PlazaStyle;
 }
 
 /** 커뮤니티가 만든 역할 (Discord식). 비공개 채널을 이 역할을 가진 멤버에게만 보여 줄 수 있다 */

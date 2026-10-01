@@ -22,6 +22,19 @@ describe('캐릭터 애니메이션', () => {
     expect(characterFrame(manifest, 'emote', 'down', 60_000)).toBe(emote.frames.at(-1));
   });
 
+  it('캐릭터 모션은 첨부 모션 다음이고, 끝나는 시각이 지나면 대기·걷기로 돌아간다', () => {
+    const motion = { name: 'motion-1', loop: false, until: 1_500 };
+    expect(animationName({ dir: 'down', walking: false, emoteUntil: 0, motion }, 1_000)).toBe(
+      'motion-1',
+    );
+    expect(animationName({ dir: 'down', walking: false, emoteUntil: 0, motion }, 2_000)).toBe(
+      'idle-down',
+    );
+    expect(animationName({ dir: 'down', walking: false, emoteUntil: 1_200, motion }, 1_000)).toBe(
+      'emote',
+    );
+  });
+
   it('애니메이션이 없으면 그 방향의 대기 프레임', () => {
     expect(characterFrame(manifest, 'dance', 'right', 0)).toBe(
       manifest.animations['idle-right']!.frames[0],

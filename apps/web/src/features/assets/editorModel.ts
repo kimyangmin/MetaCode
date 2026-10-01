@@ -6,6 +6,9 @@ import {
   CHARACTER_MIN_WIDTH,
   DEFAULT_ANIMATION,
   FRAME_LIMIT,
+  JUMP_ANIMATIONS,
+  MOTION_KEYS,
+  type MotionKey,
   PALETTE_MAX_COLORS,
   REQUIRED_CHARACTER_ANIMATIONS,
   TILE_SIZE,
@@ -23,7 +26,18 @@ export interface EditorAnimation {
   name: string;
   frames: Uint8Array[];
   frameMs: number;
+  /** 캐릭터 모션(광장에서 숫자 키로 트는 것)이면 키, 이름, 반복 */
+  key?: MotionKey;
+  label?: string;
+  loop?: boolean;
 }
+
+/** 필수 애니메이션 (지울 수 없다) */
+const REQUIRED_NAMES = new Set(REQUIRED_CHARACTER_ANIMATIONS.map((r) => r.name));
+/** 한 캐릭터에 둘 수 있는 애니메이션 수 (매니페스트 검증과 같게) */
+const ANIMATION_LIMIT = 32;
+
+export const isMotion = (animation: EditorAnimation) => animation.key !== undefined;
 
 export interface EditorDoc {
   kind: AssetKind;
@@ -34,6 +48,8 @@ export interface EditorDoc {
   palette: string[];
   animations: EditorAnimation[];
   solid: boolean;
+  /** 타일: 횡스크롤의 발판 (위에서만 딛는다) */
+  platform: boolean;
   footprint: number[];
   colorSlots?: AssetManifest['colorSlots'];
 }
@@ -97,6 +113,7 @@ export function newDoc(kind: AssetKind, name: string, tiles = { w: 1, h: 1 }): E
     palette: [...STARTER_PALETTE],
     animations,
     solid: false,
+    platform: false,
     footprint: defaultFootprint(width, height),
   };
 }
@@ -124,6 +141,9 @@ export function fromManifest(manifest: AssetManifest): EditorDoc {
           )
         : [blank(manifest.width, manifest.height)],
       frameMs: animation?.frameMs ?? 120,
+      ...(animation?.key !== undefined
+        ? { key: animation.key, label: animation.label, loop: animation.loop ?? false }
+        : {}),
     };
   });
   const cells = Math.round(manifest.width / TILE_SIZE) * Math.round(manifest.height / TILE_SIZE);
@@ -135,6 +155,7 @@ export function fromManifest(manifest: AssetManifest): EditorDoc {
     palette: [...manifest.palette],
     animations,
     solid: manifest.solid ?? false,
+    platform: manifest.platform ?? false,
     footprint: manifest.footprint ? [...manifest.footprint] : Array<number>(cells).fill(0),
     colorSlots: manifest.colorSlots,
   };
@@ -148,6 +169,13 @@ export function toManifest(doc: EditorDoc): AssetManifest {
   for (const animation of doc.animations) {
     animations[animation.name] = {
       frameMs: animation.frameMs,
+      ...(animation.key !== undefined
+        ? {
+            key: animation.key,
+            label: animation.label?.trim() || animation.name,
+            ...(animation.loop ? { loop: true } : {}),
+          }
+        : {}),
       frames: animation.frames.map((pixels) => {
         const encoded = encodePixels(pixels);
         let index = indexOf.get(encoded);
@@ -168,6 +196,7 @@ export function toManifest(doc: EditorDoc): AssetManifest {
     frames,
     animations,
     ...(doc.kind === 'tile' ? { solid: doc.solid } : {}),
+    ...(doc.kind === 'tile' && doc.platform && !doc.solid ? { platform: true } : {}),
     ...(doc.kind === 'object' ? { footprint: doc.footprint.map((v) => (v ? 1 : 0) as 0 | 1) } : {}),
     ...(doc.kind === 'character' && doc.colorSlots ? { colorSlots: doc.colorSlots } : {}),
   };
@@ -379,6 +408,88 @@ export class PixelDocument {
     });
   }
 
+  // ── 캐릭터 모션 (숫자 키), 점프 ──
+
+  /** 아직 쓰지 않은 모션 키 (1, 2, …, 9, 0 순서) */
+  freeMotionKeys(except?: MotionKey): MotionKey[] {
+    const used = new Set(this.doc.animations.map((a) => a.key).filter((k) => k && k !== except));
+    return MOTION_KEYS.filter((key) => !used.has(key));
+  }
+
+  canAddAnimation(): boolean {
+    return this.doc.kind === 'character' && this.doc.animations.length < ANIMATION_LIMIT;
+  }
+
+  /**
+   * 모션을 하나 더하고 그 번호를 돌려준다. 남은 키 중 첫 번째를 주고, 대기(아래) 첫 프레임을 복사해 시작한다.
+   * 키가 다 찼거나 더할 수 없으면 null.
+   */
+  addMotion(): number | null {
+    const key = this.freeMotionKeys()[0];
+    if (!key || !this.canAddAnimation()) return null;
+    let n = 1;
+    while (this.doc.animations.some((a) => a.name === `motion-${n}`)) n++;
+    const idle = this.doc.animations.find((a) => a.name === 'idle-down')?.frames[0];
+    this.edit((doc) => {
+      doc.animations.push({
+        name: `motion-${n}`,
+        frames: [idle ? Uint8Array.from(idle) : blank(doc.width, doc.height)],
+        frameMs: 150,
+        key,
+        label: `모션 ${n}`,
+        loop: false,
+      });
+    });
+    return this.doc.animations.length - 1;
+  }
+
+  /** 모션의 이름·키·반복을 바꾼다. 다른 모션이 쓰는 키는 고를 수 없다 */
+  updateMotion(index: number, change: { label?: string; key?: MotionKey; loop?: boolean }): void {
+    const animation = this.doc.animations[index];
+    if (!animation || !isMotion(animation)) return;
+    if (change.key && !this.freeMotionKeys(animation.key).includes(change.key)) return;
+    this.edit(
+      (doc) => Object.assign(doc.animations[index]!, change),
+      change.label !== undefined ? `motion-label:${index}` : undefined,
+    );
+  }
+
+  /** 필수가 아닌 애니메이션(모션, 점프)을 지운다 */
+  removeAnimation(index: number): void {
+    const animation = this.doc.animations[index];
+    if (!animation || REQUIRED_NAMES.has(animation.name)) return;
+    this.edit((doc) => doc.animations.splice(index, 1));
+  }
+
+  /** 횡스크롤 점프 애니메이션이 모두 있는지 */
+  hasJump(): boolean {
+    return JUMP_ANIMATIONS.every((name) => this.doc.animations.some((a) => a.name === name));
+  }
+
+  /**
+   * 횡스크롤에서 공중에 있을 때 틀 점프 애니메이션(왼쪽, 오른쪽)을 더한다. 걷기의 두 번째 프레임을 복사해
+   * 시작한다 (없을 때 광장이 쓰는 모습과 같다). 더한 첫 애니메이션의 번호, 더할 수 없으면 null.
+   */
+  addJump(): number | null {
+    const missing = JUMP_ANIMATIONS.filter((n) => !this.doc.animations.some((a) => a.name === n));
+    if (missing.length === 0 || this.doc.animations.length + missing.length > ANIMATION_LIMIT) {
+      return null;
+    }
+    const first = this.doc.animations.length;
+    this.edit((doc) => {
+      for (const name of missing) {
+        const walk = doc.animations.find((a) => a.name === name.replace('jump-', 'walk-'));
+        const source = walk?.frames[Math.min(1, walk.frames.length - 1)];
+        doc.animations.push({
+          name,
+          frames: [source ? Uint8Array.from(source) : blank(doc.width, doc.height)],
+          frameMs: 150,
+        });
+      }
+    });
+    return first;
+  }
+
   setFrameMs(animation: number, frameMs: number): void {
     this.edit((doc) => {
       doc.animations[animation]!.frameMs = frameMs;
@@ -440,9 +551,18 @@ export class PixelDocument {
     this.changed();
   }
 
+  /** 지나갈 수 없음과 발판은 함께 쓸 수 없다 (하나를 켜면 다른 하나는 꺼진다) */
   setSolid(solid: boolean): void {
     this.edit((doc) => {
       doc.solid = solid;
+      if (solid) doc.platform = false;
+    });
+  }
+
+  setPlatform(platform: boolean): void {
+    this.edit((doc) => {
+      doc.platform = platform;
+      if (platform) doc.solid = false;
     });
   }
 

@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import { type MapLayout, TILE_SIZE } from '../plaza/layout.js';
+import { PlazaStyle } from '../domain/plaza.js';
+import { Cell, type MapLayout, TILE_SIZE } from '../plaza/layout.js';
 import {
   type AssetKind,
   type AssetManifest,
@@ -12,7 +13,10 @@ import { decodePixels } from './pixels.js';
 
 /**
  * 맵 정의: 타일 두 층(바닥, 장식) + 오브젝트 + 스폰 영역. 내장 맵과 맵 에디터로 만든 맵이 같은 형식이다.
- * 충돌은 타일의 solid와 오브젝트의 footprint에서 계산한다 (buildCollision).
+ * 충돌은 타일의 solid(와 횡스크롤의 platform)와 오브젝트의 footprint에서 계산한다 (buildCollision).
+ *
+ * style이 횡스크롤이면 옆에서 본 맵이다: 빈칸은 하늘, 지나갈 수 없는 타일은 땅, 발판 타일은 위에서만 딛는다.
+ * 오브젝트는 배경이라 막지 않고, 바닥 층은 캐릭터 뒤, 장식 층은 캐릭터 앞에 그린다.
  */
 export const MAP_MIN_SIZE = 12;
 export const MAP_MAX_SIZE = 64;
@@ -42,6 +46,8 @@ const mapShape = z.object({
     .max(MAP_OBJECTS_MAX),
   /** 처음 나타나는 영역 (타일 단위) */
   spawn: rectSchema,
+  /** 광장 방식. 없으면 탑다운 (이 필드가 생기기 전에 저장한 맵) */
+  style: z.enum([PlazaStyle.TopDown, PlazaStyle.SideScroll]).optional(),
 });
 
 export type MapDefinition = z.infer<typeof mapShape>;
@@ -50,8 +56,13 @@ export type MapObject = MapDefinition['objects'][number];
 /** 충돌 계산에 필요한 에셋 정보 */
 export type AssetCollision = Pick<
   AssetManifest,
-  'kind' | 'width' | 'height' | 'solid' | 'footprint'
+  'kind' | 'width' | 'height' | 'solid' | 'platform' | 'footprint'
 >;
+
+/** 맵의 광장 방식 (style이 없으면 탑다운) */
+export function mapStyle(map: Pick<MapDefinition, 'style'>): PlazaStyle {
+  return map.style ?? PlazaStyle.TopDown;
+}
 
 /** 형식과 범위만 본다 (에셋이 실제로 있는지는 mapAssetProblems) */
 export function mapProblems(map: MapDefinition): string[] {
@@ -102,32 +113,47 @@ export const mapDefinitionSchema = mapShape.superRefine((map, ctx) => {
   for (const message of mapProblems(map)) ctx.addIssue({ code: 'custom', message });
 });
 
-/** 타일의 solid와 오브젝트의 footprint로 막힌 칸을 계산한다. 모르는 에셋은 막지 않는다 */
+/**
+ * 타일의 solid와 오브젝트의 footprint로 막힌 칸을 계산한다. 모르는 에셋은 막지 않는다.
+ * 횡스크롤이면 발판 타일은 Cell.Platform이고, 오브젝트는 배경이라 막지 않는다.
+ */
 export function buildCollision(
   map: MapDefinition,
   metaOf: (ref: AssetRef) => AssetCollision | undefined,
 ): MapLayout {
+  const style = mapStyle(map);
+  const side = style === PlazaStyle.SideScroll;
   const cells = map.width * map.height;
   const blocked = new Uint8Array(cells);
-  const solid = map.tiles.map((ref) => (metaOf(ref)?.solid ? 1 : 0));
+  const kindOf = map.tiles.map((ref) => {
+    const meta = metaOf(ref);
+    if (meta?.solid) return Cell.Solid;
+    return side && meta?.platform ? Cell.Platform : Cell.Open;
+  });
   for (const encoded of [map.ground, map.overlay]) {
     const grid = decodePixels(encoded);
     if (!grid) continue;
     for (let i = 0; i < Math.min(cells, grid.length); i++) {
       const v = grid[i]!;
-      if (v > 0 && solid[v - 1]) blocked[i] = 1;
-    }
-  }
-  for (const object of map.objects) {
-    const meta = metaOf(object.asset);
-    if (!meta) continue;
-    for (const cell of footprintCells(meta, object.x, object.y)) {
-      if (cell.x >= 0 && cell.y >= 0 && cell.x < map.width && cell.y < map.height) {
-        blocked[cell.y * map.width + cell.x] = 1;
+      const kind = v > 0 ? kindOf[v - 1]! : Cell.Open;
+      // 두 층이 겹치면 막힌 칸이 발판보다 먼저다
+      if (kind === Cell.Solid || (kind === Cell.Platform && blocked[i] === Cell.Open)) {
+        blocked[i] = kind;
       }
     }
   }
-  return { width: map.width, height: map.height, blocked, spawn: map.spawn };
+  if (!side) {
+    for (const object of map.objects) {
+      const meta = metaOf(object.asset);
+      if (!meta) continue;
+      for (const cell of footprintCells(meta, object.x, object.y)) {
+        if (cell.x >= 0 && cell.y >= 0 && cell.x < map.width && cell.y < map.height) {
+          blocked[cell.y * map.width + cell.x] = Cell.Solid;
+        }
+      }
+    }
+  }
+  return { width: map.width, height: map.height, blocked, spawn: map.spawn, style };
 }
 
 /** 오브젝트 그림의 월드 좌표 (px): 왼쪽 위 모서리. 앞뒤는 아래쪽 끝(bottom)으로 정한다 */

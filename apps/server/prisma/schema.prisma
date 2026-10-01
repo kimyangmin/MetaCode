@@ -85,15 +85,25 @@ enum ChannelType {
   GROUP_DM
 }
 
+/// 커뮤니티 광장의 방식. DM 모닥불 캠프는 늘 탑다운이다
+enum PlazaStyle {
+  /// 위에서 내려다보며 네 방향으로 걷는다
+  TOP_DOWN
+  /// 옆에서 보며 좌우로 걷고 점프한다
+  SIDE_SCROLL
+}
+
 model Community {
-  id        String   @id @default(uuid(7)) @db.Uuid
-  name      String
-  ownerId   String   @map("owner_id") @db.Uuid
+  id         String     @id @default(uuid(7)) @db.Uuid
+  name       String
+  ownerId    String     @map("owner_id") @db.Uuid
   /// 올린 아이콘·배너의 저장소 키 (communities/<id>/<종류>-<무작위>.webp). 없으면 null
-  iconKey   String?  @map("icon_key")
-  bannerKey String?  @map("banner_key")
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  iconKey    String?    @map("icon_key")
+  bannerKey  String?    @map("banner_key")
+  /// 광장 방식 (만들 때 고르고, 커뮤니티 설정에서 바꿀 수 있다)
+  plazaStyle PlazaStyle @default(TOP_DOWN) @map("plaza_style")
+  createdAt  DateTime   @default(now()) @map("created_at")
+  updatedAt  DateTime   @updatedAt @map("updated_at")
 
   owner    User              @relation(fields: [ownerId], references: [id])
   members  CommunityMember[]

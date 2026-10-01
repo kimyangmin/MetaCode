@@ -19,6 +19,7 @@ import {
   editMessageSchema,
   forwardMessageSchema,
   plazaMoveSchema,
+  plazaSetMotionSchema,
   plazaWatchSchema,
   sendMessageSchema,
   typingStartSchema,
@@ -42,6 +43,9 @@ import { AccessService } from './access.service.js';
 import { MessagesService } from './messages.service.js';
 
 type AppSocket = Socket<ClientToServerEvents, ServerToClientEvents, object, SocketData>;
+
+/** 광장 모션 요청 사이의 최소 간격 (연타 방지) */
+const MOTION_MIN_INTERVAL_MS = 150;
 
 /**
  * 모든 실시간 연결의 입구.
@@ -230,6 +234,32 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
       await this.voice.moved(parsed.data.plazaId, socket.data.userId!);
     } catch (error) {
       this.logger.error('광장 이동 처리 실패', error);
+    }
+  }
+
+  /**
+   * 내 캐릭터 모션(숫자 키). 광장을 열어 둔 연결만 보낼 수 있고, 같은 광장을 보는 다른 사람에게 알린다.
+   * 키를 빠르게 연타해도 부담이 없게 너무 잦은 요청은 버린다.
+   */
+  @SubscribeMessage(SocketEvent.PlazaSetMotion)
+  async onPlazaSetMotion(socket: AppSocket, payload: unknown): Promise<void> {
+    const parsed = plazaSetMotionSchema.safeParse(payload);
+    if (!parsed.success) return;
+    const target = room.plaza(parsed.data.plazaId);
+    if (!socket.rooms.has(target)) return;
+    const now = Date.now();
+    if (now - (socket.data.lastMotionAt ?? 0) < MOTION_MIN_INTERVAL_MS) return;
+    socket.data.lastMotionAt = now;
+    try {
+      const changed = await this.plaza.setMotion(
+        socket.data.userId!,
+        parsed.data.plazaId,
+        parsed.data.motion,
+        parsed.data.loop,
+      );
+      socket.to(target).emit(SocketEvent.PlazaMotionChanged, changed);
+    } catch (error) {
+      this.logger.error('광장 모션 처리 실패', error);
     }
   }
 

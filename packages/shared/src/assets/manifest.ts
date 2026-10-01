@@ -23,11 +23,11 @@ export const CHARACTER_WORLD_WIDTH = TILE_SIZE;
 export const CHARACTER_WORLD_HEIGHT = TILE_SIZE * 2;
 
 /**
- * 캐릭터 한 프레임의 해상도. 가로 16~128px, 세로는 가로의 2배다.
+ * 캐릭터 한 프레임의 해상도. 가로 16~256px, 세로는 가로의 2배(최대 512px)다.
  * 하나로 고정하지 않는 이유는 받아 온 에셋(32×64, 48×96 등)을 줄이지 않고 그대로 쓰기 위해서다.
  */
 export const CHARACTER_MIN_WIDTH = 16;
-export const CHARACTER_MAX_WIDTH = 128;
+export const CHARACTER_MAX_WIDTH = 256;
 /** 새로 그릴 때의 해상도 */
 export const CHARACTER_DEFAULT_WIDTH = CHARACTER_WORLD_WIDTH;
 
@@ -52,9 +52,14 @@ export const ASSET_NAME_MAX_LENGTH = 32;
 export const FRAME_LIMIT: Record<AssetKind, number> = { tile: 16, object: 8, character: 64 };
 /**
  * 에셋 하나의 픽셀 총량 (해상도 × 프레임 수). 매니페스트를 그대로 DB에 넣고 광장에서 내려받으므로,
- * 해상도를 풀어 준 대신 총량을 막는다 (128×256이면 32프레임까지, base64로 약 1.4MB).
+ * 해상도를 풀어 준 대신 총량을 막는다 (256×512이면 32프레임까지).
  */
-export const ASSET_PIXEL_BUDGET = 128 * 256 * 32;
+export const ASSET_PIXEL_BUDGET = 256 * 512 * 32;
+/**
+ * 에셋 하나의 프레임 데이터 총 길이 (글자). 프레임은 도트 그림이면 RLE로 크게 줄어들지만(pixels.ts),
+ * 색이 자주 바뀌는 큰 그림은 거의 줄지 않으므로 저장·전송 크기를 따로 막는다 (약 3MB).
+ */
+export const ASSET_ENCODED_MAX = 4 * 1024 * 1024;
 export const FRAME_MS_MIN = 40;
 export const FRAME_MS_MAX = 2000;
 const ANIMATION_LIMIT = 32;
@@ -95,15 +100,38 @@ export const REQUIRED_CHARACTER_ANIMATIONS: readonly RequiredAnimation[] = [
   { name: 'emote', minFrames: 2, label: '첨부 모션' },
 ];
 
+/**
+ * 광장에서 공중에 있을 때(횡스크롤 점프·떨어지기) 트는 애니메이션. 없으면 걷기의 두 번째 프레임을 쓴다
+ * (필수가 아닌 캐릭터 애니메이션).
+ */
+export const JUMP_ANIMATIONS = ['jump-left', 'jump-right'] as const;
+
+/**
+ * 캐릭터 모션: 필수 애니메이션 말고 직접 추가해서 광장에서 숫자 키로 트는 애니메이션 (춤, 인사 등).
+ * 키는 숫자 1~9, 0이라 한 캐릭터에 열 개까지다.
+ */
+export const MOTION_KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'] as const;
+export type MotionKey = (typeof MOTION_KEYS)[number];
+export const MOTION_LABEL_MAX_LENGTH = 16;
+
 const hexColor = z.string().regex(/^#[0-9a-f]{6}$/, '색은 #rrggbb 형식이어야 합니다.');
 
 const animationSchema = z.object({
   frames: z.array(z.number().int().min(0)).min(1).max(FRAME_LIMIT.character),
   frameMs: z.number().int().min(FRAME_MS_MIN).max(FRAME_MS_MAX),
+  /** 캐릭터 모션: 화면에 보일 이름 (애니메이션 이름은 영문이라 따로 둔다) */
+  label: z.string().trim().min(1).max(MOTION_LABEL_MAX_LENGTH).optional(),
+  /** 캐릭터 모션: 광장에서 이 숫자 키를 누르면 튼다 */
+  key: z.enum(MOTION_KEYS).optional(),
+  /** 캐릭터 모션: 움직이거나 다시 누를 때까지 반복한다 (없으면 한 번) */
+  loop: z.boolean().optional(),
 });
 export type AssetAnimation = z.infer<typeof animationSchema>;
 
-/** 가장 큰 프레임(캐릭터 128×256) 하나의 base64 길이. 이보다 길면 풀어 볼 필요도 없다 */
+/**
+ * 가장 큰 프레임(캐릭터 256×512) 하나의 base64 길이. 이보다 길면 풀어 볼 필요도 없다
+ * (RLE는 그냥 base64보다 짧을 때만 쓰므로 이 길이를 넘지 않는다).
+ */
 const MAX_FRAME_BASE64 =
   4 * Math.ceil((CHARACTER_MAX_WIDTH * characterHeightOf(CHARACTER_MAX_WIDTH)) / 3);
 
@@ -115,8 +143,10 @@ const manifestShape = z.object({
   palette: z.array(hexColor).min(1).max(PALETTE_MAX_COLORS),
   frames: z.array(z.string().max(MAX_FRAME_BASE64)).min(1).max(FRAME_LIMIT.character),
   animations: z.record(z.string().regex(/^[a-z][a-z0-9-]{0,31}$/), animationSchema),
-  /** 타일: 지나갈 수 없는 칸인지 */
+  /** 타일: 지나갈 수 없는 칸인지 (횡스크롤에서는 땅·벽) */
   solid: z.boolean().optional(),
+  /** 타일: 횡스크롤의 발판인지 (위에서 내려올 때만 딛고, 아래·옆에서는 지나간다. 탑다운에서는 막지 않음) */
+  platform: z.boolean().optional(),
   /** 오브젝트: 그림을 덮는 타일 격자(row-major) 중 지나갈 수 없는 칸. 1이면 막힘 */
   footprint: z.array(z.union([z.literal(0), z.literal(1)])).optional(),
   /** 캐릭터: 색을 바꿀 수 있는 부위 → [밝은 면, 그림자, 외곽선] 픽셀 값 */
@@ -127,8 +157,31 @@ const manifestShape = z.object({
 
 export type AssetManifest = z.infer<typeof manifestShape>;
 
+/** 프레임을 푼다. 그림 크기보다 크게 풀리는 것(압축 폭탄)은 null */
 export function decodeFrames(manifest: AssetManifest): (Uint8Array | null)[] {
-  return manifest.frames.map(decodePixels);
+  const size = manifest.width * manifest.height;
+  return manifest.frames.map((frame) => decodePixels(frame, size));
+}
+
+export interface CharacterMotion {
+  /** 애니메이션 이름 */
+  name: string;
+  key: MotionKey;
+  label: string;
+  loop: boolean;
+}
+
+/** 캐릭터의 모션 (키 순서: 1, 2, …, 9, 0) */
+export function characterMotions(manifest: Pick<AssetManifest, 'animations'>): CharacterMotion[] {
+  return Object.entries(manifest.animations)
+    .filter(([, animation]) => animation.key !== undefined)
+    .map(([name, animation]) => ({
+      name,
+      key: animation.key!,
+      label: animation.label ?? name,
+      loop: animation.loop ?? false,
+    }))
+    .sort((a, b) => MOTION_KEYS.indexOf(a.key) - MOTION_KEYS.indexOf(b.key));
 }
 
 /** 캐릭터에 빠진 애니메이션 (없거나, 프레임이 모자라거나, 빈 프레임이 있음) */
@@ -169,6 +222,10 @@ export function manifestProblems(manifest: AssetManifest): string[] {
   if (manifest.frames.length > FRAME_LIMIT[kind]) {
     problems.push(`프레임은 ${FRAME_LIMIT[kind]}장까지입니다.`);
   }
+  if (manifest.frames.reduce((sum, frame) => sum + frame.length, 0) > ASSET_ENCODED_MAX) {
+    problems.push('그림 데이터가 너무 큽니다. 해상도나 프레임 수, 색 수를 줄이세요.');
+    return problems;
+  }
   if (width * height * manifest.frames.length > ASSET_PIXEL_BUDGET) {
     problems.push(
       `에셋이 너무 큽니다 (${width}×${height} × ${manifest.frames.length}장). 해상도나 프레임 수를 줄이세요.`,
@@ -192,6 +249,29 @@ export function manifestProblems(manifest: AssetManifest): string[] {
     }
   }
 
+  const motionProblems = (): string[] => {
+    const found: string[] = [];
+    const keys = new Set<string>();
+    const required = new Set(REQUIRED_CHARACTER_ANIMATIONS.map((r) => r.name));
+    for (const [name, animation] of animations) {
+      const motion =
+        animation.key !== undefined ||
+        animation.label !== undefined ||
+        animation.loop !== undefined;
+      if (!motion) continue;
+      if (kind !== AssetKind.Character) {
+        found.push('모션(키, 이름, 반복)은 캐릭터만 쓸 수 있습니다.');
+        break;
+      }
+      if (required.has(name)) found.push(`${name}: 필수 애니메이션에는 모션 키를 달 수 없습니다.`);
+      if (animation.key === undefined) found.push(`${name}: 모션에는 키가 있어야 합니다.`);
+      else if (keys.has(animation.key)) found.push(`모션 키 ${animation.key}가 겹칩니다.`);
+      else keys.add(animation.key);
+    }
+    return found;
+  };
+  problems.push(...motionProblems());
+
   if (kind === AssetKind.Character) {
     const missing = missingAnimations(manifest);
     if (missing.length > 0) {
@@ -211,6 +291,12 @@ export function manifestProblems(manifest: AssetManifest): string[] {
 
   if (kind !== AssetKind.Tile && manifest.solid !== undefined) {
     problems.push('지나갈 수 없음(solid)은 타일만 쓸 수 있습니다.');
+  }
+  if (kind !== AssetKind.Tile && manifest.platform !== undefined) {
+    problems.push('발판(platform)은 타일만 쓸 수 있습니다.');
+  }
+  if (manifest.solid && manifest.platform) {
+    problems.push('지나갈 수 없는 타일은 발판이 될 수 없습니다.');
   }
   const cells = (width / TILE_SIZE) * (height / TILE_SIZE);
   if (kind === AssetKind.Object) {

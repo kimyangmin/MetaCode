@@ -4,6 +4,8 @@ import type { Server } from 'socket.io';
 
 export interface SocketData {
   userId?: string;
+  /** 마지막으로 받은 광장 모션 요청 시각 (너무 잦은 요청은 버린다) */
+  lastMotionAt?: number;
 }
 
 export type AppServer = Server<ClientToServerEvents, ServerToClientEvents, object, SocketData>;

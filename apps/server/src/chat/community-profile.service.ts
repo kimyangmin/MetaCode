@@ -5,6 +5,7 @@ import {
   type AvatarUploadTicket,
   COMMUNITY_IMAGE_SIZE,
   type CommunityImageKind,
+  type PlazaStyle,
 } from '@metacode/shared';
 import {
   type CropRatio,
@@ -12,6 +13,7 @@ import {
   makeCoverImages,
   sniffRasterFormat,
 } from '../attachments/image.js';
+import { PlazaMapsService } from '../plaza/plaza-maps.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { StorageService } from '../storage/storage.service.js';
 import { AccessService } from './access.service.js';
@@ -29,7 +31,7 @@ const newImageKey = (communityId: string, kind: CommunityImageKind) =>
 const column = { icon: 'iconKey', banner: 'bannerKey' } as const;
 
 /**
- * 커뮤니티 설정의 일반 항목: 이름, 아이콘, 배너 (소유자·관리자).
+ * 커뮤니티 설정: 이름, 아이콘, 배너, 광장 방식 (소유자·관리자).
  * 바뀌면 community:updated로 알려 멤버들이 커뮤니티 정보를 다시 받는다.
  */
 @Injectable()
@@ -39,11 +41,27 @@ export class CommunityProfileService {
     private readonly storage: StorageService,
     private readonly access: AccessService,
     private readonly roles: RolesService,
+    private readonly maps: PlazaMapsService,
   ) {}
 
-  async rename(userId: string, communityId: string, name: string): Promise<void> {
+  /**
+   * 이름이나 광장 방식을 바꾼다. 광장 방식이 바뀌면 광장이 그 방식의 맵으로 바뀐다: 맵 에디터로 꾸민 맵은
+   * 지우지 않고 두었다가(다른 방식의 맵이라 쓰지 않음) 원래 방식으로 되돌리면 다시 쓴다.
+   */
+  async update(
+    userId: string,
+    communityId: string,
+    changes: { name?: string; plazaStyle?: PlazaStyle },
+  ): Promise<void> {
     await this.access.requireManager(userId, communityId, '커뮤니티 설정');
-    await this.prisma.community.update({ where: { id: communityId }, data: { name } });
+    const before = await this.prisma.community.findUniqueOrThrow({
+      where: { id: communityId },
+      select: { plazaStyle: true },
+    });
+    await this.prisma.community.update({ where: { id: communityId }, data: changes });
+    if (changes.plazaStyle && changes.plazaStyle !== before.plazaStyle) {
+      await this.maps.styleChanged(communityId);
+    }
     this.roles.notify(communityId);
   }
 

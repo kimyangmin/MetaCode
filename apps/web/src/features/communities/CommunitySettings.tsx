@@ -7,6 +7,7 @@ import {
   CommunityRole,
   type CommunitySummary,
   type ImageCrop,
+  type PlazaStyle,
   type RoleDto,
 } from '@metacode/shared';
 import { useQueryClient } from '@tanstack/react-query';
@@ -24,6 +25,7 @@ import { useNavigate } from 'react-router';
 import { ApiError, apiFetch } from '../../api/client';
 import { jsonBody, queryKeys } from '../../api/queries';
 import { Avatar } from '../../ui/Avatar';
+import { ConfirmDialog } from '../../ui/ConfirmDialog';
 import { Dialog } from '../../ui/Dialog';
 import {
   type CropSource,
@@ -35,6 +37,7 @@ import { displayName, initials } from '@metacode/client';
 import { useDragSort } from '../../ui/useDragSort';
 import { closeAssetEditors } from '../assets/AssetEditors';
 import { useMeRequired, useMembers } from './hooks';
+import { PLAZA_STYLE_TO, PlazaStylePicker } from './PlazaStylePicker';
 import { GripVertical, X } from 'lucide-react';
 
 const DEFAULT_COLOR = '#3f8fdb';
@@ -56,7 +59,7 @@ const TABS: { id: Tab; label: string }[] = [
 /**
  * 커뮤니티 설정 (소유자, 관리자).
  * - 일반: 이름, 아이콘, 배너, 커뮤니티 삭제(소유자만)
- * - 광장: 커뮤니티 타일·오브젝트, 광장 맵 편집
+ * - 광장: 광장 방식(탑다운, 횡스크롤), 커뮤니티 타일·오브젝트, 광장 맵 편집
  * - 역할: 역할 만들기/바꾸기/지우기 / 멤버: 역할 주기, 관리자 정하기(소유자만), 내보내기
  * 비공개 채널을 누가 볼지는 채널 설정에서 역할로 정한다.
  */
@@ -88,9 +91,12 @@ export function CommunitySettings({
         </div>
         {tab === 'general' && <GeneralTab community={community} />}
         {tab === 'plaza' && (
-          <Suspense fallback={<p className="form__hint">불러오는 중…</p>}>
-            <CommunityPlazaAssets community={community} />
-          </Suspense>
+          <div className="community-plaza">
+            <PlazaStyleField community={community} />
+            <Suspense fallback={<p className="form__hint">불러오는 중…</p>}>
+              <CommunityPlazaAssets community={community} />
+            </Suspense>
+          </div>
         )}
         {tab === 'roles' && <RolesTab community={community} />}
         {tab === 'members' && <MembersTab community={community} />}
@@ -359,6 +365,79 @@ function DeleteCommunity({ community }: { community: CommunitySummary }) {
 }
 
 /** 요청 후 커뮤니티 정보(역할, 채널)와 멤버를 새로 받는다. 서버도 community:updated로 알린다 */
+/**
+ * 광장 방식 바꾸기. 바꾸면 광장을 보던 사람들은 그 방식의 광장에서 스폰 영역부터 다시 시작한다.
+ * 맵 에디터로 꾸민 맵은 그 방식에서만 쓰고 지우지 않으므로, 되돌리면 다시 쓴다.
+ */
+function PlazaStyleField({ community }: { community: CommunitySummary }) {
+  const refresh = useRefresh(community.id);
+  const { error, run } = useRequest();
+  const [style, setStyle] = useState<PlazaStyle>(community.plazaStyle);
+  const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [saved, setSaved] = useState<string | null>(null);
+  // 다른 관리자가 바꿨으면 따라간다.
+  const [shown, setShown] = useState(community.plazaStyle);
+  if (shown !== community.plazaStyle) {
+    setShown(community.plazaStyle);
+    setStyle(community.plazaStyle);
+  }
+
+  const apply = async () => {
+    setConfirming(false);
+    setBusy(true);
+    setSaved(null);
+    const done = await run(
+      () =>
+        apiFetch(`/communities/${community.id}`, {
+          method: 'PATCH',
+          ...jsonBody({ plazaStyle: style }),
+        }),
+      '광장 방식을 바꾸지 못했습니다.',
+    );
+    setBusy(false);
+    if (done) {
+      setSaved(`광장을 ${PLAZA_STYLE_TO[style]} 바꿨습니다.`);
+      refresh();
+    }
+  };
+
+  return (
+    <section className="settings-field">
+      <PlazaStylePicker value={style} onChange={setStyle} disabled={busy} />
+      <div className="settings__row">
+        <button
+          type="button"
+          className="button button--primary"
+          disabled={busy || style === community.plazaStyle}
+          onClick={() => setConfirming(true)}
+        >
+          광장 방식 바꾸기
+        </button>
+        {(error || saved) && (
+          <p className={error ? 'form__error' : 'form__ok'} role="status">
+            {error ?? saved}
+          </p>
+        )}
+      </div>
+      <p className="form__hint">
+        맵 에디터로 꾸민 맵은 그 방식에서만 쓰고 지우지 않습니다. 원래 방식으로 되돌리면 다시
+        나타납니다.
+      </p>
+      {confirming && (
+        <ConfirmDialog
+          title={`광장을 ${PLAZA_STYLE_TO[style]} 바꿀까요?`}
+          confirmLabel="바꾸기"
+          onConfirm={() => void apply()}
+          onCancel={() => setConfirming(false)}
+        >
+          광장을 보고 있는 사람들은 새 광장의 스폰 영역에서 다시 시작합니다.
+        </ConfirmDialog>
+      )}
+    </section>
+  );
+}
+
 function useRefresh(communityId: string) {
   const queryClient = useQueryClient();
   return () => {

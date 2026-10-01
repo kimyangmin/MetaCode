@@ -1714,6 +1714,104 @@ a.button {
   bottom: 12px;
 }
 
+/* Ctrl +/−로 바꾼 배율 (잠깐 보임) */
+.plaza__zoom {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 3;
+  margin: 0;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+  animation: plaza-zoom-in 0.12s ease-out;
+}
+
+@keyframes plaza-zoom-in {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+}
+
+/* 캐릭터 모션 (숫자 키) 목록: 광장 오른쪽 아래(아래 안내 위). 휴대폰처럼 자판이 없어도 누르면 튼다 */
+.plaza-motions {
+  position: absolute;
+  right: 12px;
+  bottom: 44px;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+
+.plaza-motions__toggle {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  cursor: pointer;
+}
+
+.plaza-motions__toggle[aria-expanded='true'] {
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+
+.plaza-motions__list {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 4px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.72);
+  list-style: none;
+}
+
+.plaza-motions__list button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 120px;
+  padding: 5px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #fff;
+  font: inherit;
+  font-size: 0.85rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.plaza-motions__list button:hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.plaza-motions__list kbd {
+  min-width: 18px;
+  padding: 0 4px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.18);
+  font-family: inherit;
+  font-size: 0.75rem;
+  text-align: center;
+}
+
+.plaza-motions__list span {
+  flex: 1;
+}
+
 /* 캐릭터 머리 위: 0×0 기준점에서 위로 쌓는다 */
 .plaza-actor {
   position: absolute;
@@ -2140,6 +2238,107 @@ a.button {
 .channel-type small {
   grid-column: 2;
   color: var(--muted);
+}
+
+/* 광장 방식 고르기 (커뮤니티 만들기, 커뮤니티 설정 → 광장): 내장 광장 미리보기가 있는 카드 두 장 */
+.community-plaza {
+  display: grid;
+  gap: 20px;
+}
+
+.community-plaza .plaza-style {
+  max-width: 560px;
+}
+
+.dialog.dialog--create-community {
+  width: min(520px, 100%);
+}
+
+.plaza-style {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.plaza-style legend {
+  margin-bottom: 6px;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.form .plaza-style__option,
+.plaza-style__option {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-content: start;
+  column-gap: 8px;
+  row-gap: 4px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--fg);
+  cursor: pointer;
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
+}
+
+.plaza-style__option:has(input:checked) {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.plaza-style__option:has(input:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.plaza-style__option input {
+  margin: 0;
+  align-self: center;
+}
+
+.plaza-style__preview {
+  grid-column: 1 / -1;
+  order: -1;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border-radius: 5px;
+  background: #11161d;
+}
+
+.plaza-thumbnail {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.plaza-style__option strong {
+  font-size: 0.9rem;
+}
+
+.plaza-style__option small {
+  grid-column: 1 / -1;
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+
+.plaza-style:disabled .plaza-style__option {
+  cursor: default;
+  opacity: 0.7;
+}
+
+@media (max-width: 480px) {
+  .plaza-style {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* 광장: 캐릭터 위 참여 중인 음성 채널, 말하는 중 */
@@ -3929,6 +4128,37 @@ a {
   color: var(--muted);
 }
 
+/* 캐릭터 모션의 숫자 키와 반복 표시 */
+.pixel-editor__motion-key {
+  min-width: 16px;
+  padding: 0 4px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 0.72rem;
+  text-align: center;
+}
+
+.pixel-editor__loop {
+  color: var(--muted);
+}
+
+.pixel-editor__field {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 8px;
+  font-size: 0.85rem;
+}
+
+.pixel-editor__field input {
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-input);
+  color: var(--fg);
+  font: inherit;
+}
+
 .pixel-editor .mark {
   width: 14px;
   font-weight: 700;
@@ -5658,6 +5888,10 @@ a {
 @media (max-width: 768px), (pointer: coarse) {
   .plaza__hint {
     display: none;
+  }
+
+  .plaza-motions {
+    bottom: 12px;
   }
 }
 
