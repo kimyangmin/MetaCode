@@ -369,9 +369,19 @@ export function MessageList(props: MessageListProps) {
         </p>
       )}
       {away && (
-        <button type="button" className="jump-to-bottom" onClick={jumpToBottom}>
-          {newCount > 0 ? `새 메시지 ${newCount}개 · 맨 아래로` : '맨 아래로'}
+        <button
+          type="button"
+          className="jump-to-bottom"
+          onClick={jumpToBottom}
+          aria-label={newCount > 0 ? `새 메시지 ${newCount}개, 맨 아래로` : '맨 아래로'}
+          title="맨 아래로"
+        >
           <ArrowDown aria-hidden />
+          {newCount > 0 && (
+            <span className="jump-to-bottom__count" aria-hidden>
+              {newCount > 99 ? '99+' : newCount}
+            </span>
+          )}
         </button>
       )}
     </div>
