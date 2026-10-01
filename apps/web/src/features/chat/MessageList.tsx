@@ -18,6 +18,7 @@ import {
 import { type AppSocket, useRealtime } from '../../realtime/RealtimeProvider';
 import { openProfile } from '../../stores/profile';
 import { Avatar } from '../../ui/Avatar';
+import { ConfirmDialog } from '../../ui/ConfirmDialog';
 import { displayName, formatDay, formatTime, sameDay, markdownToPlain } from '@metacode/client';
 import { copyText } from '../../ui/clipboard';
 import { Markdown } from '../../ui/Markdown';
@@ -76,6 +77,8 @@ export function MessageList(props: MessageListProps) {
   const [menu, setMenu] = useState<MenuTarget | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  // 삭제를 한 번 더 묻는 중인 내 메시지들 (우클릭 메뉴는 하나, 잡기의 D는 여럿)
+  const [deleting, setDeleting] = useState<{ messages: MessageDto[]; others: number } | null>(null);
   // 위로 올라가 있을 때: 그때 가장 최신이던 메시지 (그 뒤로 온 메시지 수를 센다)
   const [away, setAway] = useState<{ newestId: string | null } | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -128,25 +131,29 @@ export function MessageList(props: MessageListProps) {
     };
   }, []);
 
-  const deleteSelected = async () => {
+  const deleteSelected = () => {
     const mine = selected.filter((m) => m.author.id === me.id);
     if (mine.length === 0) {
       showToast('잡은 범위에 내가 보낸 메시지가 없습니다.');
       return;
     }
-    const others = selected.length - mine.length;
-    const question = [
-      `내가 보낸 메시지 ${mine.length}개를 삭제할까요?`,
-      others > 0 ? `(다른 사람의 메시지 ${others}개는 그대로 둡니다)` : '',
-      '첨부 파일도 함께 지워지고 되돌릴 수 없습니다.',
-    ]
-      .filter(Boolean)
-      .join('\n');
-    if (!window.confirm(question)) return;
+    // 묻는 동안 잡기 키(D, Esc 등)가 함께 먹지 않게 잡기는 끝낸다.
     setRange(null);
+    setDeleting({ messages: mine, others: selected.length - mine.length });
+  };
+
+  /** 확인 창에서 "삭제"를 누름. 지워진 메시지는 서버 알림(message:deleted)으로 재가 되어 사라진다 */
+  const confirmDelete = async (targets: MessageDto[]) => {
+    setDeleting(null);
+    if (targets.length === 1) {
+      setActionError(
+        await request(socket, SocketEvent.MessageDelete, { messageId: targets[0]!.id }),
+      );
+      return;
+    }
     let failed = 0;
     let reason: string | null = null;
-    for (const message of mine) {
+    for (const message of targets) {
       const error = await request(socket, SocketEvent.MessageDelete, { messageId: message.id });
       if (error) {
         failed++;
@@ -154,7 +161,7 @@ export function MessageList(props: MessageListProps) {
       }
     }
     if (failed > 0) setActionError(`${failed}개를 삭제하지 못했습니다. ${reason ?? ''}`.trim());
-    else showToast(`메시지 ${mine.length}개를 삭제했습니다.`);
+    else showToast(`메시지 ${targets.length}개를 삭제했습니다.`);
   };
 
   const copySelected = () => {
@@ -185,7 +192,7 @@ export function MessageList(props: MessageListProps) {
           ?.querySelector(`[data-message-id="${focus}"]`)
           ?.scrollIntoView({ block: 'nearest' });
       } else if (e.code === 'KeyD' && !e.ctrlKey && !e.metaKey) {
-        void deleteSelected();
+        deleteSelected();
       } else if (e.code === 'KeyC') {
         copySelected();
       } else if (e.code === 'KeyF' && !e.ctrlKey && !e.metaKey) {
@@ -232,18 +239,6 @@ export function MessageList(props: MessageListProps) {
   const jumpToBottom = () => listRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
   const newIndex = away?.newestId ? messages.findIndex((m) => m.id === away.newestId) : -1;
   const newCount = newIndex > 0 ? newIndex : 0;
-
-  const remove = async (message: MessageDto) => {
-    const preview = message.content ? `"${Array.from(message.content).slice(0, 40).join('')}"` : '';
-    if (
-      !window.confirm(
-        `이 메시지를 삭제할까요? ${preview}\n첨부 파일도 함께 지워지고 되돌릴 수 없습니다.`,
-      )
-    ) {
-      return;
-    }
-    setActionError(await request(socket, SocketEvent.MessageDelete, { messageId: message.id }));
-  };
 
   useEffect(() => {
     const target = sentinel.current;
@@ -358,11 +353,18 @@ export function MessageList(props: MessageListProps) {
             onReply={props.onReply}
             onForward={(message) => props.onForward([message])}
             onEdit={(message) => setEditing(message.id)}
-            onDelete={(message) => void remove(message)}
+            onDelete={(message) => setDeleting({ messages: [message], others: 0 })}
             onClose={() => setMenu(null)}
           />
         )}
       </div>
+      {deleting && (
+        <DeleteConfirm
+          {...deleting}
+          onConfirm={() => void confirmDelete(deleting.messages)}
+          onCancel={() => setDeleting(null)}
+        />
+      )}
       {toast && (
         <p className="message-list__toast" role="status">
           {toast}
@@ -385,6 +387,60 @@ export function MessageList(props: MessageListProps) {
         </button>
       )}
     </div>
+  );
+}
+
+/** 미리보기에 보여 줄 글 길이 */
+const DELETE_PREVIEW_CHARS = 120;
+
+/** 메시지 삭제를 한 번 더 묻는 창. 하나면 그 메시지를 미리 보여 준다 */
+function DeleteConfirm({
+  messages,
+  others,
+  onConfirm,
+  onCancel,
+}: {
+  messages: MessageDto[];
+  others: number;
+  onConfirm(): void;
+  onCancel(): void;
+}) {
+  const single = messages.length === 1 ? messages[0]! : null;
+  const text = single ? markdownToPlain(single.content) : '';
+  const preview = Array.from(text).slice(0, DELETE_PREVIEW_CHARS).join('');
+  return (
+    <ConfirmDialog
+      title={single ? '메시지를 삭제할까요?' : `내 메시지 ${messages.length}개를 삭제할까요?`}
+      confirmLabel="삭제"
+      danger
+      onConfirm={onConfirm}
+      onCancel={onCancel}
+    >
+      {single && (
+        <div className="delete-preview">
+          <Avatar user={single.author} size={32} />
+          <div className="delete-preview__body">
+            <div className="delete-preview__head">
+              <strong>{displayName(single.author)}</strong>
+              <time dateTime={single.createdAt}>{formatTime(single.createdAt)}</time>
+            </div>
+            {preview && (
+              <p className="delete-preview__text">
+                {preview}
+                {preview.length < text.length && '…'}
+              </p>
+            )}
+            {single.attachments.length > 0 && (
+              <span className="delete-preview__files">
+                <FileCount count={single.attachments.length} />
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+      {others > 0 && <p>다른 사람의 메시지 {others}개는 그대로 둡니다.</p>}
+      <p>첨부 파일도 함께 지워지고 되돌릴 수 없습니다.</p>
+    </ConfirmDialog>
   );
 }
 
