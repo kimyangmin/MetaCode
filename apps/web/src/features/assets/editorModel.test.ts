@@ -103,22 +103,33 @@ describe('그리기', () => {
     doc.paint(at, 0, 0, 1); // 왼쪽 위 끝
     doc.paint(at, 8, 31, 2); // 발밑 가운데
 
-    doc.resizeCharacter(32);
+    doc.resizeCharacter(32, 64);
     expect([doc.doc.width, doc.doc.height]).toEqual([32, 64]);
     expect(doc.pick(at, 8, 32)).toBe(1); // 가로로 8칸, 세로로 32칸 밀렸다
     expect(doc.pick(at, 16, 63)).toBe(2);
     // 저장할 매니페스트도 새 해상도로 검증을 통과한다.
     expect(toManifest(doc.doc).width).toBe(32);
 
-    doc.resizeCharacter(16);
+    doc.resizeCharacter(16, 32);
     expect([doc.doc.width, doc.doc.height]).toEqual([16, 32]);
     expect(doc.pick(at, 8, 31)).toBe(2);
   });
 
   it('범위 밖이거나 캐릭터가 아니면 해상도를 바꾸지 않는다', () => {
     const object = new PixelDocument(newDoc('object', '돌'));
-    object.resizeCharacter(32);
+    object.resizeCharacter(32, 64);
     expect(object.doc.width).toBe(16);
+    const character = new PixelDocument(newDoc('character', '나'));
+    character.resizeCharacter(513, 32);
+    character.resizeCharacter(16, 8);
+    expect([character.doc.width, character.doc.height]).toEqual([16, 32]);
+  });
+
+  it('가로·세로를 따로 정한다 (정사각형도 된다)', () => {
+    const doc = new PixelDocument(fromManifest(builtinAsset('builtin:char-short')!));
+    doc.resizeCharacter(512, 512);
+    expect([doc.doc.width, doc.doc.height]).toEqual([512, 512]);
+    expect(assetManifestSchema.safeParse(toManifest(doc.doc)).success).toBe(true);
   });
 });
 
@@ -227,15 +238,15 @@ describe('자르기', () => {
   it('캐릭터는 크기를 맞추면 잘라 낸 그림을 발밑 가운데에 둔다', () => {
     const doc = new PixelDocument(newDoc('character', '캐릭터'));
     doc.begin();
-    doc.resizeCharacter(64);
+    doc.resizeCharacter(64, 128);
     doc.paint(at, 10, 20, 1);
     doc.paint(at, 29, 69, 2);
     doc.crop({ x: 10, y: 20, w: 20, h: 50 }, undefined, true);
-    // 가로 = max(20, 50/2) = 25, 세로 50
-    expect(doc.doc.width).toBe(25);
+    // 사각형 크기 그대로 20×50
+    expect(doc.doc.width).toBe(20);
     expect(doc.doc.height).toBe(50);
-    expect(doc.pick(at, 2, 0)).toBe(1);
-    expect(doc.pick(at, 21, 49)).toBe(2);
+    expect(doc.pick(at, 0, 0)).toBe(1);
+    expect(doc.pick(at, 19, 49)).toBe(2);
   });
 
   it('오브젝트는 크기를 맞추면 16px 단위로 올리고 왼쪽 아래에 둔다', () => {
