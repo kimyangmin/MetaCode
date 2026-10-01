@@ -18,6 +18,7 @@ import {
 import { API_URL } from '../config';
 import { getDesktopBridge } from '../platform';
 import { friendsKey } from '../features/friends/api';
+import { vanishMessage } from '../features/chat/ashEffect';
 import { usePresenceStore, useTypingStore, withUserProfile } from '@metacode/client';
 import { useProfileStore } from '../stores/profile';
 import { useVoiceStore } from '../features/voice/store';
@@ -79,9 +80,12 @@ export function RealtimeProvider({ meId, children }: { meId: string; children: R
       if (!known) void queryClient.invalidateQueries({ queryKey: queryKeys.dms });
     });
     socket.on(SocketEvent.MessageUpdated, (message) => updateMessageInCache(queryClient, message));
-    socket.on(SocketEvent.MessageDeleted, (deleted) =>
-      removeMessageFromCache(queryClient, deleted),
-    );
+    // 화면에 보이는 메시지면 재가 되어 사라지는 연출을 보여 준 뒤 목록에서 뺀다 (누가 지웠든).
+    socket.on(SocketEvent.MessageDeleted, (deleted) => {
+      void vanishMessage(deleted.messageId).then(() =>
+        removeMessageFromCache(queryClient, deleted),
+      );
+    });
     socket.on(SocketEvent.TypingStarted, ({ channelId, userId }) => {
       if (userId !== meId) useTypingStore.getState().start(channelId, userId);
     });

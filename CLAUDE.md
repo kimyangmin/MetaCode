@@ -83,6 +83,7 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
   - 입력창은 한글 조합 중 Enter(`isComposing`, keyCode 229)로 보내지 않습니다.
   - 라우터: 웹은 일반 주소, 데스크톱은 해시 주소(`#/c/...`). 로그인 전에 연 초대 링크는 sessionStorage에 기억했다가 로그인 후 이어 갑니다.
   - 수정·삭제: 내가 보낸 메시지만 (우클릭 메뉴). `message:edit`(ack로 고친 메시지) → `message:updated`, `message:delete` → `message:deleted {channelId, messageId, lastMessageId}`. 고치면 `editedAt`이 남고 "(수정됨)"을 보여 주며, 첨부 없는 메시지는 글을 비울 수 없습니다. 지우면 첨부도 DB에서 연쇄 삭제되고 저장소 파일은 서버가 지웁니다. 답장의 원래 메시지 표시는 고치면 글이 바뀌고 지우면 비워지며(클라이언트 캐시도 같은 규칙, `updateMessageInCache`/`removeMessageFromCache`), `lastMessageId`로 채널의 안 읽음 표시를 맞춥니다. 광장은 떠 있는 말풍선의 글을 바꾸거나 내립니다.
+  - 삭제 확인은 브라우저 `confirm` 대신 앱 확인 창(`DeleteConfirm` → `ui/ConfirmDialog`, 메시지 하나면 미리보기)입니다. `message:deleted`를 받으면(누가 지웠든) 화면에 보이는 메시지는 재가 되어 사라지는 연출(`features/chat/ashEffect.ts`: 그을림 → 왼쪽부터 부서지는 마스크 + 변위 필터 + 재·불씨 입자 캔버스 → 자리 접힘, 약 1.2초) 뒤에 캐시에서 뺍니다. 그림을 찍지 않고(html2canvas 없음) CSS 필터·마스크와 입자만 씁니다. 끝은 애니메이션 이벤트가 아니라 시간으로 재므로 가려진 창에서도 멈추지 않고, 가려진 창·움직임 줄이기·스크롤해서 안 보이는 메시지는 바로 뺍니다. 연출 중인 `.message`에 `overflow: hidden`을 걸 때도 `flex-shrink: 0`이 필요합니다 (답장 밀기와 같은 납작해짐).
   - 아직 없는 것: 보내기 속도 제한, 모바일 화면(가로 1000px 미만이면 멤버 목록만 숨김).
 - **여러 사용자로 확인:** `tools/fake-github.mjs`(가짜 GitHub, 앨리스/밥/캐롤) + 서버를 `GITHUB_OAUTH_URL`/`GITHUB_API_URL`=`http://localhost:4010`으로 띄웁니다. 두 번째 사용자는 다른 브라우저나 스크립트(socket.io-client)로 접속합니다.
 - **첨부 파일 (Phase 3):** `apps/server/src/attachments/`, `apps/web/src/features/chat/uploads.ts`
