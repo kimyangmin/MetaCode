@@ -4,6 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import {
   AVATAR_MAX_BYTES,
   AVATAR_SIZE_PX,
+  type AssetManifest,
   type AvatarUploadTicket,
   BUILTIN_CHARACTERS,
   type CharacterChoice,
@@ -12,6 +13,7 @@ import {
   SocketEvent,
   type UserDetail,
   type UserProfile,
+  characterFitsStyle,
 } from '@metacode/shared';
 import {
   type CropRatio,
@@ -197,6 +199,10 @@ export class UsersService {
         const asset = await this.prisma.asset.findUnique({ where: { id: choice.asset } });
         if (!asset || asset.kind !== 'CHARACTER' || asset.creatorId !== userId) {
           throw new BadRequestException('직접 만든 캐릭터만 고를 수 있습니다.');
+        }
+        // 횡스크롤용 캐릭터는 위·아래 모습이 없어서 탑다운 광장에서 쓸 수 없다.
+        if (!characterFitsStyle(asset.manifest as unknown as AssetManifest, style)) {
+          throw new BadRequestException('횡스크롤용 캐릭터는 탑다운 광장에서 쓸 수 없습니다.');
         }
         character = {
           asset: asset.id,

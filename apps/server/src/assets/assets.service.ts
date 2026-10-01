@@ -11,6 +11,9 @@ import {
   type AssetManifest,
   CHARACTER_ASSET_LIMIT,
   COMMUNITY_ASSET_LIMIT,
+  PlazaStyle,
+  type ProfileCharacter,
+  characterFitsStyle,
 } from '@metacode/shared';
 import { AccessService } from '../chat/access.service.js';
 import type { Asset, Prisma } from '../generated/prisma/client.js';
@@ -113,6 +116,15 @@ export class AssetsService {
     const asset = await this.writable(userId, id);
     if (KIND_TO_DB[manifest.kind] !== asset.kind) {
       throw new BadRequestException('에셋 종류는 바꿀 수 없습니다.');
+    }
+    // 탑다운 광장 캐릭터로 쓰고 있는 캐릭터를 횡스크롤용으로 바꾸면 탑다운에서 그릴 모습(위·아래)이 없어진다.
+    if (asset.kind === 'CHARACTER' && !characterFitsStyle(manifest, PlazaStyle.TopDown)) {
+      const user = await this.prisma.user.findUnique({ where: { id: asset.creatorId } });
+      if ((user?.character as ProfileCharacter | null)?.asset === id) {
+        throw new ConflictException(
+          '탑다운 광장 캐릭터로 쓰고 있어서 횡스크롤용으로 바꿀 수 없습니다. 설정 → 캐릭터에서 탑다운 캐릭터를 먼저 바꿔 주세요.',
+        );
+      }
     }
     const updated = await this.prisma.asset.update({
       where: { id },

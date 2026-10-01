@@ -6,6 +6,8 @@ import {
   CHARACTER_ASSET_LIMIT,
   COMMUNITY_ASSET_LIMIT,
   type CommunitySummary,
+  PlazaStyle,
+  characterStyle,
 } from '@metacode/shared';
 import { BUILTIN_ASSETS } from '@metacode/shared/builtin-assets';
 import { useQueryClient } from '@tanstack/react-query';
@@ -81,8 +83,9 @@ function MyCharacters({ onPick }: { onPick(): void }) {
     <section className="asset-section">
       <h3 className="settings-form__title">내 캐릭터</h3>
       <p className="form__hint">
-        광장에서 쓸 캐릭터를 직접 그립니다. 대기·걷기(4방향)와 첨부 모션을 모두 그려야 저장할 수
-        있습니다. ({assets.length}/{CHARACTER_ASSET_LIMIT})
+        광장에서 쓸 캐릭터를 직접 그립니다 ({assets.length}/{CHARACTER_ASSET_LIMIT}). 에디터의 광장
+        방식에서 탑다운용(대기·걷기 4방향)과 횡스크롤용(오른쪽을 보는 대기·걷기·점프, 왼쪽은 좌우
+        반전)을 고르고, 첨부 모션과 함께 모두 그려야 저장할 수 있습니다.
       </p>
       <AssetGrid assets={assets} />
       <div className="asset-section__actions">
@@ -172,6 +175,10 @@ function AssetGrid({ assets }: { assets: AssetDto[] }) {
               <AssetPreview manifest={asset.manifest} box={PREVIEW_BOX} />
             </div>
             <strong title={asset.name}>{asset.name}</strong>
+            {asset.kind === 'character' &&
+              characterStyle(asset.manifest) === PlazaStyle.SideScroll && (
+                <span className="asset-card__badge">횡스크롤</span>
+              )}
             <div className="asset-card__actions">
               <button
                 type="button"

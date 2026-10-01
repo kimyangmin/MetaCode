@@ -4039,6 +4039,15 @@ a {
   gap: 6px;
 }
 
+/* 횡스크롤용 캐릭터 표시 */
+.asset-card__badge {
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--bg-input);
+  color: var(--muted);
+  font-size: 0.7rem;
+}
+
 .asset-card__actions .button {
   padding: 4px 10px;
   font-size: 0.8rem;
@@ -4099,6 +4108,8 @@ a {
   inset: 0;
   z-index: 115;
   display: grid;
+  /* 열 너비를 정하지 않으면 머리글 버튼들의 최소 폭만큼 에디터 전체가 화면보다 넓어졌다 (닫기·저장이 밖으로) */
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto minmax(0, 1fr) auto;
   background: var(--bg);
   color: var(--fg);
@@ -4106,8 +4117,9 @@ a {
 
 .pixel-editor__header {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 12px;
+  gap: 8px 12px;
   padding: 10px 16px;
   border-bottom: 1px solid var(--border);
 }
@@ -4121,7 +4133,8 @@ a {
 }
 
 .pixel-editor__name {
-  width: 220px;
+  flex: 0 1 220px;
+  min-width: 120px;
   padding: 6px 10px;
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -4139,6 +4152,8 @@ a {
 
 .pixel-editor__actions {
   display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 8px;
   margin-left: auto;
 }
@@ -4312,6 +4327,33 @@ a {
   align-items: center;
   gap: 6px;
   font-size: 0.85rem;
+}
+
+/* 캐릭터 광장 방식 고르기 (탑다운 / 횡스크롤). 설정의 .tabs와 같은 모양 */
+.pixel-editor__segmented {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 8px;
+  background: var(--bg-input);
+}
+
+.pixel-editor__segmented button {
+  flex: 1;
+  padding: 6px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.pixel-editor__segmented button[aria-checked='true'] {
+  background: var(--bg);
+  color: var(--fg);
+  font-weight: 600;
 }
 
 .pixel-editor__footprint {
@@ -4637,6 +4679,68 @@ a {
   background: var(--bg-input);
   color: var(--fg);
   font: inherit;
+}
+
+/*
+ * 좁은 창: 머리글 버튼이 줄을 바꾸고, 저장 결과 글은 맨 아래 한 줄을 따로 쓴다 (버튼을 밀어내지 않게).
+ * 오른쪽 설정 칸도 조금 좁힌다. (머리글이 줄을 바꾸는 것 자체는 넓이와 상관없이 늘 된다)
+ */
+@media (max-width: 1000px) {
+  .pixel-editor__header [role='status'] {
+    order: 1;
+    flex-basis: 100%;
+    margin: 0;
+  }
+
+  .pixel-editor__body {
+    grid-template-columns: 52px minmax(0, 1fr) 260px;
+  }
+
+  /* 프레임 목록과 버튼이 한 줄에 다 들어가지 않으면 버튼을 다음 줄로 (목록이 눌려 스크롤되지 않게) */
+  .pixel-editor__frames {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+}
+
+/* 휴대폰: 설정 칸을 그림판 아래로 내려 그림판이 화면 폭을 다 쓴다 */
+@media (max-width: 768px) {
+  .pixel-editor__header {
+    padding: 8px 12px;
+  }
+
+  .pixel-editor__name {
+    flex: 1 1 120px;
+  }
+
+  .pixel-editor__actions {
+    gap: 6px;
+  }
+
+  .pixel-editor__actions .button {
+    padding: 5px 10px;
+    font-size: 0.8rem;
+  }
+
+  .pixel-editor__body {
+    grid-template-columns: 52px minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) minmax(0, 40%);
+  }
+
+  .pixel-editor__tools {
+    grid-row: 1;
+    overflow-y: auto;
+  }
+
+  .pixel-editor__side {
+    grid-column: 1 / -1;
+    border-top: 1px solid var(--border);
+    border-left: 0;
+  }
+
+  .pixel-editor__frames {
+    padding: 6px 12px;
+  }
 }
 
 .map-editor__palette {

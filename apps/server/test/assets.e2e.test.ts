@@ -44,6 +44,19 @@ const character = (name: string): AssetManifest => ({
   ...builtinAsset('builtin:char-short')!,
   name,
 });
+/** 횡스크롤용 캐릭터: 내장 캐릭터에서 오른쪽만 남기고(왼쪽은 좌우 반전), 걷기로 점프를 채운다 */
+const sideCharacter = (name: string): AssetManifest => {
+  const base = builtinAsset('builtin:char-short')!;
+  const animations = Object.fromEntries(
+    Object.entries(base.animations).filter(([n]) => !/-(left|up|down)$/.test(n)),
+  );
+  return {
+    ...base,
+    name,
+    style: 'SIDE_SCROLL',
+    animations: { ...animations, 'jump-right': base.animations['walk-right']! },
+  };
+};
 const tile = (name: string): AssetManifest => ({ ...builtinAsset('builtin:tt-0')!, name });
 const object = (name: string): AssetManifest => ({ ...builtinAsset('builtin:bench')!, name });
 
@@ -286,5 +299,40 @@ describe('캐릭터 고르기', () => {
       (await alice.fetch('/users/me/character', send('PUT', { character: null, style: 'ISO' })))
         .status,
     ).toBe(400);
+  });
+
+  it('횡스크롤용 캐릭터는 횡스크롤 광장에서만 고르고, 탑다운에서 쓰는 캐릭터는 횡스크롤용으로 못 바꾼다', async () => {
+    const { alice } = await setup();
+    // 점프가 빠진 횡스크롤용 캐릭터는 저장하지 않는다
+    const noJump = sideCharacter('점프 없음');
+    delete noJump.animations['jump-right'];
+    const rejected = await alice.fetch('/assets', send('POST', { manifest: noJump }));
+    expect(rejected.status).toBe(400);
+
+    const side = await alice.json<AssetDto>(
+      '/assets',
+      send('POST', { manifest: sideCharacter('옆') }),
+    );
+    const choice = { character: { asset: side.id, colors: {} } };
+    expect((await alice.fetch('/users/me/character', send('PUT', choice))).status).toBe(400);
+    const picked = await alice.json<UserDetail>(
+      '/users/me/character',
+      send('PUT', { ...choice, style: 'SIDE_SCROLL' }),
+    );
+    expect(picked.sideCharacter?.asset).toBe(side.id);
+
+    // 탑다운 캐릭터로 쓰는 에셋은 횡스크롤용으로 바꿀 수 없고, 다른 캐릭터로 바꾼 뒤에는 된다
+    const top = await alice.json<AssetDto>('/assets', send('POST', { manifest: character('위') }));
+    await alice.json(
+      '/users/me/character',
+      send('PUT', { character: { asset: top.id, colors: {} } }),
+    );
+    const toSide = send('PUT', { manifest: sideCharacter('위') });
+    expect((await alice.fetch(`/assets/${top.id}`, toSide)).status).toBe(409);
+    await alice.json('/users/me/character', send('PUT', { character: null }));
+    expect(
+      (await alice.fetch(`/assets/${top.id}`, send('PUT', { manifest: sideCharacter('위') })))
+        .status,
+    ).toBe(200);
   });
 });
