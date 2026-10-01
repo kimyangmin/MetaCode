@@ -557,3 +557,76 @@ describe('광장 크기와 애니메이터', () => {
     expect(tile.doc.animator).toBeUndefined();
   });
 });
+
+describe('되돌리기 묶음', () => {
+  it('되돌린 뒤 같은 색을 다시 고르면 새 되돌리기 단계가 된다 (앞 묶음에 이어 붙지 않음)', () => {
+    const doc = new PixelDocument(newDoc('tile', '타일'));
+    const first = doc.doc.palette[0];
+    doc.setColor(1, '#111111');
+    doc.setColor(1, '#222222');
+    doc.undo();
+    expect(doc.doc.palette[0]).toBe(first);
+    doc.setColor(1, '#333333');
+    expect(doc.canUndo).toBe(true);
+    doc.undo();
+    expect(doc.doc.palette[0]).toBe(first);
+  });
+
+  it('아무것도 바꾸지 않은 붓질은 되돌리기 단계를 만들지 않고 다시 하기 기록도 남긴다', () => {
+    const doc = new PixelDocument(newDoc('tile', '타일'));
+    doc.beginStroke();
+    doc.paint(at, 1, 1, 2);
+    doc.undo();
+    expect(doc.canRedo).toBe(true);
+    // 투명한 칸을 지우개로 누름 = 바뀌는 것 없음
+    doc.beginStroke();
+    doc.paint(at, 5, 5, 0);
+    expect(doc.canRedo).toBe(true);
+    expect(doc.canUndo).toBe(false);
+    // 실제로 칠하면 한 단계
+    doc.beginStroke();
+    doc.paint(at, 5, 5, 3);
+    doc.paint(at, 6, 5, 3);
+    expect(doc.canRedo).toBe(false);
+    doc.undo();
+    expect(doc.pick(at, 5, 5)).toBe(0);
+    expect(doc.canUndo).toBe(false);
+  });
+
+  it('저장을 기다리는 동안 고친 것은 저장하지 않은 것으로 남는다', () => {
+    const doc = new PixelDocument(newDoc('tile', '타일'));
+    doc.setName('바닥');
+    const saving = doc.version;
+    doc.setName('바닥 2');
+    doc.markSaved(saving);
+    expect(doc.dirty).toBe(true);
+    doc.markSaved();
+    expect(doc.dirty).toBe(false);
+  });
+});
+
+describe('모션 키', () => {
+  it('애니메이터 파라미터에 단 숫자 키는 새 모션에 주지 않는다', () => {
+    const doc = new PixelDocument(fromManifest(builtinAsset('builtin:char-short')!));
+    doc.setAnimator({
+      ...defaultAnimator(new Set(doc.doc.animations.map((a) => a.name))),
+      parameters: [{ name: 'wave', type: 'trigger', key: '1' }],
+    });
+    expect(doc.freeMotionKeys()).not.toContain('1');
+    const motion = doc.doc.animations[doc.addMotion()!]!;
+    expect(motion.key).toBe('2');
+    expect(assetManifestSchema.safeParse(toManifest(doc.doc)).success).toBe(true);
+  });
+
+  it('횡스크롤 캐릭터의 새 모션은 오른쪽 대기 그림으로 시작한다 (남겨 둔 빈 아래 대기가 아니라)', () => {
+    const doc = new PixelDocument(fromManifest(builtinAsset('builtin:char-short')!));
+    const idleRight = doc.doc.animations.find((a) => a.name === 'idle-right')!.frames[0]!;
+    doc.setStyle(PlazaStyle.SideScroll);
+    const down = doc.doc.animations.findIndex((a) => a.name === 'idle-down');
+    doc.edit((d) => {
+      d.animations[down]!.frames = [new Uint8Array(d.width * d.height)];
+    });
+    const motion = doc.doc.animations[doc.addMotion()!]!;
+    expect(motion.frames[0]).toEqual(idleRight);
+  });
+});

@@ -121,6 +121,26 @@ export function animationNameFrom(text: string): string {
   return cleaned || 'anim';
 }
 
+/**
+ * 새 모션·첨부 모션을 시작할 그림: 그 광장 방식의 대기 첫 프레임 (탑다운은 아래, 횡스크롤은 오른쪽).
+ * 예전엔 횡스크롤 캐릭터도 아래 대기를 먼저 찾아서, 탑다운에서 바꾸며 남은 빈 아래 대기를 복사했다.
+ */
+function idleFrame(doc: Pick<EditorDoc, 'animations' | 'style'>): Uint8Array | undefined {
+  const preferred = doc.style === PlazaStyle.SideScroll ? 'idle-right' : 'idle-down';
+  const idle =
+    doc.animations.find((a) => a.name === preferred && !a.frames.every(isBlank)) ??
+    doc.animations.find((a) => a.name.startsWith('idle-') && !a.frames.every(isBlank));
+  return idle?.frames[0];
+}
+
+/** 모션(애니메이션)과 애니메이터 파라미터가 쓰고 있는 숫자 키 */
+function usedMotionKeys(doc: Pick<EditorDoc, 'animations' | 'animator'>): Set<MotionKey> {
+  const used = new Set<MotionKey>();
+  for (const a of doc.animations) if (a.key) used.add(a.key);
+  for (const p of doc.animator?.parameters ?? []) if (p.key) used.add(p.key);
+  return used;
+}
+
 /** 쓰지 않은 이름 (name, name-2, name-3 …) */
 export function freeAnimationName(name: string, used: ReadonlySet<string>): string {
   if (!used.has(name)) return name;
@@ -336,6 +356,8 @@ export class PixelDocument {
   private savedVersion = 0;
   /** 마지막 edit()의 묶음 키. 같은 키로 이어서 바꾸면(색 고르기 드래그 등) 되돌리기 한 단계로 묶는다 */
   private lastKey: string | null = null;
+  /** beginStroke() 뒤 아직 아무것도 칠하지 않았다: 처음 실제로 바꿀 때 begin()한다 */
+  private strokePending = false;
   /** 마지막 begin() 뒤에 복사해서 이 문서만 가진 프레임. 이것만 그 자리에서 고쳐도 된다 */
   private owned = new WeakSet<Uint8Array>();
   /** 프레임 수 세기는 문서가 바뀔 때만 다시 한다 (화면이 그릴 때마다 부른다) */
@@ -352,8 +374,13 @@ export class PixelDocument {
     return this.version !== this.savedVersion;
   }
 
-  markSaved(): void {
-    this.savedVersion = this.version;
+  /**
+   * 저장한 것으로 표시한다. version을 주면 그 버전을 저장한 것으로 본다: 저장 요청을 기다리는 동안 더 고쳤으면
+   * 그 변경은 아직 저장하지 않은 것으로 남는다 (예전엔 끝난 시점의 버전을 저장한 것으로 봐서, 닫을 때 묻지
+   * 않고 그 변경을 잃었다).
+   */
+  markSaved(version = this.version): void {
+    this.savedVersion = version;
   }
 
   get canUndo(): boolean {
@@ -367,6 +394,7 @@ export class PixelDocument {
   /** 이 뒤의 변경을 한 단계로 묶는다 */
   begin(): void {
     this.lastKey = null;
+    this.strokePending = false;
     this.undoStack.push(snapshot(this.doc));
     if (this.undoStack.length > UNDO_LIMIT) this.undoStack.shift();
     this.redoStack = [];
@@ -374,12 +402,21 @@ export class PixelDocument {
     this.owned = new WeakSet();
   }
 
+  /**
+   * 붓질 한 번을 시작한다. begin()과 같지만 실제로 칠할 때 단계를 만든다: 같은 색 위를 눌러 아무것도 바뀌지
+   * 않으면 빈 되돌리기 단계가 생기지 않고, 다시 하기 기록도 지워지지 않는다.
+   */
+  beginStroke(): void {
+    this.lastKey = null;
+    this.strokePending = true;
+  }
+
   undo(): void {
     const previous = this.undoStack.pop();
     if (!previous) return;
     this.redoStack.push(this.doc);
     this.doc = previous;
-    this.owned = new WeakSet();
+    this.resetEditState();
     this.changed();
   }
 
@@ -388,8 +425,18 @@ export class PixelDocument {
     if (!next) return;
     this.undoStack.push(this.doc);
     this.doc = next;
-    this.owned = new WeakSet();
+    this.resetEditState();
     this.changed();
+  }
+
+  /**
+   * 되돌리기·다시 하기 뒤: 묶음 키도 잊는다. 예전엔 색 고르기를 끌고 되돌린 뒤 같은 색을 다시 고르면 앞의 묶음에
+   * 이어 붙어서 되돌리기 단계 없이 바뀌었다 (애니메이터의 상태 끌기·이름 입력도 같음).
+   */
+  private resetEditState(): void {
+    this.owned = new WeakSet();
+    this.lastKey = null;
+    this.strokePending = false;
   }
 
   /** 그 자리에서 고칠 프레임. 되돌리기 기록과 함께 쓰는 프레임이면 먼저 복사해서 바꿔 끼운다 */
@@ -451,6 +498,7 @@ export class PixelDocument {
       .map((c) => c.y * width + c.x)
       .filter((i) => current[i] !== value);
     if (targets.length === 0) return;
+    if (this.strokePending) this.begin();
     const pixels = this.writable(ref)!;
     for (const i of targets) pixels[i] = value;
     this.changed();
@@ -541,9 +589,13 @@ export class PixelDocument {
 
   // ── 캐릭터 모션 (숫자 키), 점프 ──
 
-  /** 아직 쓰지 않은 모션 키 (1, 2, …, 9, 0 순서) */
+  /**
+   * 아직 쓰지 않은 모션 키 (1, 2, …, 9, 0 순서). 애니메이터의 직접 만든 파라미터에 단 키도 쓴 것으로 본다
+   * (예전엔 빠져 있어서 모션을 더하면 파라미터와 같은 키가 붙어 "모션 키가 겹칩니다"로 저장이 막혔다).
+   */
   freeMotionKeys(except?: MotionKey): MotionKey[] {
-    const used = new Set(this.doc.animations.map((a) => a.key).filter((k) => k && k !== except));
+    const used = usedMotionKeys(this.doc);
+    if (except) used.delete(except);
     return MOTION_KEYS.filter((key) => !used.has(key));
   }
 
@@ -561,10 +613,7 @@ export class PixelDocument {
     if (!key || !this.canAddAnimation()) return null;
     let n = 1;
     while (this.doc.animations.some((a) => a.name === `motion-${n}`)) n++;
-    const idle = (
-      this.doc.animations.find((a) => a.name === 'idle-down') ??
-      this.doc.animations.find((a) => a.name === 'idle-right')
-    )?.frames[0];
+    const idle = idleFrame(this.doc);
     this.edit((doc) => {
       doc.animations.push({
         name: `motion-${n}`,
@@ -596,7 +645,7 @@ export class PixelDocument {
     this.edit((doc) => doc.animations.splice(index, 1));
   }
 
-  /** 횡스크롤 점프 애니메이션이 모두 있는지 */
+  /** 첨부 모션이 있는지 */
   hasEmote(): boolean {
     return this.doc.animations.some((a) => a.name === EMOTE_ANIMATION.name);
   }
@@ -609,11 +658,7 @@ export class PixelDocument {
     if (this.hasEmote() || !this.canAddAnimation()) return null;
     const at = this.doc.animations.length;
     this.edit((doc) => {
-      const idle =
-        doc.animations.find(
-          (a) => a.name === (doc.style === PlazaStyle.SideScroll ? 'idle-right' : 'idle-down'),
-        ) ?? doc.animations.find((a) => a.name.startsWith('idle-'));
-      const source = idle?.frames[0];
+      const source = idleFrame(doc);
       doc.animations.push({
         name: EMOTE_ANIMATION.name,
         frames: [source ? Uint8Array.from(source) : blank(doc.width, doc.height)],
@@ -623,6 +668,7 @@ export class PixelDocument {
     return at;
   }
 
+  /** 횡스크롤 점프 애니메이션(왼쪽·오른쪽)이 모두 있는지 */
   hasJump(): boolean {
     return JUMP_ANIMATIONS.every((name) => this.doc.animations.some((a) => a.name === name));
   }
@@ -688,7 +734,7 @@ export class PixelDocument {
               frameMs: entry.frameMs,
             }) - 1;
         } else {
-          const used = new Set(doc.animations.map((a) => a.key).filter(Boolean));
+          const used = usedMotionKeys(doc);
           const key = MOTION_KEYS.find((k) => !used.has(k));
           if (!key || doc.kind !== 'character' || doc.animations.length >= ANIMATION_LIMIT) {
             continue;

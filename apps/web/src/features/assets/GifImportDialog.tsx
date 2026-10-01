@@ -48,12 +48,15 @@ function prepare(file: GifFile, maxSide: number) {
     height = Math.floor(height / extra);
   }
   const frameMs = frameMsOf(gif.delays, FRAME_MS_MIN, FRAME_MS_MAX);
+  // 장면마다 시간이 다르면 같은 장면을 되풀이해 시간을 맞춘다 (저장할 때는 한 장). 다만 애니메이션 하나가
+  // 가리킬 수 있는 프레임 수(FRAME_LIMIT.character)를 넘으면 되풀이하지 않는다: 예전엔 장면이 많은 GIF가
+  // 몇 배로 늘어나 저장할 때 알아보기 힘든 오류로 막혔다.
+  const expanded = expandByDelays(frames, gif.delays, frameMs);
   return {
     name: file.name,
     width,
     height,
-    // 장면마다 시간이 다르면 같은 장면을 되풀이해 시간을 맞춘다 (저장할 때는 한 장)
-    frames: expandByDelays(frames, gif.delays, frameMs),
+    frames: expanded.length <= FRAME_LIMIT.character ? expanded : frames,
     /** 서로 다른 장면 수 (프레임 한도는 이것으로 센다) */
     scenes: frames.length,
     scale: scale * extra,
