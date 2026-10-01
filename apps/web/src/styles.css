@@ -928,6 +928,15 @@ a.button {
   }
 }
 
+/* 손가락으로 쓰는 기기: 누르는 동안과 그 메시지의 메뉴가 떠 있는 동안 같은 밝은 줄을 보여 준다
+   (:hover처럼 남지 않는다) */
+@media (hover: none) {
+  .message:active,
+  .message[data-menu-open='true'] {
+    background: var(--bg-hover);
+  }
+}
+
 .message {
   -webkit-tap-highlight-color: transparent;
 }
@@ -3247,6 +3256,24 @@ textarea {
 img,
 a {
   -webkit-user-drag: none;
+}
+
+/*
+ * 손가락으로 쓰는 기기: 메시지를 길게 누르면 글이 잡히지 않고 메시지 메뉴만 뜬다 (복사는 메뉴의 "텍스트 복사").
+ * 예전엔 길게 누르면 글이 잡혔고, 잡힌 글이 남아 있으면 다음에 길게 눌렀을 때 메뉴 대신 브라우저의 글 메뉴가 떴다.
+ * 고치는 중인 입력칸(textarea)은 그대로 고를 수 있다.
+ */
+@media (hover: none) {
+  .message {
+    -webkit-touch-callout: none;
+  }
+
+  .message .message__content,
+  .message .message__reply-text,
+  .message .md-codeblock {
+    user-select: none;
+    -webkit-user-select: none;
+  }
 }
 
 /* 메시지 안의 링크 */
@@ -6901,7 +6928,7 @@ a {
     position: relative;
   }
 
-  .panel-handle__swap {
+  .panel-handle__tool {
     width: 28px;
     height: 28px;
   }

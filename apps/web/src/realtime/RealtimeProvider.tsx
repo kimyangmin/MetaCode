@@ -70,7 +70,7 @@ export function RealtimeProvider({ meId, children }: { meId: string; children: R
     socket.io.on('reconnect_attempt', () => setStatus('connecting'));
 
     socket.on(SocketEvent.MessageCreated, (message) => {
-      addMessageToCache(queryClient, message);
+      addMessageToCache(queryClient, message, meId);
       useTypingStore.getState().stop(message.channelId, message.author.id);
       // 목록에 없는 DM의 메시지면(다른 기기에서 막 만든 대화 등) 목록을 새로 받는다.
       const dms = queryClient.getQueryData<DmSummary[]>(queryKeys.dms);

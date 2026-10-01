@@ -1,11 +1,16 @@
-import type { ChannelSummary, CommunitySummary, RoleDto } from '@metacode/shared';
+import {
+  type ChannelSummary,
+  type CommunitySummary,
+  type RoleDto,
+  isManager,
+} from '@metacode/shared';
 import { useQueryClient } from '@tanstack/react-query';
 import { type CSSProperties, type FormEvent, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { ApiError, apiFetch } from '../../api/client';
 import { jsonBody, queryKeys } from '../../api/queries';
 import { Dialog } from '../../ui/Dialog';
-import { Hash, Lock, Volume2 } from 'lucide-react';
+import { Hash, Lock, Settings, Volume2 } from 'lucide-react';
 
 /**
  * 비공개 채널 설정 칸: 켜면 소유자, 관리자, 고른 역할을 가진 멤버만 채널을 보고 읽고 쓴다
@@ -154,5 +159,36 @@ export function ChannelSettings({
         </div>
       </form>
     </Dialog>
+  );
+}
+
+/**
+ * 휴대폰 화면의 머리글(☰ 옆)에 두는 채널 설정 버튼. 소유자·관리자에게만 보인다 (목록의 ⚙와 같은 규칙).
+ * 휴대폰에서는 채널 목록이 서랍 안에 있어서, 보고 있는 채널의 설정을 바로 열 수 있게 한다.
+ */
+export function ChannelSettingsButton({
+  community,
+  channel,
+}: {
+  community: CommunitySummary;
+  channel: ChannelSummary;
+}) {
+  const [open, setOpen] = useState(false);
+  if (!isManager(community.myRole)) return null;
+  return (
+    <>
+      <button
+        type="button"
+        className="icon-button panel-handle__tool"
+        onClick={() => setOpen(true)}
+        aria-label={`${channel.name ?? ''} 채널 설정`}
+        title="채널 설정"
+      >
+        <Settings aria-hidden />
+      </button>
+      {open && (
+        <ChannelSettings community={community} channel={channel} onClose={() => setOpen(false)} />
+      )}
+    </>
   );
 }
