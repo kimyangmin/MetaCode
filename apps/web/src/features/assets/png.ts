@@ -99,3 +99,101 @@ export function downloadCanvas(canvas: HTMLCanvasElement, fileName: string): voi
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }, 'image/png');
 }
+
+type Rgb = [number, number, number];
+
+/**
+ * 중간값 자르기(median cut): 색들을 count개 상자로 나누고 상자마다 (많이 쓴 만큼 무게를 둔) 평균색을 고른다.
+ * GIF처럼 색이 많은 그림을 팔레트(64색) 안으로 줄일 때 쓴다.
+ */
+function medianCut(colors: { rgb: Rgb; weight: number }[], count: number): Rgb[] {
+  if (colors.length <= count) return colors.map((c) => c.rgb);
+  let boxes = [colors];
+  while (boxes.length < count) {
+    // 색 범위가 가장 넓은 상자를 가장 넓은 채널에서 반으로 자른다.
+    let best = -1;
+    let bestRange = -1;
+    let bestChannel = 0;
+    boxes.forEach((box, i) => {
+      if (box.length < 2) return;
+      for (let c = 0; c < 3; c++) {
+        let lo = 255;
+        let hi = 0;
+        for (const color of box) {
+          lo = Math.min(lo, color.rgb[c]!);
+          hi = Math.max(hi, color.rgb[c]!);
+        }
+        if (hi - lo > bestRange) {
+          bestRange = hi - lo;
+          best = i;
+          bestChannel = c;
+        }
+      }
+    });
+    if (best === -1) break;
+    const box = [...boxes[best]!].sort((a, b) => a.rgb[bestChannel]! - b.rgb[bestChannel]!);
+    const total = box.reduce((sum, c) => sum + c.weight, 0);
+    let acc = 0;
+    let cut = 1;
+    for (; cut < box.length - 1; cut++) {
+      acc += box[cut - 1]!.weight;
+      if (acc >= total / 2) break;
+    }
+    boxes = [...boxes.slice(0, best), box.slice(0, cut), box.slice(cut), ...boxes.slice(best + 1)];
+  }
+  return boxes.map((box) => {
+    const total = box.reduce((sum, c) => sum + c.weight, 0);
+    return [0, 1, 2].map((c) =>
+      Math.round(box.reduce((sum, color) => sum + color.rgb[c]! * color.weight, 0) / total),
+    ) as Rgb;
+  });
+}
+
+/**
+ * 여러 장의 RGBA 그림을 같은 팔레트의 픽셀 프레임으로. 지금 팔레트의 색은 그대로 두고, 남은 자리(64색까지)에
+ * 새 색을 더한다. 새 색이 남은 자리보다 많으면 중간값 자르기로 줄이고, 모든 픽셀은 가장 가까운 색이 된다.
+ * 반투명(알파 128 미만)은 투명이다.
+ */
+export function quantizeFrames(
+  images: Uint8ClampedArray[],
+  width: number,
+  height: number,
+  palette: readonly string[],
+): { frames: Uint8Array[]; palette: string[] } {
+  const known = new Set(palette.map((c) => c.toLowerCase()));
+  const counts = new Map<number, number>();
+  for (const rgba of images) {
+    for (let o = 0; o < width * height * 4; o += 4) {
+      if (rgba[o + 3]! < 128) continue;
+      const key = (rgba[o]! << 16) | (rgba[o + 1]! << 8) | rgba[o + 2]!;
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+  }
+  const fresh = [...counts]
+    .filter(([key]) => !known.has(hex(key >> 16, (key >> 8) & 0xff, key & 0xff)))
+    .map(([key, weight]) => ({
+      rgb: [key >> 16, (key >> 8) & 0xff, key & 0xff] as Rgb,
+      weight,
+    }));
+  const slots = Math.max(0, PALETTE_MAX_COLORS - palette.length);
+  const next = [...palette, ...medianCut(fresh, slots).map(([r, g, b]) => hex(r, g, b))];
+  const lookup = new Map<number, number>();
+  const valueOf = (key: number) => {
+    let value = lookup.get(key);
+    if (value === undefined) {
+      value = nearest(next, key >> 16, (key >> 8) & 0xff, key & 0xff);
+      lookup.set(key, value);
+    }
+    return value;
+  };
+  const frames = images.map((rgba) => {
+    const pixels = new Uint8Array(width * height);
+    for (let i = 0; i < width * height; i++) {
+      const o = i * 4;
+      if (rgba[o + 3]! < 128) continue;
+      pixels[i] = valueOf((rgba[o]! << 16) | (rgba[o + 1]! << 8) | rgba[o + 2]!);
+    }
+    return pixels;
+  });
+  return { frames, palette: next };
+}

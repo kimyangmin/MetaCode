@@ -36,6 +36,8 @@ import {
   toManifest,
 } from './editorModel';
 import type { EditorTarget } from './editorStore';
+import { type GifFile, GifImportDialog } from './GifImportDialog';
+import { decodeGif, downloadBytes, encodeGif } from './gif';
 import { downloadCanvas, indexImage, readImageFile } from './png';
 import {
   type Clip,
@@ -205,6 +207,8 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
   const [clipboard, setClipboard] = useState<Clip | null>(null);
   const [trimFeet, setTrimFeet] = useState(readTrimFeet);
   const fileRef = useRef<HTMLInputElement>(null);
+  const gifRef = useRef<HTMLInputElement>(null);
+  const [gifFiles, setGifFiles] = useState<GifFile[] | null>(null);
 
   // 되돌리기 등으로 애니메이션·프레임 수가 바뀌어도 고른 프레임이 범위 안에 있게 한다.
   const animation = doc.animations[Math.min(selected.animation, doc.animations.length - 1)]!;
@@ -667,6 +671,39 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
     }
   };
 
+  // ── GIF ──
+  const onImportGif = async (e: ChangeEvent<HTMLInputElement>) => {
+    const files = [...(e.target.files ?? [])];
+    e.target.value = '';
+    if (files.length === 0) return;
+    try {
+      const decoded = await Promise.all(
+        files.map(async (file) => ({
+          name: file.name,
+          gif: decodeGif(new Uint8Array(await file.arrayBuffer())),
+        })),
+      );
+      setStatus(null);
+      setGifFiles(decoded);
+    } catch {
+      setStatus({ kind: 'error', text: 'GIF를 읽지 못했습니다.' });
+    }
+  };
+
+  /** 지금 애니메이션을 움직이는 GIF로 (투명 배경, 작은 그림은 정수배로 키워서) */
+  const onExportGif = () => {
+    const scale = Math.max(1, Math.floor(256 / Math.max(doc.width, doc.height)));
+    const bytes = encodeGif(
+      animation.frames,
+      doc.width,
+      doc.height,
+      doc.palette,
+      animation.frameMs,
+      scale,
+    );
+    downloadBytes(bytes, `${doc.name.trim() || 'asset'}-${animation.name}.gif`, 'image/gif');
+  };
+
   const onExport = () => {
     const sheet = globalThis.document.createElement('canvas');
     sheet.width = doc.width * animation.frames.length;
@@ -702,6 +739,22 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
           <button type="button" className="button" onClick={onExport}>
             PNG 내보내기
           </button>
+          <button
+            type="button"
+            className="button"
+            title="움직이는 GIF를 애니메이션으로 (여러 파일이면 파일 이름으로 애니메이션을 정함)"
+            onClick={() => gifRef.current?.click()}
+          >
+            GIF 가져오기
+          </button>
+          <button
+            type="button"
+            className="button"
+            title="지금 애니메이션을 움직이는 GIF로"
+            onClick={onExportGif}
+          >
+            GIF 내보내기
+          </button>
           <button type="button" className="button" onClick={requestClose}>
             닫기
           </button>
@@ -722,6 +775,14 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
             accept="image/png"
             hidden
             onChange={(e) => void onImport(e)}
+          />
+          <input
+            ref={gifRef}
+            type="file"
+            accept="image/gif"
+            multiple
+            hidden
+            onChange={(e) => void onImportGif(e)}
           />
         </div>
       </header>
@@ -1274,6 +1335,19 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
           </span>
         </div>
       </footer>
+      {gifFiles && (
+        <GifImportDialog
+          editor={editor}
+          files={gifFiles}
+          current={ref.animation}
+          onClose={() => setGifFiles(null)}
+          onDone={(first, message) => {
+            setGifFiles(null);
+            if (first !== null) setSelected({ animation: first, frame: 0 });
+            setStatus({ kind: 'ok', text: message });
+          }}
+        />
+      )}
     </div>
   );
 }

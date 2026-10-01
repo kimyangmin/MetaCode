@@ -533,6 +533,69 @@ export class PixelDocument {
     return first;
   }
 
+  /**
+   * 가져온 그림(GIF)들로 애니메이션을 한 번에 채운다 (되돌리기 한 단계). target이 번호면 그 애니메이션의
+   * 프레임을 바꾸고, motion이면 남은 숫자 키로 새 모션을 만든다. mirror면 왼쪽·오른쪽 애니메이션의
+   * 반대쪽도 좌우 반전한 그림으로 채운다. 채운 첫 애니메이션의 번호를 돌려준다 (없으면 null).
+   */
+  importAnimations(
+    entries: {
+      target: number | { motion: string };
+      frames: Uint8Array[];
+      frameMs: number;
+      mirror: boolean;
+    }[],
+    palette: string[],
+    mirrorOf: (pixels: Uint8Array) => Uint8Array,
+  ): number | null {
+    let first: number | null = null;
+    this.edit((doc) => {
+      doc.palette = palette;
+      for (const entry of entries) {
+        let index: number;
+        if (typeof entry.target === 'number') {
+          index = entry.target;
+          const animation = doc.animations[index];
+          if (!animation) continue;
+          animation.frames = entry.frames;
+          animation.frameMs = entry.frameMs;
+        } else {
+          const used = new Set(doc.animations.map((a) => a.key).filter(Boolean));
+          const key = MOTION_KEYS.find((k) => !used.has(k));
+          if (!key || doc.kind !== 'character' || doc.animations.length >= ANIMATION_LIMIT) {
+            continue;
+          }
+          let n = 1;
+          while (doc.animations.some((a) => a.name === `motion-${n}`)) n++;
+          index =
+            doc.animations.push({
+              name: `motion-${n}`,
+              frames: entry.frames,
+              frameMs: entry.frameMs,
+              key,
+              label: entry.target.motion.slice(0, 16) || `모션 ${n}`,
+              loop: true,
+            }) - 1;
+        }
+        first ??= index;
+        const name = doc.animations[index]!.name;
+        const opposite = entry.mirror
+          ? name.endsWith('-left')
+            ? `${name.slice(0, -5)}-right`
+            : name.endsWith('-right')
+              ? `${name.slice(0, -6)}-left`
+              : null
+          : null;
+        const other = opposite ? doc.animations.find((a) => a.name === opposite) : undefined;
+        if (other) {
+          other.frames = entry.frames.map(mirrorOf);
+          other.frameMs = entry.frameMs;
+        }
+      }
+    });
+    return first;
+  }
+
   setFrameMs(animation: number, frameMs: number): void {
     this.edit((doc) => {
       doc.animations[animation]!.frameMs = frameMs;

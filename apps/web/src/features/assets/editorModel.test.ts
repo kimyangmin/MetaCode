@@ -352,3 +352,28 @@ describe('큰 캐릭터를 위한 되돌리기와 세기', () => {
     );
   });
 });
+
+describe('GIF로 애니메이션 채우기', () => {
+  it('정한 애니메이션을 바꾸고 반대쪽은 좌우 반전, 새 모션도 한 번에 (되돌리기 한 단계)', () => {
+    const doc = new PixelDocument(fromManifest(builtinAsset('builtin:char-short')!));
+    const { width, height, palette } = doc.doc;
+    const left = doc.doc.animations.findIndex((a) => a.name === 'walk-left');
+    const frame = new Uint8Array(width * height);
+    frame[0] = 1;
+    const first = doc.importAnimations(
+      [
+        { target: left, frames: [frame, frame], frameMs: 90, mirror: true },
+        { target: { motion: 'dance' }, frames: [frame], frameMs: 200, mirror: true },
+      ],
+      palette,
+      (p) => Uint8Array.from(p).reverse(),
+    );
+    expect(first).toBe(left);
+    const right = doc.doc.animations.find((a) => a.name === 'walk-right')!;
+    expect(right.frames).toHaveLength(2);
+    expect(right.frameMs).toBe(90);
+    expect(doc.doc.animations.at(-1)).toMatchObject({ key: '1', label: 'dance', loop: true });
+    doc.undo();
+    expect(doc.doc.animations.some((a) => a.label === 'dance')).toBe(false);
+  });
+});
