@@ -20,8 +20,10 @@
     "@tanstack/react-query": "^5.104.0",
     "galmuri": "2.40.3",
     "livekit-client": "^2.22.3",
+    "lowlight": "^3.3.0",
     "lucide": "1.48.0",
     "lucide-react": "1.48.0",
+    "omggif": "^1.0.10",
     "phaser": "^4.2.1",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
@@ -32,6 +34,7 @@
   },
   "devDependencies": {
     "@types/node": "^24.19.0",
+    "@types/omggif": "^1.0.5",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.1",

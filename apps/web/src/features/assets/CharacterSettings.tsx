@@ -5,7 +5,10 @@ import {
   COLOR_PRESETS,
   type CharacterChoice,
   type ColorSlot,
+  PLAZA_STYLES,
+  PlazaStyle,
   type UserDetail,
+  characterFor,
   characterKey,
   characterPalette,
   defaultCharacter,
@@ -35,12 +38,44 @@ const SMALL_BOX = 64;
 
 /**
  * 설정 → 캐릭터: 광장에서 쓸 캐릭터를 고른다. 기본 캐릭터는 부위마다 색을 바꿀 수 있고,
- * 직접 그린 캐릭터(설정 → 에셋)도 고를 수 있다.
+ * 직접 그린 캐릭터(설정 → 에셋)도 고를 수 있다. 탑다운 광장과 횡스크롤 광장의 캐릭터를 따로 고른다
+ * (횡스크롤을 따로 고르지 않으면 탑다운과 같은 캐릭터).
  */
 export function CharacterSettings({ me }: { me: UserDetail }) {
+  const [style, setStyle] = useState<PlazaStyle>(PlazaStyle.TopDown);
+  return (
+    <>
+      <div className="tabs character-settings__tabs" role="tablist" aria-label="광장 방식">
+        {PLAZA_STYLES.map((s) => (
+          <button
+            key={s}
+            type="button"
+            role="tab"
+            aria-selected={style === s}
+            onClick={() => setStyle(s)}
+          >
+            {STYLE_TAB[s]}
+          </button>
+        ))}
+      </div>
+      <CharacterPicker key={style} me={me} style={style} />
+    </>
+  );
+}
+
+const STYLE_TAB: Record<PlazaStyle, string> = {
+  [PlazaStyle.TopDown]: '탑다운 광장',
+  [PlazaStyle.SideScroll]: '횡스크롤 광장',
+};
+
+/** 광장 방식 하나의 캐릭터 고르기 */
+function CharacterPicker({ me, style }: { me: UserDetail; style: PlazaStyle }) {
   const queryClient = useQueryClient();
   const mine = useMyAssets().data ?? [];
-  const saved: CharacterChoice = me.character ?? defaultCharacter(me.id);
+  const side = style === PlazaStyle.SideScroll;
+  /** 횡스크롤 캐릭터를 따로 고르지 않아 탑다운과 같은 캐릭터를 쓰는 중 */
+  const sameAsTopDown = side && !me.sideCharacter;
+  const saved: CharacterChoice = characterFor(me, style) ?? defaultCharacter(me.id);
   const [choice, setChoice] = useState<CharacterChoice>(saved);
   const [status, setStatus] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -60,10 +95,10 @@ export function CharacterSettings({ me }: { me: UserDetail }) {
     try {
       const detail = await apiFetch<UserDetail>('/users/me/character', {
         method: 'PUT',
-        ...jsonBody({ character }),
+        ...jsonBody({ character, style }),
       });
       queryClient.setQueryData(meQueryKey, detail);
-      setChoice(detail.character ?? defaultCharacter(me.id));
+      setChoice(characterFor(detail, style) ?? defaultCharacter(me.id));
       setStatus({ kind: 'ok', text: ok });
     } catch (err) {
       setStatus({
@@ -84,6 +119,15 @@ export function CharacterSettings({ me }: { me: UserDetail }) {
 
   return (
     <div className="settings-form character-settings">
+      {side && (
+        <p className="form__hint">
+          횡스크롤 광장에서 쓸 캐릭터입니다. 옆에서 보므로 왼쪽·오른쪽 걷기(와 점프)가 잘 보이는
+          캐릭터가 어울립니다.{' '}
+          {sameAsTopDown
+            ? '지금은 따로 고르지 않아 탑다운 광장과 같은 캐릭터를 씁니다.'
+            : '따로 고른 캐릭터를 씁니다.'}
+        </p>
+      )}
       <div className="character-settings__stage">
         <AssetPreview manifest={selected.manifest} box={STAGE_BOX} palette={palette} />
         <div className="character-settings__turn">
@@ -169,14 +213,25 @@ export function CharacterSettings({ me }: { me: UserDetail }) {
             {status.text}
           </p>
         )}
-        <button
-          type="button"
-          className="button"
-          disabled={busy || me.character === null}
-          onClick={() => void save(null, '기본 캐릭터로 되돌렸습니다.')}
-        >
-          기본으로 되돌리기
-        </button>
+        {side ? (
+          <button
+            type="button"
+            className="button"
+            disabled={busy || sameAsTopDown}
+            onClick={() => void save(null, '탑다운 광장과 같은 캐릭터를 씁니다.')}
+          >
+            탑다운과 같게
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="button"
+            disabled={busy || me.character === null}
+            onClick={() => void save(null, '기본 캐릭터로 되돌렸습니다.')}
+          >
+            기본으로 되돌리기
+          </button>
+        )}
         <button
           type="button"
           className="button button--primary"

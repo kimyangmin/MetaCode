@@ -11,11 +11,16 @@ import {
   type PlazaSnapshot,
   type Position,
   DEFAULT_THEME,
+  MAX_STEP_MS,
   isGrounded,
   isSideScroll,
   isValidMove,
   isValidSideMove,
+  isWalkable,
+  moveCostMs,
+  nearestWalkable,
   parsePlazaId,
+  sideMoveCostMs,
   spawnPosition,
 } from '@metacode/shared';
 import type { Redis } from 'ioredis';
@@ -30,7 +35,10 @@ interface StoredPosition {
   y: number;
   dir: Direction;
   moving: boolean;
-  /** 마지막으로 받아들인 시각 (ms). 다음 이동의 속도 검사에 쓴다 */
+  /**
+   * 이동 시간 기록 (ms). 받아들인 이동에 든 시간(moveCostMs)만큼만 앞으로 가서, 받은 시각보다 늦을 수 있다
+   * (지연으로 몰려 온 위치를 받아들일 여유). 다음 이동의 속도 검사에 쓴다
+   */
   t: number;
   /** 횡스크롤: 마지막으로 딛은 땅의 높이. 여기서 점프 높이 이상 오르면(날기) 받아들이지 않는다 */
   g?: number;
@@ -50,6 +58,12 @@ export type MoveResult =
  */
 @Injectable()
 export class PlazaService {
+  /**
+   * 사람·광장마다 위치를 고치는 일(이동, 모션)을 하나씩 차례로 한다. 몰려 온 이동을 동시에 처리하면
+   * 모두 같은 예전 위치를 읽고 비교해서 뒤의 것이 "너무 멀다"로 되돌려졌다. 서버 한 대 전제 (Presence와 같음)
+   */
+  private readonly positionLocks = new Map<string, Promise<unknown>>();
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly presence: PresenceService,
@@ -132,15 +146,21 @@ export class PlazaService {
    * 장애물을 지나지 않았으면 저장하고, 아니면 되돌릴 위치를 돌려준다.
    * 횡스크롤은 가로·세로 속도와 점프 높이(마지막으로 딛은 땅 기준)를 따로 본다.
    */
-  async move(userId: string, request: PlazaMoveRequest): Promise<MoveResult> {
+  move(userId: string, request: PlazaMoveRequest): Promise<MoveResult> {
+    return this.inOrder(request.plazaId, userId, () => this.applyMove(userId, request));
+  }
+
+  private async applyMove(userId: string, request: PlazaMoveRequest): Promise<MoveResult> {
     const layout = await this.layoutOf(request.plazaId);
     const now = Date.now();
     const current = await this.positionOf(request.plazaId, userId, layout);
     const side = isSideScroll(layout);
     const ground = current.g ?? current.y;
+    // 남겨 둘 수 있는 시간은 MAX_STEP_MS까지: 오래 멈춰 있었어도 한 번에 멀리 가지는 못한다.
+    const clock = Math.max(current.t, now - MAX_STEP_MS);
     const valid = side
-      ? isValidSideMove(layout, current, request, now - current.t, ground)
-      : isValidMove(layout, current, request, now - current.t);
+      ? isValidSideMove(layout, current, request, now - clock, ground)
+      : isValidMove(layout, current, request, now - clock);
     if (!valid) {
       return {
         ok: false,
@@ -152,7 +172,7 @@ export class PlazaService {
       y: request.y,
       dir: request.dir,
       moving: request.moving,
-      t: now,
+      t: clock + (side ? sideMoveCostMs : moveCostMs)(current, request),
       ...(side ? { g: isGrounded(layout, request.x, request.y) ? request.y : ground } : {}),
       // 움직이면 반복 중이던 모션은 멈춘다
       ...(!request.moving && current.m ? { m: current.m } : {}),
@@ -175,7 +195,16 @@ export class PlazaService {
    * 캐릭터 모션을 틀거나 멈춘다. 반복 모션은 나중에 광장을 연 사람에게도 보이도록 위치와 함께 저장한다.
    * 모션이 있는지는 확인하지 않는다 (없으면 보는 쪽에서 대기 모습으로 보인다).
    */
-  async setMotion(
+  setMotion(
+    userId: string,
+    plazaId: PlazaId,
+    motion: string | null,
+    loop: boolean,
+  ): Promise<PlazaMotionChanged> {
+    return this.inOrder(plazaId, userId, () => this.applyMotion(userId, plazaId, motion, loop));
+  }
+
+  private async applyMotion(
     userId: string,
     plazaId: PlazaId,
     motion: string | null,
@@ -217,18 +246,32 @@ export class PlazaService {
     }));
   }
 
-  /** 저장된 위치. 처음이면 스폰 지점에 두고 저장한다. */
+  /** 같은 사람·광장의 위치 일은 앞의 것이 끝난 뒤에 한다 (positionLocks) */
+  private inOrder<T>(plazaId: PlazaId, userId: string, task: () => Promise<T>): Promise<T> {
+    const key = `${plazaId}|${userId}`;
+    const run = (this.positionLocks.get(key) ?? Promise.resolve()).then(task, task);
+    const tail = run.catch(() => undefined);
+    this.positionLocks.set(key, tail);
+    void tail.then(() => {
+      if (this.positionLocks.get(key) === tail) this.positionLocks.delete(key);
+    });
+    return run;
+  }
+
+  /** 저장된 위치. 처음이면 스폰 지점, 장애물 속이면 가장 가까운 설 수 있는 자리에 두고 저장한다. */
   private async positionOf(
     plazaId: PlazaId,
     userId: string,
     layout: MapLayout,
   ): Promise<StoredPosition> {
     const raw = await this.redis.hget(positionsKey(plazaId), userId);
-    if (raw) return JSON.parse(raw) as StoredPosition;
-    const spawn = spawnPosition(layout, userId);
+    const stored = raw ? (JSON.parse(raw) as StoredPosition) : null;
+    if (stored && isWalkable(layout, stored.x, stored.y)) return stored;
+    // 처음이거나, 저장된 자리가 장애물 속이면(내장 맵이 바뀐 배포 등) 가장 가까운 설 수 있는 자리로 옮긴다.
+    const spawn = (stored && nearestWalkable(layout, stored)) || spawnPosition(layout, userId);
     const position: StoredPosition = {
       ...spawn,
-      dir: 'down',
+      dir: stored?.dir ?? 'down',
       moving: false,
       t: 0,
       ...(isSideScroll(layout) ? { g: spawn.y } : {}),

@@ -12,7 +12,6 @@ import {
   REQUIRED_CHARACTER_ANIMATIONS,
   TILE_SIZE,
   assetManifestSchema,
-  missingAnimations,
 } from '@metacode/shared';
 import { useQueryClient } from '@tanstack/react-query';
 import {
@@ -37,6 +36,8 @@ import {
   toManifest,
 } from './editorModel';
 import type { EditorTarget } from './editorStore';
+import { type GifFile, GifImportDialog } from './GifImportDialog';
+import { decodeGif, downloadBytes, encodeGif } from './gif';
 import { downloadCanvas, indexImage, readImageFile } from './png';
 import {
   type Clip,
@@ -54,7 +55,11 @@ import {
   stamp,
 } from './selection';
 import {
+  ArrowLeftToLine,
+  ArrowRightToLine,
   Check,
+  ChevronLeft,
+  ChevronRight,
   Eraser,
   FlipHorizontal2,
   Ghost,
@@ -191,7 +196,7 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
   const [mirror, setMirror] = useState(false);
   const [onion, setOnion] = useState(false);
   const [zoom, setZoom] = useState(() =>
-    Math.max(2, Math.min(28, Math.floor(480 / Math.max(doc.width, doc.height)))),
+    Math.max(1, Math.min(28, Math.floor(480 / Math.max(doc.width, doc.height)))),
   );
   const [status, setStatus] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -202,6 +207,8 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
   const [clipboard, setClipboard] = useState<Clip | null>(null);
   const [trimFeet, setTrimFeet] = useState(readTrimFeet);
   const fileRef = useRef<HTMLInputElement>(null);
+  const gifRef = useRef<HTMLInputElement>(null);
+  const [gifFiles, setGifFiles] = useState<GifFile[] | null>(null);
 
   // 되돌리기 등으로 애니메이션·프레임 수가 바뀌어도 고른 프레임이 범위 안에 있게 한다.
   const animation = doc.animations[Math.min(selected.animation, doc.animations.length - 1)]!;
@@ -210,8 +217,8 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
     frame: Math.min(selected.frame, animation.frames.length - 1),
   };
   const pixels = animation.frames[ref.frame]!;
-  const manifest = toManifest(doc);
-  const missing = doc.kind === 'character' ? missingAnimations(manifest) : [];
+  const missing = doc.kind === 'character' ? editor.missingAnimations() : [];
+  const frameCount = editor.frameCount();
   const missingNames = new Set(missing.map((m) => m.name));
   const frameKey = `${ref.animation}:${ref.frame}`;
   // 다른 편집(붓질, 되돌리기, 크기 바꾸기)을 하거나 프레임을 옮기면 선택이 풀린다.
@@ -309,6 +316,16 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
     setCrop(null);
   };
 
+  const selectFrame = (frame: number) => setSelected({ animation: ref.animation, frame });
+  /**
+   * 앞·뒤 프레임으로 넘긴다 (끝에서는 반대쪽 끝으로). 고른 번호는 지금 애니메이션의 범위 안에서만 바꾼다:
+   * 예전엔 오른쪽 방향키가 범위를 넘어 번호를 계속 올려서, 끝에 닿은 뒤에는 왼쪽으로 돌아오지 않는 것처럼 보였다.
+   */
+  const stepFrame = (step: 1 | -1) => {
+    const count = animation.frames.length;
+    selectFrame((ref.frame + step + count) % count);
+  };
+
   // ── 키보드 ── (매번 새로 걸어 지금 선택 상태를 쓴다)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -368,9 +385,8 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
           // 고른 영역이 있으면 방향키는 한 칸씩 옮긴다 (없으면 프레임 넘기기).
           e.preventDefault();
           nudge(...arrows[e.key]!);
-        } else if (e.key === 'ArrowLeft')
-          setSelected((s) => ({ ...s, frame: Math.max(0, s.frame - 1) }));
-        else if (e.key === 'ArrowRight') setSelected((s) => ({ ...s, frame: s.frame + 1 }));
+        } else if (e.key === 'ArrowLeft') stepFrame(-1);
+        else if (e.key === 'ArrowRight') stepFrame(1);
       }
     };
     window.addEventListener('keydown', onKey, true);
@@ -655,6 +671,39 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
     }
   };
 
+  // ── GIF ──
+  const onImportGif = async (e: ChangeEvent<HTMLInputElement>) => {
+    const files = [...(e.target.files ?? [])];
+    e.target.value = '';
+    if (files.length === 0) return;
+    try {
+      const decoded = await Promise.all(
+        files.map(async (file) => ({
+          name: file.name,
+          gif: decodeGif(new Uint8Array(await file.arrayBuffer())),
+        })),
+      );
+      setStatus(null);
+      setGifFiles(decoded);
+    } catch {
+      setStatus({ kind: 'error', text: 'GIF를 읽지 못했습니다.' });
+    }
+  };
+
+  /** 지금 애니메이션을 움직이는 GIF로 (투명 배경, 작은 그림은 정수배로 키워서) */
+  const onExportGif = () => {
+    const scale = Math.max(1, Math.floor(256 / Math.max(doc.width, doc.height)));
+    const bytes = encodeGif(
+      animation.frames,
+      doc.width,
+      doc.height,
+      doc.palette,
+      animation.frameMs,
+      scale,
+    );
+    downloadBytes(bytes, `${doc.name.trim() || 'asset'}-${animation.name}.gif`, 'image/gif');
+  };
+
   const onExport = () => {
     const sheet = globalThis.document.createElement('canvas');
     sheet.width = doc.width * animation.frames.length;
@@ -665,8 +714,6 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
     });
     downloadCanvas(sheet, `${doc.name.trim() || 'asset'}-${animation.name}.png`);
   };
-
-  const selectFrame = (frame: number) => setSelected({ animation: ref.animation, frame });
 
   return (
     <div className="pixel-editor" role="dialog" aria-modal="true" aria-label="도트 에디터">
@@ -692,6 +739,22 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
           <button type="button" className="button" onClick={onExport}>
             PNG 내보내기
           </button>
+          <button
+            type="button"
+            className="button"
+            title="움직이는 GIF를 애니메이션으로 (여러 파일이면 파일 이름으로 애니메이션을 정함)"
+            onClick={() => gifRef.current?.click()}
+          >
+            GIF 가져오기
+          </button>
+          <button
+            type="button"
+            className="button"
+            title="지금 애니메이션을 움직이는 GIF로"
+            onClick={onExportGif}
+          >
+            GIF 내보내기
+          </button>
           <button type="button" className="button" onClick={requestClose}>
             닫기
           </button>
@@ -712,6 +775,14 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
             accept="image/png"
             hidden
             onChange={(e) => void onImport(e)}
+          />
+          <input
+            ref={gifRef}
+            type="file"
+            accept="image/gif"
+            multiple
+            hidden
+            onChange={(e) => void onImportGif(e)}
           />
         </div>
       </header>
@@ -779,7 +850,7 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
             className="pixel-editor__tool"
             title="크게"
             aria-label="크게"
-            onClick={() => setZoom((z) => Math.min(40, z + 2))}
+            onClick={() => setZoom((z) => (z < 2 ? 2 : Math.min(40, z + 2)))}
           >
             <ZoomIn aria-hidden />
           </button>
@@ -788,7 +859,7 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
             className="pixel-editor__tool"
             title="작게"
             aria-label="작게"
-            onClick={() => setZoom((z) => Math.max(2, z - 2))}
+            onClick={() => setZoom((z) => (z > 2 ? z - 2 : 1))}
           >
             <ZoomOut aria-hidden />
           </button>
@@ -1168,17 +1239,46 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
                 onClick={() => selectFrame(i)}
                 title={`${i + 1}번 프레임`}
               >
-                <FrameThumb pixels={frame} doc={doc} />
+                <FrameThumb
+                  pixels={frame}
+                  doc={doc}
+                  revision={i === ref.frame ? editor.version : 0}
+                />
                 <span>{i + 1}</span>
               </button>
             </li>
           ))}
         </ol>
         <div className="pixel-editor__frame-actions">
+          <div className="pixel-editor__frame-nav" role="group" aria-label="프레임 넘기기">
+            <button
+              type="button"
+              className="button"
+              disabled={animation.frames.length <= 1}
+              onClick={() => stepFrame(-1)}
+              aria-label="앞 프레임"
+              title="앞 프레임 (←)"
+            >
+              <ChevronLeft aria-hidden />
+            </button>
+            <span className="pixel-editor__frame-count" aria-live="polite">
+              {ref.frame + 1} / {animation.frames.length}
+            </span>
+            <button
+              type="button"
+              className="button"
+              disabled={animation.frames.length <= 1}
+              onClick={() => stepFrame(1)}
+              aria-label="다음 프레임"
+              title="다음 프레임 (→)"
+            >
+              <ChevronRight aria-hidden />
+            </button>
+          </div>
           <button
             type="button"
             className="button"
-            disabled={editor.frameCount() >= FRAME_LIMIT[doc.kind]}
+            disabled={frameCount >= FRAME_LIMIT[doc.kind]}
             onClick={() => {
               const at = editor.addFrame(ref, false);
               if (at !== null) selectFrame(at);
@@ -1189,7 +1289,7 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
           <button
             type="button"
             className="button"
-            disabled={editor.frameCount() >= FRAME_LIMIT[doc.kind]}
+            disabled={frameCount >= FRAME_LIMIT[doc.kind]}
             onClick={() => {
               const at = editor.addFrame(ref, true);
               if (at !== null) selectFrame(at);
@@ -1197,27 +1297,30 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
           >
             복제
           </button>
+          {/* 순서 옮기기: 고른 프레임을 앞·뒤 프레임과 맞바꾼다 (넘기기와 헷갈리지 않게 따로 둔다) */}
           <button
             type="button"
             className="button"
             disabled={ref.frame === 0}
+            title="이 프레임을 한 칸 앞으로 옮기기"
             onClick={() => {
               editor.moveFrame(ref, ref.frame - 1);
               selectFrame(ref.frame - 1);
             }}
           >
-            ◀
+            <ArrowLeftToLine aria-hidden /> 앞으로 옮기기
           </button>
           <button
             type="button"
             className="button"
             disabled={ref.frame >= animation.frames.length - 1}
+            title="이 프레임을 한 칸 뒤로 옮기기"
             onClick={() => {
               editor.moveFrame(ref, ref.frame + 1);
               selectFrame(ref.frame + 1);
             }}
           >
-            ▶
+            뒤로 옮기기 <ArrowRightToLine aria-hidden />
           </button>
           <button
             type="button"
@@ -1228,10 +1331,23 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
             프레임 지우기
           </button>
           <span className="form__hint">
-            {editor.frameCount()}/{FRAME_LIMIT[doc.kind]}장 (같은 그림은 한 장)
+            {frameCount}/{FRAME_LIMIT[doc.kind]}장 (같은 그림은 한 장)
           </span>
         </div>
       </footer>
+      {gifFiles && (
+        <GifImportDialog
+          editor={editor}
+          files={gifFiles}
+          current={ref.animation}
+          onClose={() => setGifFiles(null)}
+          onDone={(first, message) => {
+            setGifFiles(null);
+            if (first !== null) setSelected({ animation: first, frame: 0 });
+            setStatus({ kind: 'ok', text: message });
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -1410,31 +1526,48 @@ function ObjectSettings({ editor }: { editor: PixelDocument }) {
 
 const THUMB_BOX = 40;
 
-function FrameThumb({ pixels, doc }: { pixels: Uint8Array; doc: EditorDoc }) {
+/**
+ * 프레임 목록의 작은 그림. 큰 캐릭터(512×512)는 캔버스도 작게 만들어 부드럽게 줄여 그리고, 그림이 바뀔 때만
+ * 다시 그린다 (프레임마다 원래 크기 캔버스를 매번 그리면 붓질할 때 느려졌다). 고른 프레임은 붓질하는 동안
+ * 같은 배열을 그 자리에서 고치므로 revision(문서 버전)도 본다.
+ */
+function FrameThumb({
+  pixels,
+  doc,
+  revision,
+}: {
+  pixels: Uint8Array;
+  doc: EditorDoc;
+  revision: number;
+}) {
   const ref = useRef<HTMLCanvasElement>(null);
   const longest = Math.max(doc.width, doc.height);
-  const scale = Math.max(1, Math.floor(THUMB_BOX / longest));
-  // 해상도가 높은 캐릭터도 목록에서는 같은 크기로 보이게 CSS로 맞춘다 (캔버스는 도트 그대로).
   const shown = THUMB_BOX / longest;
+  // 작은 그림은 도트 그대로 정수배, 큰 그림은 보이는 크기로 줄인 캔버스
+  const scale = longest > THUMB_BOX ? shown : Math.max(1, Math.floor(THUMB_BOX / longest));
+  const width = Math.max(1, Math.round(doc.width * scale));
+  const height = Math.max(1, Math.round(doc.height * scale));
+  const palette = doc.palette.join();
   useEffect(() => {
     const canvas = ref.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d')!;
-    ctx.imageSmoothingEnabled = false;
+    ctx.imageSmoothingEnabled = scale < 1;
+    ctx.imageSmoothingQuality = 'high';
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.drawImage(
-      frameCanvas(pixels, doc.width, doc.height, doc.palette),
+      frameCanvas(pixels, doc.width, doc.height, palette.split(',')),
       0,
       0,
       canvas.width,
       canvas.height,
     );
-  });
+  }, [pixels, doc.width, doc.height, palette, revision, scale]);
   return (
     <canvas
       ref={ref}
-      width={doc.width * scale}
-      height={doc.height * scale}
+      width={width}
+      height={height}
       style={{ width: doc.width * shown, height: doc.height * shown }}
     />
   );

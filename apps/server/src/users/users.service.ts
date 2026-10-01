@@ -7,6 +7,7 @@ import {
   type AvatarUploadTicket,
   BUILTIN_CHARACTERS,
   type CharacterChoice,
+  PlazaStyle,
   type ProfileCharacter,
   SocketEvent,
   type UserDetail,
@@ -177,9 +178,14 @@ export class UsersService {
 
   /**
    * 광장 캐릭터 고르기. 기본 캐릭터나 직접 그린 캐릭터만 고를 수 있다 (남의 캐릭터는 안 됨).
-   * null이면 사용자 ID로 고른 기본 캐릭터로 돌아간다.
+   * 탑다운(style 기본)은 null이면 사용자 ID로 고른 기본 캐릭터로, 횡스크롤은 null이면 탑다운과 같은
+   * 캐릭터로 돌아간다.
    */
-  async setCharacter(userId: string, choice: CharacterChoice | null): Promise<UserDetail> {
+  async setCharacter(
+    userId: string,
+    choice: CharacterChoice | null,
+    style: PlazaStyle = PlazaStyle.TopDown,
+  ): Promise<UserDetail> {
     let character: ProfileCharacter | null = null;
     if (choice) {
       if (choice.asset.startsWith('builtin:')) {
@@ -199,9 +205,10 @@ export class UsersService {
         };
       }
     }
+    const column = style === PlazaStyle.SideScroll ? 'sideCharacter' : 'character';
     const user = await this.prisma.user.update({
       where: { id: userId },
-      data: { character: character ?? Prisma.DbNull },
+      data: { [column]: character ?? Prisma.DbNull },
     });
     await this.announce(user);
     return toDetail(user);
@@ -217,13 +224,15 @@ export class UsersService {
     updatedAt: Date | null,
   ): Promise<void> {
     const user = await this.find(creatorId);
-    const current = user.character as ProfileCharacter | null;
-    if (current?.asset !== assetId) return;
-    const character = updatedAt ? { ...current, version: updatedAt.toISOString() } : null;
-    const updated = await this.prisma.user.update({
-      where: { id: creatorId },
-      data: { character: character ?? Prisma.DbNull },
-    });
+    // 탑다운·횡스크롤 캐릭터 중 이 에셋을 쓰는 쪽을 고친다 (둘 다일 수 있다).
+    const data: Prisma.UserUpdateInput = {};
+    for (const column of ['character', 'sideCharacter'] as const) {
+      const current = user[column] as ProfileCharacter | null;
+      if (current?.asset !== assetId) continue;
+      data[column] = updatedAt ? { ...current, version: updatedAt.toISOString() } : Prisma.DbNull;
+    }
+    if (Object.keys(data).length === 0) return;
+    const updated = await this.prisma.user.update({ where: { id: creatorId }, data });
     await this.announce(updated);
   }
 
@@ -276,7 +285,14 @@ export class UsersService {
 
 type ProfileSource = Pick<
   User,
-  'id' | 'username' | 'nickname' | 'avatarUrl' | 'avatarKey' | 'avatarAnimatedKey' | 'character'
+  | 'id'
+  | 'username'
+  | 'nickname'
+  | 'avatarUrl'
+  | 'avatarKey'
+  | 'avatarAnimatedKey'
+  | 'character'
+  | 'sideCharacter'
 >;
 
 /** 올린 프로필 사진 파일들 (멈춘 사진, 움직이는 사진) */
@@ -298,6 +314,7 @@ export function toProfile(user: ProfileSource): UserProfile {
     avatarAnimatedUrl:
       user.avatarKey && user.avatarAnimatedKey ? publicFileUrl(user.avatarAnimatedKey) : null,
     character: (user.character as ProfileCharacter | null) ?? null,
+    sideCharacter: (user.sideCharacter as ProfileCharacter | null) ?? null,
   };
 }
 

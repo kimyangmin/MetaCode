@@ -15,6 +15,7 @@ import {
   TILE_SIZE,
   type UserProfile,
   buildCollision,
+  characterFor,
   characterMotions,
   groundBelow,
   isGrounded,
@@ -245,6 +246,11 @@ export class PlazaScene extends Phaser.Scene {
     for (const occupant of snapshot.occupants) this.upsert(occupant);
   }
 
+  /** 광장 방식 (맵 정의에서). 캐릭터는 방식마다 따로 고를 수 있다 (characterFor) */
+  get plazaStyle(): PlazaStyle {
+    return this.style;
+  }
+
   private get side(): boolean {
     return this.style === PlazaStyle.SideScroll;
   }
@@ -255,7 +261,12 @@ export class PlazaScene extends Phaser.Scene {
       this.updateUser(occupant.user);
       return;
     }
-    const look = characterLook(this, occupant.user.id, occupant.user.character, this.assetOf);
+    const look = characterLook(
+      this,
+      occupant.user.id,
+      characterFor(occupant.user, this.style),
+      this.assetOf,
+    );
     const isMe = occupant.user.id === this.options.meId;
     const position = { x: occupant.x, y: occupant.y };
     const actor: Actor = {
@@ -309,7 +320,7 @@ export class PlazaScene extends Phaser.Scene {
     if (!actor) return;
     actor.user = user;
     actor.dom.name.textContent = this.options.nameOf(user);
-    const look = characterLook(this, user.id, user.character, this.assetOf);
+    const look = characterLook(this, user.id, characterFor(user, this.style), this.assetOf);
     if (look.key !== actor.look.key) {
       actor.look = look;
       actor.sprite.setTexture(look.key, 0);

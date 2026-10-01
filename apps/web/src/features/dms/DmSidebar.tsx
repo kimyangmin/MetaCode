@@ -67,7 +67,7 @@ function DmLink({ dm, meId, active }: { dm: DmSummary; meId: string; active: boo
       className="sidebar__item sidebar__item--dm"
       data-unread={!active && hasUnread(dm)}
     >
-      {first && <Avatar user={first} size={28} showStatus={dm.type === 'DM'} />}
+      {first && <Avatar user={first} size={28} showStatus={dm.type === 'DM'} animate />}
       <span className="sidebar__label">{dmTitle(dm, meId)}</span>
       {call && (
         <span className="sidebar__live" title={`통화 중 ${call.members.length}명`}>
@@ -206,7 +206,7 @@ function UserPick({
     <li>
       <label className="search-results__item">
         <input type="checkbox" checked={checked} onChange={onToggle} />
-        <Avatar user={user} size={28} showStatus />
+        <Avatar user={user} size={28} showStatus animate />
         <span>
           {displayName(user)} <small>@{user.username}</small>
         </span>

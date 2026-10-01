@@ -8,8 +8,8 @@ interface AvatarProps {
   /** 온라인 여부 점을 함께 그린다 */
   showStatus?: boolean;
   /**
-   * 움직이는 사진(GIF로 올린 사진)이면 움직이게 그린다. 멤버 목록·정보 팝업만 켜고,
-   * 채팅 목록처럼 사진이 많이 모이는 곳은 멈춘 사진(첫 장면)을 쓴다.
+   * 움직이는 사진(GIF로 올린 사진)이면 움직이게 그린다. 사람마다 한 줄인 목록(멤버, DM, 친구)과
+   * 정보 팝업, 내 사진은 켜고, 채팅 목록처럼 같은 사진이 많이 모이는 곳은 멈춘 사진(첫 장면)을 쓴다.
    */
   animate?: boolean;
 }
@@ -22,6 +22,25 @@ export function retryUrl(url: string, attempt: number): string {
   if (attempt === 0) return url;
   const separator = url.includes('?') ? '&' : '?';
   return `${url}${separator}retry=${attempt}`;
+}
+
+/** 크게 보기 크기 (CSS의 .lightbox--avatar와 같게). GitHub 사진은 이 크기로 받는다 */
+export const LARGE_AVATAR_PX = 512;
+
+/**
+ * 크게 보기에 쓸 사진 주소. 올린 사진은 256px 하나뿐이라 그대로(움직이는 사진이면 그것),
+ * GitHub 사진은 기본이 460px 안팎이라 크기(`s`)를 붙여 선명한 것을 받는다.
+ */
+export function largeAvatarUrl(user: Pick<UserProfile, 'avatarUrl' | 'avatarAnimatedUrl'>): string {
+  if (user.avatarAnimatedUrl) return user.avatarAnimatedUrl;
+  try {
+    const url = new URL(user.avatarUrl);
+    if (url.hostname !== 'avatars.githubusercontent.com') return user.avatarUrl;
+    url.searchParams.set('s', String(LARGE_AVATAR_PX));
+    return url.toString();
+  } catch {
+    return user.avatarUrl;
+  }
 }
 
 /** 사람마다 늘 같은 배경색 (사진을 못 불러왔을 때 첫 글자 뒤에 깐다) */

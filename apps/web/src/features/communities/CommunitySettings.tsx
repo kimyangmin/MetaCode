@@ -168,7 +168,7 @@ function GeneralTab({ community }: { community: CommunitySummary }) {
 
   const pick = (kind: CommunityImageKind, file: File) => {
     if (file.size > AVATAR_MAX_BYTES) {
-      void run(() => Promise.reject(new Error()), '8MB 이하의 이미지만 올릴 수 있습니다.');
+      void run(() => Promise.reject(new Error()), '15MB 이하의 이미지만 올릴 수 있습니다.');
       return;
     }
     setSaved(null);
@@ -298,7 +298,7 @@ function ImageField({
             {kind === 'icon'
               ? '왼쪽 커뮤니티 목록과 초대 화면에 보입니다.'
               : '채널 목록 위에 보입니다.'}{' '}
-            {width}×{height}로 씁니다. 올릴 때 보일 곳을 고릅니다 · 8MB 이하
+            {width}×{height}로 씁니다. 올릴 때 보일 곳을 고릅니다 · 15MB 이하
           </p>
         </div>
         <input

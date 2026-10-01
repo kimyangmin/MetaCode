@@ -32,6 +32,14 @@ export function openPopupWindow(options: {
     if (copy instanceof HTMLLinkElement && node instanceof HTMLLinkElement) copy.href = node.href;
     doc.head.append(copy);
   }
+  // 라이트/다크도 메인 창을 따른다 (설정에서 바꾸면 이 창도 바뀜).
+  const syncColorScheme = () => {
+    if (popup.closed) observer.disconnect();
+    else doc.documentElement.dataset.colorScheme = document.documentElement.dataset.colorScheme;
+  };
+  const observer = new MutationObserver(syncColorScheme);
+  observer.observe(document.documentElement, { attributeFilter: ['data-color-scheme'] });
+  syncColorScheme();
   doc.body.className = 'popup-window';
   const container = doc.createElement('div');
   container.className = 'popup-window__root';

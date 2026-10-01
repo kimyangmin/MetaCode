@@ -249,4 +249,42 @@ describe('캐릭터 고르기', () => {
     expect(((await removed) as UserProfile).character).toBeNull();
     expect((await alice.json<UserDetail>('/users/me')).character).toBeNull();
   });
+
+  it('횡스크롤 광장의 캐릭터는 따로 고르고(없으면 탑다운과 같음), 쓰던 에셋을 고치거나 지우면 함께 바뀐다', async () => {
+    const { alice } = await setup();
+    const top = { asset: 'builtin:char-long', colors: { shirt: '#3f8fdb' } };
+    await alice.json('/users/me/character', send('PUT', { character: top }));
+    expect((await alice.json<UserDetail>('/users/me')).sideCharacter).toBeNull();
+
+    const mine = await alice.json<AssetDto>('/assets', send('POST', { manifest: character('옆') }));
+    const side = await alice.json<UserDetail>(
+      '/users/me/character',
+      send('PUT', { character: { asset: mine.id, colors: {} }, style: 'SIDE_SCROLL' }),
+    );
+    expect(side.character).toEqual(top);
+    expect(side.sideCharacter).toEqual({ asset: mine.id, colors: {}, version: mine.updatedAt });
+
+    const saved = await alice.json<AssetDto>(
+      `/assets/${mine.id}`,
+      send('PUT', { manifest: character('옆 2') }),
+    );
+    const edited = await alice.json<UserDetail>('/users/me');
+    expect(edited.sideCharacter?.version).toBe(saved.updatedAt);
+    expect(edited.character).toEqual(top);
+
+    await alice.fetch(`/assets/${mine.id}`, send('DELETE'));
+    const removed = await alice.json<UserDetail>('/users/me');
+    expect(removed.sideCharacter).toBeNull();
+    expect(removed.character).toEqual(top);
+
+    const same = await alice.json<UserDetail>(
+      '/users/me/character',
+      send('PUT', { character: null, style: 'SIDE_SCROLL' }),
+    );
+    expect(same.sideCharacter).toBeNull();
+    expect(
+      (await alice.fetch('/users/me/character', send('PUT', { character: null, style: 'ISO' })))
+        .status,
+    ).toBe(400);
+  });
 });

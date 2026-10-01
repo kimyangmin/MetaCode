@@ -91,7 +91,7 @@ export class UsersController {
     @CurrentUserId() userId: string,
     @Body(new ZodValidationPipe(setCharacterSchema)) body: SetCharacterRequest,
   ): Promise<UserDetail> {
-    return this.users.setCharacter(userId, body.character);
+    return this.users.setCharacter(userId, body.character, body.style);
   }
 
   /** 다른 사람의 프로필 (정보 팝업). 경로가 겹치지 않게 마지막에 둔다 */

@@ -5,7 +5,8 @@ import { apiFetch } from '../../api/client';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { type ProfileTarget, useProfileStore } from '../../stores/profile';
 import { useIsOnline, displayName, memberColor } from '@metacode/client';
-import { Avatar } from '../../ui/Avatar';
+import { Avatar, largeAvatarUrl } from '../../ui/Avatar';
+import { Lightbox } from '../../ui/Lightbox';
 import { useExitTransition } from '../../ui/useExitTransition';
 import { FriendButton } from '../friends/FriendButton';
 import { useCommunities, useMeRequired, useMembers, useOpenDm } from './hooks';
@@ -21,6 +22,7 @@ const CLOSE_MS = 120;
 /**
  * 사용자 정보 팝업: 아바타, 닉네임, 사용자 ID, 온라인 여부, 자기소개, (커뮤니티 화면이면) 역할, 메시지 보내기.
  * 누른 자리 옆에 띄우고, 바깥을 누르거나 Esc를 누르면 닫는다.
+ * 사진을 누르면 크게 보고, 크게 보는 동안에는 팝업이 바깥 누르기·Esc로 닫히지 않는다 (크게 보기가 먼저 닫힘).
  */
 export function ProfilePopup() {
   const target = useProfileStore((s) => s.target);
@@ -29,6 +31,9 @@ export function ProfilePopup() {
   const { shown, closing } = useExitTransition(target, CLOSE_MS);
   const ref = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState<CSSProperties>({ visibility: 'hidden' });
+  // 사진을 크게 보는 팝업. 팝업을 닫거나 다른 사람을 열면(target이 바뀜) 저절로 꺼진다.
+  const [zoomFor, setZoomFor] = useState<ProfileTarget | null>(null);
+  const zoomed = zoomFor !== null && zoomFor === target;
 
   // 창 밖으로 나가지 않게 자리를 잡는다.
   useLayoutEffect(() => {
@@ -41,7 +46,7 @@ export function ProfilePopup() {
   }, [target]);
 
   useEffect(() => {
-    if (!target) return;
+    if (!target || zoomed) return;
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && close();
     const onDown = (e: MouseEvent) => {
       const clicked = e.target as Node;
@@ -57,7 +62,7 @@ export function ProfilePopup() {
       window.removeEventListener('keydown', onKey);
       window.removeEventListener('mousedown', onDown);
     };
-  }, [target, close]);
+  }, [target, close, zoomed]);
 
   if (!shown) return null;
   return (
@@ -69,12 +74,24 @@ export function ProfilePopup() {
       data-closing={closing || undefined}
       style={position}
     >
-      <ProfileBody key={`${shown.user.id}-${shown.communityId}`} target={shown} />
+      <ProfileBody
+        key={`${shown.user.id}-${shown.communityId}`}
+        target={shown}
+        onZoom={() => setZoomFor(shown)}
+      />
+      {zoomed && (
+        <Lightbox
+          src={largeAvatarUrl(shown.user)}
+          alt={`${displayName(shown.user)}의 프로필 사진`}
+          variant="avatar"
+          onClose={() => setZoomFor(null)}
+        />
+      )}
     </div>
   );
 }
 
-function ProfileBody({ target }: { target: ProfileTarget }) {
+function ProfileBody({ target, onZoom }: { target: ProfileTarget; onZoom(): void }) {
   const close = useProfileStore((s) => s.close);
   const { user, communityId } = target;
   const me = useMeRequired();
@@ -96,7 +113,15 @@ function ProfileBody({ target }: { target: ProfileTarget }) {
   return (
     <>
       <div className="profile-popup__head">
-        <Avatar user={user} size={56} animate />
+        <button
+          type="button"
+          className="profile-popup__avatar"
+          onClick={onZoom}
+          aria-label="프로필 사진 크게 보기"
+          title="크게 보기"
+        >
+          <Avatar user={user} size={56} animate />
+        </button>
         <div className="profile-popup__names">
           <strong style={{ color: color ?? undefined }}>{displayName(user)}</strong>
           <a

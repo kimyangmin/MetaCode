@@ -1,7 +1,20 @@
 import { describe, expect, it } from 'vitest';
 import { Cell, type MapLayout, TILE_SIZE } from './layout.js';
-import { groundBelow, isGrounded, isOnPlatform, isWalkable, spawnPosition } from './movement.js';
-import { JUMP_HEIGHT, JUMP_SPEED, MAX_FALL_SPEED, isValidSideMove } from './side.js';
+import {
+  groundBelow,
+  isGrounded,
+  isOnPlatform,
+  isWalkable,
+  nearestWalkable,
+  spawnPosition,
+} from './movement.js';
+import {
+  JUMP_HEIGHT,
+  JUMP_SPEED,
+  MAX_FALL_SPEED,
+  isValidSideMove,
+  sideMoveCostMs,
+} from './side.js';
 
 const W = 20;
 const H = 12;
@@ -78,5 +91,36 @@ describe('isValidSideMove', () => {
     expect(isValidSideMove(side, from, { x: from.x, y: from.y - 120 }, 100, FLOOR)).toBe(false);
     const nearWall = { x: 13 * T + 8, y: FLOOR };
     expect(isValidSideMove(side, nearWall, { x: 15 * T + 8, y: FLOOR }, 400, FLOOR)).toBe(false);
+  });
+
+  it('턱에 붙어 뛰어오른 뒤 올라서는 것은 받아들인다 (곧은 선은 턱 모서리를 스침)', () => {
+    // 14열 벽(한 칸 높이)의 왼쪽에 몸을 붙이고 뛰어오르는 중 → 벽 위에 올라섬
+    const against = { x: 14 * T - 4, y: FLOOR - 10 };
+    const onTop = { x: 14 * T + 1, y: 9 * T };
+    expect(isValidSideMove(side, against, onTop, 50, FLOOR)).toBe(true);
+    // 벽을 그대로 뚫고 지나가는 것은 꺾어 가도 막혀 있다
+    expect(isValidSideMove(side, against, { x: 15 * T + 4, y: FLOOR - 10 }, 200, FLOOR)).toBe(
+      false,
+    );
+  });
+
+  it('시간을 앞당겨 썼으면(elapsed가 음수) 움직일 수 없고, 제자리는 괜찮다', () => {
+    expect(isValidSideMove(side, from, { x: from.x + 3, y: from.y }, -40, FLOOR)).toBe(false);
+    expect(isValidSideMove(side, from, from, -40, FLOOR)).toBe(true);
+  });
+
+  it('이동 시간은 가로·세로 중 더 오래 걸리는 쪽', () => {
+    expect(sideMoveCostMs(from, { x: from.x + 9.6, y: from.y })).toBeCloseTo(66.7, 0);
+    expect(sideMoveCostMs(from, { x: from.x, y: from.y - JUMP_SPEED / 10 })).toBeCloseTo(66.7, 0);
+  });
+});
+
+describe('nearestWalkable (횡스크롤)', () => {
+  it('벽 속에 남은 자리는 가까운 땅 위로 옮긴다', () => {
+    const inWall = { x: 14 * T + 8, y: FLOOR };
+    expect(isWalkable(side, inWall.x, inWall.y)).toBe(false);
+    const fixed = nearestWalkable(side, inWall)!;
+    expect(isGrounded(side, fixed.x, fixed.y)).toBe(true);
+    expect(Math.abs(fixed.x - inWall.x)).toBeLessThanOrEqual(T);
   });
 });

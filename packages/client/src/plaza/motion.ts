@@ -30,7 +30,46 @@ function slide(layout: MapLayout, from: Position, axis: 'x' | 'y', amount: numbe
 }
 
 /**
- * 방향키 이동 한 프레임. 축마다 따로 움직여서 벽에 비스듬히 부딪히면 벽을 따라 미끄러진다.
+ * 모서리에 걸렸을 때 옆으로 비켜 주는 최대 거리 (px). 발 폭(10px)의 절반쯤이라, 장애물 모서리를
+ * 살짝 스칠 때만 돕고 장애물 한가운데로 걸어가면 그대로 막힌다.
+ */
+export const CORNER_NUDGE_PX = 6;
+
+/**
+ * 한 방향으로만 가다가 장애물 모서리에 걸렸으면, 옆으로 비켜서 지나갈 수 있는 쪽(가까운 쪽)으로 조금 옮긴다.
+ * 예전에는 발끝이 모서리에 1px만 걸려도 그 자리에 멈춰서, 오브젝트 옆을 지날 때 자꾸 끼었다.
+ */
+function nudgeAround(
+  layout: MapLayout,
+  from: Position,
+  axis: 'x' | 'y',
+  sign: number,
+  distance: number,
+): Position {
+  const other = axis === 'x' ? 'y' : 'x';
+  for (let k = 1; k <= CORNER_NUDGE_PX; k++) {
+    for (const side of [-1, 1]) {
+      const aside = { ...from, [other]: from[other] + side * k };
+      const ahead = { ...aside, [axis]: aside[axis] + sign };
+      if (!isWalkable(layout, ahead.x, ahead.y)) continue;
+      // 비켜서는 길(1px씩)도 열려 있어야 한다
+      let clear = true;
+      for (let i = 1; i <= k && clear; i++) {
+        clear = isWalkable(
+          layout,
+          from.x + (other === 'x' ? side * i : 0),
+          from.y + (other === 'y' ? side * i : 0),
+        );
+      }
+      if (clear) return { ...from, [other]: from[other] + side * Math.min(k, distance) };
+    }
+  }
+  return from;
+}
+
+/**
+ * 방향키 이동 한 프레임. 축마다 따로 움직여서 벽에 비스듬히 부딪히면 벽을 따라 미끄러지고,
+ * 한 방향으로 가다가 모서리에 살짝 걸리면 옆으로 비켜 지나간다 (nudgeAround).
  * 대각선은 속도가 빨라지지 않도록 정규화한다.
  */
 export function stepByInput(
@@ -44,7 +83,11 @@ export function stepByInput(
   const distance = (MOVE_SPEED * Math.min(elapsedMs, MAX_FRAME_MS)) / 1000;
   const length = Math.hypot(dx, dy);
   const afterX = dx === 0 ? from : slide(layout, from, 'x', (dx / length) * distance);
-  return dy === 0 ? afterX : slide(layout, afterX, 'y', (dy / length) * distance);
+  const after = dy === 0 ? afterX : slide(layout, afterX, 'y', (dy / length) * distance);
+  if (after.x !== from.x || after.y !== from.y || (dx !== 0 && dy !== 0)) return after;
+  return dx !== 0
+    ? nudgeAround(layout, from, 'x', Math.sign(dx), distance)
+    : nudgeAround(layout, from, 'y', Math.sign(dy), distance);
 }
 
 /**

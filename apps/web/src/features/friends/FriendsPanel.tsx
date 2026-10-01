@@ -128,7 +128,7 @@ function FriendRow({ friend }: { friend: FriendDto }) {
   const { user } = friend;
   return (
     <li className="friends__row">
-      <Avatar user={user} size={36} showStatus />
+      <Avatar user={user} size={36} showStatus animate />
       <span className="friends__names">
         <strong>{displayName(user)}</strong>
         <small>
@@ -180,7 +180,7 @@ function RequestList({
       <ul className="friends__list">
         {requests.map(({ user }) => (
           <li key={user.id} className="friends__row">
-            <Avatar user={user} size={36} showStatus />
+            <Avatar user={user} size={36} showStatus animate />
             <span className="friends__names">
               <strong>{displayName(user)}</strong>
               <small>
