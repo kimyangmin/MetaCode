@@ -36,7 +36,7 @@
   --mc-danger: #c93a2e;
 }
 
-:root[data-theme='dark'] :is(.login, .settings-overlay) {
+:root[data-color-scheme='dark'] :is(.login, .settings-overlay) {
   /* 다크: 밤하늘 바탕. 무채색 검정이 아니라 남색 */
   --mc-bg: var(--mc-night);
   --mc-surface: #22263b;
@@ -51,7 +51,7 @@
 }
 
 /*
- * 라이트/다크: <html data-theme>(index.html이 첫 화면 전에, 이후 stores/theme.ts가 정함)을 본다.
+ * 라이트/다크: <html data-color-scheme>(index.html이 첫 화면 전에, 이후 stores/colorScheme.ts가 정함)을 본다.
  * 설정 → 화면에서 기기 설정을 따르거나 라이트·다크로 고정한다.
  */
 :root {
@@ -93,7 +93,7 @@
   --code-removed-bg: #ffebe9;
 }
 
-:root[data-theme='dark'] {
+:root[data-color-scheme='dark'] {
   color-scheme: dark;
 
   --bg: #0d1117;
@@ -124,11 +124,11 @@
 }
 
 /*
- * 라이트/다크 전환 (stores/theme.ts): 기본 교차 페이드 대신, 찍어 둔 예전 화면 위로 새 화면이
+ * 라이트/다크 전환 (stores/colorScheme.ts): 기본 교차 페이드 대신, 찍어 둔 예전 화면 위로 새 화면이
  * 누른 자리에서 원으로 넓어진다 (clip-path는 스크립트가 움직임).
  */
-:root[data-theme-switching]::view-transition-old(root),
-:root[data-theme-switching]::view-transition-new(root) {
+:root[data-color-scheme-switching]::view-transition-old(root),
+:root[data-color-scheme-switching]::view-transition-new(root) {
   animation: none;
   mix-blend-mode: normal;
 }
@@ -3792,13 +3792,13 @@ a {
 }
 
 /* 설정 → 화면: 색 모드 고르기 (features/settings/AppearanceSettings.tsx) */
-.theme-picker {
+.scheme-picker {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
 }
 
-.theme-picker__option {
+.scheme-picker__option {
   display: grid;
   gap: 8px;
   padding: 8px;
@@ -3810,20 +3810,20 @@ a {
   cursor: pointer;
 }
 
-.theme-picker__option:hover {
+.scheme-picker__option:hover {
   background: var(--bg-hover);
 }
 
-.theme-picker__option[aria-checked='true'] {
+.scheme-picker__option[aria-checked='true'] {
   border-color: var(--accent);
 }
 
-.theme-picker__label {
+.scheme-picker__label {
   font-weight: 600;
 }
 
 /* 앱 화면을 줄인 그림. 색은 :root의 라이트/다크 값을 그대로 옮겼다 (지금 모드와 상관없이 그 모드의 모습) */
-.theme-preview {
+.scheme-preview {
   position: relative;
   display: block;
   aspect-ratio: 16 / 10;
@@ -3831,7 +3831,7 @@ a {
   border-radius: 6px;
 }
 
-.theme-preview__half {
+.scheme-preview__half {
   position: absolute;
   inset: 0;
   display: grid;
@@ -3843,7 +3843,7 @@ a {
   background: var(--p-bg);
 }
 
-.theme-preview__half[data-scheme='dark'] {
+.scheme-preview__half[data-scheme='dark'] {
   --p-bg: #0d1117;
   --p-sidebar: #111620;
   --p-line: #262d38;
@@ -3851,48 +3851,48 @@ a {
 }
 
 /* 기기 설정: 오른쪽 아래 절반을 다크로 */
-.theme-preview[data-kind='system'] .theme-preview__half[data-scheme='dark'] {
+.scheme-preview[data-kind='system'] .scheme-preview__half[data-scheme='dark'] {
   clip-path: polygon(100% 0, 100% 100%, 0 100%);
 }
 
-.theme-preview__sidebar,
-.theme-preview__chat {
+.scheme-preview__sidebar,
+.scheme-preview__chat {
   display: flex;
   flex-direction: column;
   gap: 6%;
   padding: 10% 8%;
 }
 
-.theme-preview__sidebar {
+.scheme-preview__sidebar {
   background: var(--p-sidebar);
 }
 
-.theme-preview__chat {
+.scheme-preview__chat {
   justify-content: flex-end;
 }
 
-.theme-preview__sidebar span,
-.theme-preview__chat span {
+.scheme-preview__sidebar span,
+.scheme-preview__chat span {
   height: 7px;
   border-radius: 4px;
   background: var(--p-line);
 }
 
-.theme-preview__chat span:nth-child(2) {
+.scheme-preview__chat span:nth-child(2) {
   width: 70%;
 }
 
-.theme-preview__chat span[data-accent] {
+.scheme-preview__chat span[data-accent] {
   width: 45%;
   background: var(--p-accent);
 }
 
 @media (max-width: 480px) {
-  .theme-picker {
+  .scheme-picker {
     gap: 8px;
   }
 
-  .theme-picker__option {
+  .scheme-picker__option {
     padding: 6px;
   }
 }

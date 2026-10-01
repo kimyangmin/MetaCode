@@ -16,11 +16,11 @@ import { ScreenViewer } from './features/voice/ScreenViewer';
 import { VoiceProvider } from './features/voice/VoiceProvider';
 import { RealtimeProvider } from './realtime/RealtimeProvider';
 import { createAppRouter } from './router';
-import { useThemeSync } from './stores/theme';
+import { useColorSchemeSync } from './stores/colorScheme';
 import { useUiStore } from './stores/ui';
 
 export function App() {
-  useThemeSync();
+  useColorSchemeSync();
   return (
     <>
       <Screen />
