@@ -123,21 +123,21 @@ describe('캐릭터 해상도', () => {
     };
   };
 
-  it('가로 16~128px, 세로가 가로의 2배면 받는다', () => {
+  it('가로 16~512px, 세로가 가로의 2배면 받는다', () => {
     expect(problemsOf(upscaled(2))).toEqual([]);
     expect(problemsOf(upscaled(3))).toEqual([]);
   });
 
   it('범위를 벗어나거나 세로 비율이 다르면 거절한다', () => {
-    const message = '캐릭터 해상도는 가로 16~128px, 세로는 가로의 2배여야 합니다.';
+    const message = '캐릭터 해상도는 가로 16~512px, 세로는 가로의 2배여야 합니다.';
     expect(problemsOf({ ...base, width: 8, height: 16 })).toContain(message);
-    expect(problemsOf({ ...base, width: 256, height: 512 })).toContain(message);
+    expect(problemsOf({ ...base, width: 1024, height: 2048 })).toContain(message);
     expect(problemsOf({ ...base, width: 32, height: 32 })).toContain(message);
   });
 
   it('해상도 × 프레임 수가 너무 많으면 거절한다', () => {
-    // 가장 큰 해상도(128×256)는 32프레임까지다 (ASSET_PIXEL_BUDGET).
-    const big = upscaled(8);
+    // 가장 큰 해상도(512×1024)는 32프레임까지다 (ASSET_PIXEL_BUDGET).
+    const big = upscaled(32);
     expect(problemsOf(big)).toEqual([]);
     const spare = encodePixels(new Uint8Array(big.width * big.height));
     const tooMany = {
@@ -228,5 +228,26 @@ describe('캐릭터 모션 (숫자 키)', () => {
     expect(
       problemsOf(tile({ animations: { default: { frames: [0], frameMs: 1000, key: '1' } } })),
     ).toContain('모션(키, 이름, 반복)은 캐릭터만 쓸 수 있습니다.');
+  });
+});
+
+describe('RLE로 담은 프레임', () => {
+  it('투명한 곳이 많은 큰 그림은 짧게 담고, 그대로 풀린다', () => {
+    const pixels = new Uint8Array(512 * 1024);
+    pixels.fill(3, 1000, 5000);
+    pixels[7] = 1;
+    const encoded = encodePixels(pixels);
+    expect(encoded.startsWith('~')).toBe(true);
+    // 그냥 base64(약 70만 글자)보다 훨씬 짧다
+    expect(encoded.length).toBeLessThan(12_000);
+    expect(decodePixels(encoded)).toEqual(pixels);
+  });
+
+  it('줄지 않는 그림은 그냥 base64이고, 그림 크기보다 크게 풀리면 null', () => {
+    const noise = Uint8Array.from({ length: 300 }, (_, i) => (i * 7919) % 251);
+    const encoded = encodePixels(noise);
+    expect(encoded.startsWith('~')).toBe(false);
+    expect(decodePixels(encoded)).toEqual(noise);
+    expect(decodePixels(encodePixels(new Uint8Array(4096)), 100)).toBeNull();
   });
 });
