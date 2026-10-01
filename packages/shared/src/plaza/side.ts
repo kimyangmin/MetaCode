@@ -22,6 +22,7 @@ export const MAX_FALL_SPEED = 480;
  * 서버가 횡스크롤 이동을 받아들일지. 가로는 걷는 속도, 세로는 오를 때 점프 속도·내려갈 때 최대 낙하 속도 안이고,
  * 가는 길에 막힌 칸이 없으며, 마지막으로 딛은 땅(groundY)보다 점프 높이 이상 오르지 않았는지 본다.
  * 클라이언트는 땅에 내려앉는 순간의 위치를 바로 보내므로(서버가 딛은 땅을 놓치지 않게) 연달아 뛰어도 된다.
+ * elapsedMs는 isValidMove와 같이 서버의 이동 시간 기록(sideMoveCostMs)에서 지난 시간이다.
  */
 export function isValidSideMove(
   layout: MapLayout,
@@ -31,11 +32,22 @@ export function isValidSideMove(
   groundY: number,
 ): boolean {
   if (!Number.isFinite(to.x) || !Number.isFinite(to.y)) return false;
-  const seconds = Math.min(Math.max(elapsedMs, 0), MAX_STEP_MS) / 1000;
-  const reach = (speed: number) => speed * seconds * SPEED_TOLERANCE + DISTANCE_SLACK_PX;
+  const seconds = Math.min(elapsedMs, MAX_STEP_MS) / 1000;
+  const reach = (speed: number) =>
+    Math.max(0, speed * seconds * SPEED_TOLERANCE + DISTANCE_SLACK_PX);
   if (Math.abs(to.x - from.x) > reach(MOVE_SPEED)) return false;
   const dy = to.y - from.y;
   if (Math.abs(dy) > reach(dy < 0 ? JUMP_SPEED : MAX_FALL_SPEED)) return false;
   if (to.y < groundY - JUMP_HEIGHT - DISTANCE_SLACK_PX) return false;
   return isClearPath(layout, from, to);
+}
+
+/** 횡스크롤 이동에 드는 시간 (ms): 가로는 걷는 속도, 세로는 오를 때 점프·내려갈 때 낙하 속도로 (moveCostMs 참고) */
+export function sideMoveCostMs(from: Position, to: Position): number {
+  const dy = to.y - from.y;
+  const seconds = Math.max(
+    Math.abs(to.x - from.x) / MOVE_SPEED,
+    Math.abs(dy) / (dy < 0 ? JUMP_SPEED : MAX_FALL_SPEED),
+  );
+  return (seconds / SPEED_TOLERANCE) * 1000;
 }

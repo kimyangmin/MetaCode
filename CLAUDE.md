@@ -22,7 +22,7 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
 - 개발용 GitHub OAuth App(`localhost` 콜백)으로 웹·데스크톱, 운영용 OAuth App으로 운영 웹의 실제 로그인을 확인했습니다 (2026-09-26).
 - 기술 스택은 README 표대로 확정되었습니다 (2026-09-26). 메타버스 렌더링은 Phaser 3 대신 Phaser 4로 정했습니다 (2026-09-27).
 - 2026-09-30: Phase 8(네이티브 안드로이드 앱, `apps/mobile`) 시작. 1단계: Expo 뼈대, 토큰 로그인(`POST /auth/android/token`), Actions APK 빌드 — 실제 기기에서 운영 서버 로그인 확인. 2단계: 화면 틀(서랍, 채널·DM·멤버 목록, 실시간 연결).
-- 2026-10-01: 커뮤니티를 만들 때 광장 방식(탑다운 / 횡스크롤)을 고릅니다 (커뮤니티 설정 → 광장에서 바꿀 수 있음). 횡스크롤 광장은 옆에서 본 분수 광장(`fountain-side`)에서 좌우로 걷고 점프합니다. 광장 배율(Ctrl +/−), 캐릭터 모션(숫자 키).
+- 2026-10-01: 커뮤니티를 만들 때 광장 방식(탑다운 / 횡스크롤)을 고릅니다 (커뮤니티 설정 → 광장에서 바꿀 수 있음). 횡스크롤 광장은 옆에서 본 분수 광장(`fountain-side`)에서 좌우로 걷고 점프합니다. 광장 배율(Ctrl +/−), 캐릭터 모션(숫자 키). 도트 에디터 GIF 가져오기·내보내기와 큰 캐릭터 성능(#85), 횡스크롤 광장 캐릭터 따로 고르기(#86). 정보 팝업 사진 크게 보기, 코드 블록 언어별 색, 라이트/다크 모드(설정 → 화면), 프로필 사진·커뮤니티 이미지 한도 15MB. 광장에서 오브젝트에 끼거나 휴대폰 횡스크롤에서 턱을 못 오르던 문제(서버 이동 검증) 수정.
 - Phase를 진행하면 이 섹션과 README 로드맵 체크박스를 함께 갱신합니다.
 
 ## 기술 메모
@@ -97,6 +97,13 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
 - **광장 (Phase 4):** `packages/shared/src/plaza/`(충돌 격자 `MapLayout`, 이동 규칙, 이벤트), `apps/server/src/plaza/`, `apps/web/src/features/metaverse/`, `apps/web/src/layout/SplitView.tsx`
   - 광장 ID는 `community:<id>` 또는 `dm:<channelId>`. 클라이언트가 `plaza:watch`(ack로 전체 상태)로 방 `plaza:<id>`에 들어가고, 나갈 때 `plaza:unwatch`. 다시 연결되면 방 참여가 끊기므로 `connect` 때마다 다시 연다.
   - 이동: 클라이언트가 자기 캐릭터를 먼저 움직이고 `MOVE_SEND_INTERVAL_MS`(100ms)마다, 멈출 때 한 번 더 `plaza:move`를 보낸다. 서버는 `isValidMove`(마지막으로 받은 위치에서 속도 ×1.5 + 4px 이내, 4px 간격으로 장애물 확인)로 검사해 통과하면 같은 방의 다른 연결에만 `plaza:moved`, 아니면 보낸 연결에 `plaza:corrected`. 방에 없는 연결의 이동은 무시한다.
+  - 되돌림이 잦지 않게 (2026-10-01, 오브젝트 옆에서 자꾸 끼고 휴대폰 횡스크롤에서 턱을 못 올라가던 문제):
+    - **꺾어 간 길:** `isClearPath`는 곧은 선이 막혀도 가로 먼저·세로 먼저로 꺾어 간 길이 열려 있으면 받아들인다. 클라이언트는 축마다 따로 움직여서(벽 따라 미끄러지기, 턱에 붙어 뛰어오른 뒤 올라서기) 100ms 사이에 모서리를 도는데, 곧은 선이 그 모서리를 스쳐 되돌려졌다. 손가락 이동은 늘 턱에 붙은 채 뛰므로 휴대폰에서는 매번 되돌려졌다. 칸을 통째로 건너뛰는 것은 여전히 막는다.
+    - **이동 시간 기록:** Redis 위치의 `t`는 받은 시각이 아니라 받아들인 이동에 든 시간(`moveCostMs`/`sideMoveCostMs`, 허용 속도 기준)만큼만 앞으로 간다 (`max(t, now - MAX_STEP_MS)`에서 시작). 늦게 온 위치 뒤에 다음 위치가 바로 붙어 와도(모바일 망) 남겨 둔 시간으로 받아들이고, 평균 속도는 그대로 제한된다. 시간을 앞당겨 쓰면 elapsed가 음수라 움직일 수 없다 (몰아 보내기 막기, e2e 테스트 있음).
+    - **차례로 처리:** 같은 사람·광장의 이동과 모션은 `PlazaService.inOrder`로 하나씩 한다. 동시에 처리하면 몰려 온 이동이 모두 같은 예전 위치와 비교되어 뒤의 것이 되돌려졌다.
+    - **장애물 속 위치:** 저장된 위치가 설 수 없는 곳이면(내장 맵이 바뀐 배포 등) `positionOf`가 가장 가까운 설 수 있는 자리(`nearestWalkable`)로 옮긴다. 예전엔 모든 이동이 "장애물을 지난다"로 거절되어 영영 못 빠져나왔다.
+    - **모서리 비켜 가기:** 클라이언트 `stepByInput`은 한 방향으로 가다 모서리에 살짝(`CORNER_NUDGE_PX` 6px 안) 걸리면 옆으로 비켜 지나간다.
+    - 시뮬레이션(지연 0~300ms, 30·60fps)으로 확인: 탑다운 무작위 걷기 되돌림 35~519회 → 0회(300ms에서 12회), 횡스크롤 턱 오르기는 첫 턱에서 계속 되돌려지다가 맵 끝까지 간다.
   - 위치는 Redis 해시 `plaza:pos:<plazaId>`에만 둔다(휘발성). 처음이면 사용자 ID 해시로 스폰 영역 안의 칸을 고른다. 인원(온라인 멤버)이 바뀌면 `plaza:member`(occupant 또는 null)로 알린다: 접속/끊김, 커뮤니티 참여/탈퇴.
   - 다른 사람 캐릭터는 받은 위치를 150ms 늦게 그리며 사이를 보간하고(`RemoteTrack`), 64px 넘게 튀면 바로 옮긴다. 클릭 이동은 A*(8방향, 모서리 파고들기 금지) 경로를 따라간다.
   - 맵 = 맵 정의(`MapDefinition`). 스냅샷(`plaza:watch` ack)의 `definition`으로 오고, 서버와 클라이언트가 같은 정의에서 `buildCollision`으로 충돌 격자를 만든다. 내장 맵은 `packages/shared/src/assets/builtin-maps.ts`(코드로 칠한 Kenney 타일 + 분수·모닥불 등 오브젝트, `BUILTIN_MAPS`/`BUILTIN_LAYOUTS`).
@@ -164,6 +171,7 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
   - 메시지 목록은 가로로 스크롤되지 않습니다 (`overflow-x: hidden`). 예전엔 이미지 첨부(최대 320px 고정 폭)가 휴대폰의 메시지 본문(375px 화면에서 303px)보다 넓어 목록이 넘쳤고, 왼쪽으로 밀면 살짝 가로 스크롤되었습니다. 이미지는 폭 + `aspect-ratio`로 자리를 잡고 `max-width: 100%`로 비율대로 줄어들며, `.attachments`는 트랙이 내용 폭만큼 늘지 않게 `minmax(0, 1fr)`입니다.
   - 손가락으로 메시지를 **왼쪽으로** 56px 넘게 밀었다 놓으면 답장합니다 (`features/chat/swipeReply.ts`). 처음엔 오른쪽 밀기였지만 목록 서랍 열기와 겹쳐 메시지 위에서 목록을 열 수 없었습니다. 처음 오른쪽으로 움직이면 답장은 그만 보고 서랍이 받습니다. 미는 동안 메시지가 따라오고(그 뒤로는 덜 따라오다 96px에서 멈춤) 오른쪽에 답장 표시가 나오며, 넘으면 accent색이 됩니다. 채팅 영역 잡기 중, 수정 중인 메시지, 가로로 스크롤되는 곳에서는 밀지 않습니다. 미는 동안 `.message`에 `overflow: hidden`을 거는데, flex 항목의 최소 높이가 0이 되어 긴 목록에서 메시지가 납작해졌으므로 `flex-shrink: 0`을 같이 둡니다.
   - 마크다운(`packages/client`의 `markdownParser.ts` → 웹 `ui/Markdown.tsx`): Discord와 비슷한 범위. 블록은 ```코드 블록```, `>` 인용, `>>>` 끝까지 인용, `#`~`###` 제목, `-`/`*`/`1.` 목록, 나머지는 문단(줄바꿈 유지). 글자는 `**굵게**`, `*기울임*`/`_기울임_`(단어 속 `_`는 제외), `__밑줄__`, `~~취소선~~`, `||스포일러||`(누르면 보임), `` `코드` ``, `[글](https://…)`, `\`로 기호 그대로. 파서가 트리를 만들고 React 요소로 그리므로 HTML을 해석하지 않습니다.
+  - 코드 블록 색(`ui/CodeBlock.tsx`): ```` ```ts ```` 처럼 언어를 적고 lowlight(highlight.js의 `common` 약 40개 언어, 별칭 포함)가 아는 언어면 색을 입힙니다. lowlight는 언어가 붙은 블록을 처음 그릴 때 따로 불러오고(gzip 약 50KB), 결과(hast 트리)를 React 요소로 그립니다 (`dangerouslySetInnerHTML` 안 씀). 모르는 언어나 불러오는 동안은 그냥 글자입니다. 색은 `:root`의 `--code-*` 토큰(GitHub 라이트/다크 팔레트)입니다.
   - 링크: http(s) 주소만 링크로 만듭니다 (`packages/client`의 `splitLinks`, `[글](주소)`도 http(s)만. javascript: 주소는 글자로 남음). 새 창으로 열리고, 데스크톱은 setWindowOpenHandler가 시스템 브라우저로 엽니다.
   - 광장 말풍선과 답장 미리보기는 `markdownToPlain`으로 기호를 뺀 글을 씁니다 (스포일러는 `▒`로 가림).
   - GIF(`image/gif`, 15MB 이하)는 목록에서 썸네일(첫 장면만 담긴 WebP) 대신 원본을 틀어 움직이게 합니다. 더 크면 썸네일에 GIF 표시만 하고 크게 보기에서 움직입니다.
@@ -221,6 +229,10 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
   - 선택·자르기(`selection.ts`): 올가미는 그린 다각형 안(픽셀 가운데 기준)을 고르고, 고른 곳을 끌거나 방향키로 옮깁니다. 옮기는 동안은 떠 있는 상태(`lifted`: 아래 그림 `base` + 얹은 값)라 지나간 자리의 그림이 지워지지 않습니다. 선택은 고른 프레임에서 다른 편집이 없을 때만(`version`이 같을 때) 살아 있고, 복사한 조각은 같은 자리에 붙습니다 (다른 프레임·애니메이션에 붙여 맞추기 쉽게). 자르기는 사각형 밖을 지우고(이 프레임 또는 모든 프레임), "그림 크기도 맞추기"면 캐릭터는 가로 = max(사각형 가로, 세로/2)로 발밑 가운데, 오브젝트는 16px 단위로 왼쪽 아래에 둡니다.
   - 발 아래 정리(`trimBelowFeet`): 광장은 그림 맨 아래를 발밑으로 세우므로, **애니메이션마다** 그 안의 프레임에 공통으로 빈 아래 줄만큼 캐릭터 그림을 내립니다 (한 애니메이션 안의 걷기 들썩임은 유지, 빈 프레임은 세지 않음). 처음엔 모든 프레임의 최솟값을 써서, 내장 캐릭터처럼 걷기에 바닥에 닿은 프레임이 하나라도 있으면 대기·첨부 모션도 정리되지 않았습니다. 캐릭터를 저장할 때 자동으로 하고 에디터에서 끌 수 있습니다 (localStorage).
   - 에디터에서는 애니메이션마다 프레임을 따로 갖고, 저장할 때 같은 그림을 한 장으로 합칩니다 (`toManifest`). 캐릭터는 `missingAnimations`가 비어야 저장 버튼이 켜집니다.
+  - 프레임 넘기기(‹ 3/6 ›)와 순서 옮기기("앞으로/뒤로 옮기기")는 따로입니다. 예전 ◀▶는 그림을 옆 프레임과 맞바꿔서 같은 그림이 계속 보여 넘어가지 않는 것처럼 보였습니다. 방향키 넘기기는 끝에서 반대쪽 끝으로 돕니다.
+  - 큰 캐릭터(512px) 성능: 되돌리기 기록은 프레임 픽셀을 함께 쓰고 고치는 프레임만 복사합니다(copy-on-write). 프레임 목록·미리보기는 보이는 크기로 줄여 필요한 프레임만 그리고, 광장 캐릭터 텍스처는 가장 긴 변 256px로 부드럽게 줄여 올립니다.
+  - GIF 가져오기(`GifImportDialog.tsx`, `gif.ts`, 코덱은 omggif): 장면마다 그림 전체로 풀어(disposal 반영) 애니메이션 하나로 넣습니다. 여러 파일을 한 번에 넣을 수 있고, 파일 이름이 애니메이션 이름(`walk-left` 등)이면 그 애니메이션, 아니면 지금 애니메이션(캐릭터에 여러 파일이면 새 모션)으로 정해 두고 바꿀 수 있습니다. 키운 도트 그림(4배·8배)은 원래 크기로 줄이고, 캐릭터는 그림이 들어가게 해상도를 넓힙니다(최대 512px). 왼쪽·오른쪽 애니메이션이면 반대쪽을 좌우 반전으로 함께 만듭니다. 색은 지금 팔레트에 더하고 64색이 넘으면 중간값 자르기로 줄이며, 장면 시간은 가운데 값을 프레임 간격으로 씁니다.
+  - GIF 내보내기: 지금 애니메이션을 투명 배경의 되풀이 GIF로 (작은 그림은 정수배로 키움).
   - 도트 에디터·맵 에디터는 앱에 하나만 둔 `AssetEditors`가 화면 전체로 띄웁니다 (설정 창과 커뮤니티 설정 어디서 열어도 그 위에 뜸). Esc는 에디터가 먼저 받아 `preventDefault()`하고, 설정 창과 `Dialog`는 `defaultPrevented`면 닫지 않습니다. 에디터를 연 창을 닫으면 에디터도 닫습니다 (`closeAssetEditors`).
 - **캐릭터 고르기 (Phase 6):** `UsersService.setCharacter`, 웹 `features/assets/CharacterSettings.tsx`
   - `User.character`(JSON `{asset, colors, version?}`), null이면 `defaultCharacter(userId)`. 프로필(`UserProfile.character`)에 실려 메시지·멤버·광장 인원 어디서나 같은 값을 씁니다.
@@ -256,6 +268,11 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
   - 이벤트: `plaza:setMotion {plazaId, motion|null, loop}` → 같은 광장을 보는 다른 연결에 `plaza:motionChanged`. 광장을 열어 둔 연결만 보낼 수 있고, 150ms보다 잦은 요청은 버립니다(`socket.data.lastMotionAt`). 반복 모션은 Redis 위치에 `m`으로 저장해 나중에 연 사람의 스냅숏(`PlazaOccupant.motion`)에도 보이고, 움직이면(`moving: true`) 지웁니다. 다른 사람의 `plaza:moved`(moving)를 받으면 그 사람의 모션을 멈춥니다. 모션이 실제로 있는지는 서버가 확인하지 않습니다 (없으면 보는 쪽에서 대기 모습).
 - **프로필 사진 불러오기 실패:** `ui/Avatar.tsx`는 사진을 못 불러오면(연결이 불안정할 때) 깨진 그림 대신 이름 첫 글자를 보여 주고, 2초·5초·15초·60초 뒤와 `online` 이벤트 때 주소에 `retry=N`을 붙여 다시 불러옵니다 (같은 주소면 `<img>`가 다시 요청하지 않음).
 - **웹 새 배포 자동 반영:** 빌드마다 `__BUILD_ID__`를 앱에 넣고 같은 값을 `version.json`으로 내보냅니다 (`vite.config.ts`). 앱(`features/app/liveUpdate.ts`)은 1분마다와 창이 다시 보일 때 `version.json`을 보고, 바뀌었으면 잃을 것이 없을 때(통화 중이 아님, 에셋·맵 에디터를 열지 않음, 입력칸에 쓰던 글이 없음) `location.reload()`합니다. 기다리는 동안은 "새 버전" 안내를 띄웁니다. Caddy는 `/assets/*` 밖(index.html, version.json)에 `Cache-Control: no-cache`를 붙여, 예전처럼 데스크톱 앱이 캐시된 옛 index.html을 여는 일을 막습니다. 개발 서버에서는 동작하지 않습니다.
+- **라이트/다크 모드 (`ColorScheme`):** `stores/colorScheme.ts`, `features/settings/AppearanceSettings.tsx`, `index.html`
+  - 설정 → 화면에서 기기 설정 / 라이트 / 다크를 고릅니다 (localStorage `metacode:color-scheme`, 기기 설정이면 지움). 계절 테마(`Theme`)와는 다른 개념이라 코드에서 theme이라고 부르지 않습니다.
+  - CSS는 `prefers-color-scheme`이 아니라 `<html data-color-scheme="light|dark">`을 봅니다 (`:root[data-color-scheme='dark']`에서 토큰을 다시 정의, `color-scheme`도 같이). 이 속성은 `index.html`의 인라인 스크립트가 첫 화면을 그리기 전에 정하고(깜빡이지 않게, 규칙은 `resolveScheme`과 같음), 이후 `useColorSchemeSync`(App)가 맞춥니다: 기기 설정이면 OS가 바뀔 때 따라가고, 다른 창(분리한 패널)에서 바꾸면 `storage` 이벤트로 따라갑니다. 화면 공유 보기 창(`openPopupWindow`)은 MutationObserver로 메인 창의 값을 따라갑니다.
+  - 바꿀 때는 View Transitions로 찍어 둔 예전 화면 위에 새 화면이 누른 자리에서 원으로 넓어집니다 (`::view-transition-new(root)`에 clip-path, 그동안 `data-color-scheme-switching`으로 기본 교차 페이드를 끔). 지원하지 않는 브라우저와 움직임 줄이기 설정에서는 바로 바뀝니다.
+  - 전환 중에는 `data-color-scheme`이 아직 예전 값입니다 (화면을 찍은 뒤에 바뀜). 그래서 바꾸는 중인 값(`switching`)과 비교합니다. 처음엔 속성과 비교해서, 누른 직후 `useColorSchemeSync`가 같은 값으로 다시 부르면 새 전환이 앞의 것을 끊고 화면 가운데에서 교차 페이드로 다시 시작했습니다 (실제로 겪은 문제).
 - **아이콘과 화면 톤:** `ui/icons.tsx`, `styles.css`
   - 아이콘은 이모지 대신 lucide(`lucide-react`)를 씁니다. 색은 currentColor, 크기는 `.lucide`가 글자 크기(1.15em)에 맞추고 자리마다 CSS로 조정합니다. 아이콘만 있는 버튼에는 `aria-label`을 붙입니다. lucide에 없는 것(분수 광장 `Fountain`)은 같은 규칙(24격자, 2px 선)으로 `createLucideIcon`으로 그립니다. React 밖(광장 DOM 덮개 `PlazaScene`)은 `lucide`(vanilla)의 `createElement`를 씁니다.
   - lucide의 `File`, `Map`, `Link`, `Image`는 DOM 타입·전역과 이름이 겹치므로 `File as FileIcon`처럼 바꿔 가져옵니다.
@@ -267,8 +284,10 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
   - 올린 원본은 적용 뒤 지우므로, 이미 올린 사진의 위치를 나중에 다시 고치지는 못합니다 (다시 올려야 함).
 - **여닫는 애니메이션:** 설정 창은 `ui/useExitTransition.ts`(값이 null이 된 뒤에도 잠깐 남겨 `data-closing`), `Dialog`는 스스로 닫을 때(Esc, 바깥, ✕)만 사라지는 애니메이션 뒤에 `onClose`를 부릅니다 (부모가 직접 내리면 바로 사라짐). 시간은 animationend 대신 setTimeout으로 잽니다 (움직임 줄이기 설정에서는 이벤트가 오지 않음). 멤버 목록은 내리지 않고 `.members-slot`의 폭을 줄입니다 (`inert`).
 - **사용자 정보 팝업:** 연 요소(`anchor`)를 다시 누르면 닫습니다 (`openProfile`이 같은 사람·같은 요소면 닫고, 바깥 누르기 처리는 그 요소를 건너뜀). 여닫을 때 애니메이션(`useExitTransition`). 역할 아래에 그 사람의 광장 캐릭터(고른 색 그대로)가 걷는 무대가 있습니다 (`ProfileCharacter`, 내장 에셋 때문에 lazy, 직접 그린 캐릭터는 광장과 같은 `['assets','one',id,version]` 캐시).
+  - 사진을 누르면 크게 봅니다 (`ui/Lightbox.tsx`, 첨부 이미지 크게 보기와 같은 부품). 움직이는 사진이면 그것, GitHub 사진은 `s=512`를 붙여 선명한 것을 받습니다 (`largeAvatarUrl`). Lightbox는 body에 포털로 그립니다 (팝업의 transform 애니메이션 안에서는 fixed가 갇힘). 크게 보는 동안은 팝업의 바깥 누르기·Esc 처리를 걸지 않아, Esc는 크게 보기만 닫고 한 번 더 누르면 팝업이 닫힙니다.
 - **움직이는 사진(GIF):** 서버(`makeCoverImages`)가 첫 장면만 담은 멈춘 WebP와, 원본이 움직이면 움직이는 WebP(최대 150장면, 압축 폭탄 제한 안에서)를 만듭니다. 크롭은 장면마다 같은 곳을 자릅니다.
-  - 프로필 사진은 둘 다 저장합니다: `avatarKey`(멈춘 사진) + `avatarAnimatedKey`(`<id>-animated.webp`, 없으면 null) → DTO `avatarUrl` / `avatarAnimatedUrl`. 채팅 목록 등 사진이 많이 모이는 곳은 멈춘 사진, 멤버 목록·정보 팝업·설정의 내 사진은 움직이는 사진(`<Avatar animate />`).
+  - 프로필 사진은 둘 다 저장합니다: `avatarKey`(멈춘 사진) + `avatarAnimatedKey`(`<id>-animated.webp`, 없으면 null) → DTO `avatarUrl` / `avatarAnimatedUrl`. 채팅 목록 등 사진이 많이 모이는 곳은 멈춘 사진, 사람마다 한 줄인 목록(멤버, DM, 친구, 새 대화)·정보 팝업·내 사진은 움직이는 사진(`<Avatar animate />`).
+  - 올릴 수 있는 원본은 15MB까지입니다 (`AVATAR_MAX_BYTES`, 프로필 사진과 커뮤니티 아이콘·배너가 같이 씀).
   - 커뮤니티 아이콘·배너는 움직이는 사진이면 그것 하나만 저장해 어디서나 움직입니다.
 - **채널 만들기:** 채널 목록의 "텍스트 채널"·"음성 채널" 머리글 오른쪽 +(관리자). 누른 구역의 종류가 골라진 채로 열립니다. 음성 채널이 없어도 관리자에게는 음성 채널 머리글을 보여 줍니다.
 - **데스크톱 제목 표시줄 (0.5.0):** `apps/desktop/src/main/titlebar.ts`, 웹 `features/desktop/TitleBar.tsx`
@@ -472,7 +491,7 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
 - **캐릭터 기준점:** 발밑 가운데입니다. 충돌 판정은 발 영역(약 10×6px)만 쓰고, y좌표 순서로 앞뒤를 그려서 분수나 모닥불 뒤로 지나갈 때 가려지게 합니다.
 - **스프라이트시트 배치:** 행은 방향(아래, 왼쪽, 오른쪽, 위), 열은 프레임입니다. 커스터마이징 부품(몸, 머리카락, 옷)은 같은 배치로 따로 그려서 실행 중에 겹칩니다.
 - **글자:** 말풍선과 이름표의 글자는 도트 배율로 키우지 않습니다. 화면 해상도로 렌더링하거나 한글 도트 폰트(Galmuri 등 오픈 라이선스)를 씁니다. 말풍선 틀은 도트로 그려도 됩니다.
-- **제작 도구:** 앱 안의 도트 에디터(PNG 가져오기·내보내기)와 맵 에디터. 기본 에셋은 `pnpm assets:build`(`tools/build-assets.mjs`)가 `assets/vendor`의 CC0 원본과 `tools/assets`의 그리는 코드로 만듭니다.
+- **제작 도구:** 앱 안의 도트 에디터(PNG·GIF 가져오기·내보내기)와 맵 에디터. 기본 에셋은 `pnpm assets:build`(`tools/build-assets.mjs`)가 `assets/vendor`의 CC0 원본과 `tools/assets`의 그리는 코드로 만듭니다.
 - **테마별 타일셋:** 같은 맵의 테마별 타일셋은 **칸 배치를 똑같이** 그립니다 (같은 위치의 칸 = 같은 역할. 예: 봄의 잔디 칸 자리에 겨울에는 눈 덮인 땅). 그러면 Tiled 맵 하나가 모든 테마 타일셋으로 그대로 동작합니다.
 - **테마 전용 장식:** 크리스마스 트리처럼 특정 테마에만 있는 장식은 별도 레이어에 두고, 이동을 막지 않게 합니다 (배치를 바꾸지 않는 원칙).
 

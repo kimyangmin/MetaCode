@@ -1,7 +1,16 @@
-import { MOVE_SPEED, PlazaMap, isValidMove, isWalkable } from '@metacode/shared';
+import {
+  Cell,
+  type MapLayout,
+  MOVE_SPEED,
+  PlazaMap,
+  TILE_SIZE,
+  isValidMove,
+  isWalkable,
+} from '@metacode/shared';
 import { BUILTIN_LAYOUTS } from '@metacode/shared/builtin-assets';
 import { describe, expect, it } from 'vitest';
 import {
+  CORNER_NUDGE_PX,
   INTERPOLATION_DELAY_MS,
   RemoteTrack,
   directionOf,
@@ -32,6 +41,26 @@ describe('stepByInput', () => {
     expect(position.x).toBeLessThan(tileCenter(2, 10).x);
     expect(position.y).toBeGreaterThan(tileCenter(2, 10).y + 40);
     expect(stepByInput(square, position, -1, 0, 16).x).toBe(position.x);
+  });
+
+  it('모서리에 살짝 걸리면 옆으로 비켜 지나가고, 한가운데로 가면 막힌다', () => {
+    // 10×10 맵 가운데 (5, 5) 한 칸만 막힘
+    const blocked = new Uint8Array(100);
+    blocked[5 * 10 + 5] = Cell.Solid;
+    const layout: MapLayout = { width: 10, height: 10, blocked, spawn: { x: 0, y: 0, w: 1, h: 1 } };
+    const top = 5 * TILE_SIZE;
+    // 발(6px 높이)의 아래 2px가 막힌 칸의 윗줄에 걸쳐 있다
+    let position = { x: top - 6, y: top + 2 };
+    for (let i = 0; i < 30; i++) position = stepByInput(layout, position, 1, 0, 16);
+    expect(position.x).toBeGreaterThan(6 * TILE_SIZE + 5);
+    // 위로 비켜선 거리는 필요한 만큼(2px)에서 1px 안쪽
+    expect(position.y).toBeLessThanOrEqual(top);
+    expect(position.y).toBeGreaterThanOrEqual(top - 1);
+
+    // 한가운데로 걸어가면 비켜 줄 거리(CORNER_NUDGE_PX)보다 멀어서 그대로 막힌다
+    const middle = { x: top - 5, y: top + 11 };
+    expect(top + 11 - top).toBeGreaterThan(CORNER_NUDGE_PX);
+    expect(stepByInput(layout, middle, 1, 0, 16)).toEqual(middle);
   });
 
   it('프레임이 길어도 한 번에 멀리 가지 않아서 서버 검사를 통과한다', () => {

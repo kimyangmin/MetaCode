@@ -20,7 +20,7 @@ export function UserPanel({ me }: { me: UserProfile }) {
     <>
       <VoicePanel meId={me.id} />
       <footer className="user-panel">
-        <Avatar user={me} size={32} />
+        <Avatar user={me} size={32} animate />
         <div className="user-panel__names">
           <strong>{displayName(me)}</strong>
           <span className="user-panel__status" data-status={status}>

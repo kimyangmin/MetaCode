@@ -73,8 +73,8 @@ export const MAX_STEP_MS = 500;
 export const SPEED_TOLERANCE = 1.5;
 export const DISTANCE_SLACK_PX = 4;
 
-/** 벽을 뚫고 지나가지 않았는지 4px 간격으로 확인한다 */
-export function isClearPath(layout: MapLayout, from: Position, to: Position): boolean {
+/** 두 위치 사이의 곧은 선이 막히지 않았는지 4px 간격으로 확인한다 */
+function isClearLine(layout: MapLayout, from: Position, to: Position): boolean {
   const distance = Math.hypot(to.x - from.x, to.y - from.y);
   const steps = Math.max(1, Math.ceil(distance / 4));
   for (let i = 1; i <= steps; i++) {
@@ -87,8 +87,33 @@ export function isClearPath(layout: MapLayout, from: Position, to: Position): bo
 }
 
 /**
+ * 벽을 뚫고 지나가지 않았는지. 곧은 선이 막혔어도 가로 먼저·세로 먼저로 꺾어 간 길이 열려 있으면 받아들인다.
+ * 클라이언트는 축마다 따로 움직여서(벽을 따라 미끄러지기, 횡스크롤에서 턱에 붙어 뛰어오른 뒤 올라서기)
+ * 보내는 간격(100ms) 사이에 모서리를 돌아가는데, 곧은 선만 보면 그 모서리를 스쳐서 되돌려졌다
+ * (오브젝트 옆에서 자꾸 끼고, 손가락 이동으로는 턱을 못 올라감). 한 칸을 통째로 건너뛰는 것은 여전히 막는다.
+ */
+export function isClearPath(layout: MapLayout, from: Position, to: Position): boolean {
+  if (isClearLine(layout, from, to)) return true;
+  const xFirst = { x: to.x, y: from.y };
+  if (isClearLine(layout, from, xFirst) && isClearLine(layout, xFirst, to)) return true;
+  const yFirst = { x: from.x, y: to.y };
+  return isClearLine(layout, from, yFirst) && isClearLine(layout, yFirst, to);
+}
+
+/**
+ * 서버가 쓰는 이동 시간 (ms): 허용 속도(MOVE_SPEED × SPEED_TOLERANCE)로 이만큼 가는 데 걸리는 시간.
+ * 서버는 받아들인 이동마다 기록한 시각을 "받은 시각"이 아니라 이 시간만큼만 앞으로 옮긴다. 그래서 늦게 온 위치
+ * 바로 뒤에 다음 위치가 붙어 와도(모바일 망의 지연·몰림) 앞에서 남긴 시간으로 받아들이고, 평균 속도는 그대로
+ * 제한된다. 남겨 둘 수 있는 시간은 MAX_STEP_MS까지 (횡스크롤은 sideMoveCostMs).
+ */
+export function moveCostMs(from: Position, to: Position): number {
+  return (Math.hypot(to.x - from.x, to.y - from.y) / (MOVE_SPEED * SPEED_TOLERANCE)) * 1000;
+}
+
+/**
  * 서버가 이동을 받아들일지 (탑다운). 클라이언트는 자기 캐릭터를 먼저 움직이고(예측) 주기적으로 위치를 보내므로,
  * 마지막으로 받아들인 위치에서 속도상 갈 수 있는 거리인지, 가는 길에 장애물이 없는지만 본다.
+ * elapsedMs는 서버의 이동 시간 기록(moveCostMs)에서 지난 시간이라 음수일 수 있다 (시간을 앞당겨 썼음).
  * 횡스크롤은 isValidSideMove.
  */
 export function isValidMove(
@@ -99,9 +124,10 @@ export function isValidMove(
 ): boolean {
   if (!Number.isFinite(to.x) || !Number.isFinite(to.y)) return false;
   const distance = Math.hypot(to.x - from.x, to.y - from.y);
-  const allowed =
-    (MOVE_SPEED * Math.min(Math.max(elapsedMs, 0), MAX_STEP_MS) * SPEED_TOLERANCE) / 1000 +
-    DISTANCE_SLACK_PX;
+  const allowed = Math.max(
+    0,
+    (MOVE_SPEED * Math.min(elapsedMs, MAX_STEP_MS) * SPEED_TOLERANCE) / 1000 + DISTANCE_SLACK_PX,
+  );
   if (distance > allowed) return false;
   return isClearPath(layout, from, to);
 }
@@ -133,6 +159,39 @@ export function spawnPosition(layout: MapLayout, seed: string): Position {
     }
   }
   throw new Error('스폰 영역에 설 수 있는 칸이 없습니다.');
+}
+
+/**
+ * 설 수 없는 자리(맵이 바뀌어 장애물 속에 남은 위치 등)에서 가장 가까운 설 수 있는 자리. 이미 설 수 있으면 그대로.
+ * 가까운 칸부터 칸의 발밑 가운데를 보고, 횡스크롤이면 그 아래 땅에 세운다. 맵 전체에 없으면 null.
+ * 장애물 속에 남은 위치는 모든 이동이 "장애물을 지난다"로 거절되어 영영 빠져나오지 못했다.
+ */
+export function nearestWalkable(layout: MapLayout, from: Position): Position | null {
+  if (isWalkable(layout, from.x, from.y)) return from;
+  const cx = Math.floor(from.x / TILE_SIZE);
+  const cy = Math.floor((from.y - 0.01) / TILE_SIZE);
+  const rings = Math.max(layout.width, layout.height);
+  for (let r = 0; r <= rings; r++) {
+    let best: Position | null = null;
+    let bestDistance = Infinity;
+    for (let ty = cy - r; ty <= cy + r; ty++) {
+      for (let tx = cx - r; tx <= cx + r; tx++) {
+        if (Math.max(Math.abs(tx - cx), Math.abs(ty - cy)) !== r) continue;
+        if (tx < 0 || ty < 0 || tx >= layout.width || ty >= layout.height) continue;
+        const x = tx * TILE_SIZE + TILE_SIZE / 2;
+        const y = ty * TILE_SIZE + TILE_SIZE - 1;
+        if (!isWalkable(layout, x, y)) continue;
+        const distance = Math.hypot(x - from.x, y - from.y);
+        if (distance < bestDistance) {
+          best = { x, y };
+          bestDistance = distance;
+        }
+      }
+    }
+    if (best)
+      return isSideScroll(layout) ? { x: best.x, y: groundBelow(layout, best.x, best.y) } : best;
+  }
+  return null;
 }
 
 /** 스폰 영역에 설 수 있는 칸이 하나라도 있는지 (맵을 저장할 때 확인한다) */

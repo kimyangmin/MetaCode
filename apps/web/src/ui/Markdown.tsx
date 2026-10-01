@@ -1,5 +1,6 @@
 import { type ReactNode, useMemo, useState } from 'react';
 import { type Block, type Inline, parseMarkdown } from '@metacode/client';
+import { CodeBlock } from './CodeBlock';
 
 /**
  * 채팅 메시지 글을 마크다운으로 그린다 (parseMarkdown의 트리 → React 요소, HTML은 해석하지 않음).
@@ -29,11 +30,7 @@ function BlockView({ block, suffix }: { block: Block; suffix?: ReactNode }) {
         </p>
       );
     case 'code':
-      return (
-        <pre className="md-codeblock" data-lang={block.lang || undefined}>
-          <code>{block.value}</code>
-        </pre>
-      );
+      return <CodeBlock lang={block.lang} value={block.value} />;
     case 'quote':
       return (
         <blockquote className="md-quote">

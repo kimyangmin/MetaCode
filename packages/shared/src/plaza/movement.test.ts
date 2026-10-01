@@ -2,7 +2,16 @@ import { describe, expect, it } from 'vitest';
 import { BUILTIN_LAYOUTS } from '../assets/builtin.js';
 import { PlazaMap } from '../domain/plaza.js';
 import { TILE_SIZE } from './layout.js';
-import { MOVE_SPEED, isValidMove, isWalkable, spawnPosition } from './movement.js';
+import {
+  MOVE_SPEED,
+  isClearPath,
+  isValidMove,
+  isWalkable,
+  moveCostMs,
+  nearestWalkable,
+  spawnPosition,
+} from './movement.js';
+import { Cell, type MapLayout } from './layout.js';
 
 const square = BUILTIN_LAYOUTS[PlazaMap.FountainSquare];
 const camp = BUILTIN_LAYOUTS[PlazaMap.Campfire];
@@ -48,6 +57,12 @@ describe('isValidMove', () => {
     expect(isValidMove(square, aboveBench, belowBench, 500)).toBe(false);
   });
 
+  it('시간을 앞당겨 썼으면(elapsed가 음수) 움직일 수 없다', () => {
+    expect(isValidMove(square, from, { x: from.x + 3, y: from.y }, -40)).toBe(false);
+    expect(isValidMove(square, from, from, -40)).toBe(true);
+    expect(moveCostMs(from, { x: from.x + 9.6, y: from.y })).toBeCloseTo(66.7, 0);
+  });
+
   it('숫자가 아닌 좌표는 거절한다', () => {
     expect(isValidMove(square, from, { x: Number.NaN, y: from.y }, 100)).toBe(false);
   });
@@ -73,5 +88,38 @@ describe('spawnPosition', () => {
       Array.from({ length: 20 }, (_, i) => JSON.stringify(spawnPosition(square, `user-${i}`))),
     );
     expect(positions.size).toBeGreaterThan(10);
+  });
+});
+
+describe('isClearPath', () => {
+  // 10×10 맵 가운데 (5, 5) 한 칸만 막힘
+  const blocked = new Uint8Array(100);
+  blocked[5 * 10 + 5] = Cell.Solid;
+  const one: MapLayout = { width: 10, height: 10, blocked, spawn: { x: 0, y: 0, w: 1, h: 1 } };
+  const T = TILE_SIZE;
+
+  it('곧은 선이 모서리를 스쳐도, 꺾어 가는 길이 열려 있으면 지나간다', () => {
+    // 막힌 칸의 왼쪽에서 발이 칸 윗줄에 걸쳐 있다가, 위로 비켜서 칸 위를 지나간 것
+    const from = { x: 5 * T - 6, y: 5 * T + 6 };
+    const to = { x: 5 * T + 6, y: 5 * T - 1 };
+    expect(isWalkable(one, from.x, from.y) && isWalkable(one, to.x, to.y)).toBe(true);
+    expect(isClearPath(one, from, to)).toBe(true);
+  });
+
+  it('막힌 칸을 가로지르면 어느 쪽으로 꺾어도 막힌다', () => {
+    expect(
+      isClearPath(one, { x: 4 * T + 6, y: 5 * T + 10 }, { x: 6 * T + 10, y: 5 * T + 10 }),
+    ).toBe(false);
+  });
+});
+
+describe('nearestWalkable', () => {
+  it('설 수 있으면 그대로, 장애물 속이면 가까운 설 수 있는 칸', () => {
+    const open = at(10, 10);
+    expect(nearestWalkable(square, open)).toEqual(open);
+    const fountain = at(23, 18);
+    const fixed = nearestWalkable(square, fountain)!;
+    expect(isWalkable(square, fixed.x, fixed.y)).toBe(true);
+    expect(Math.hypot(fixed.x - fountain.x, fixed.y - fountain.y)).toBeLessThan(5 * TILE_SIZE);
   });
 });
