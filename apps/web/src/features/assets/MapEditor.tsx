@@ -169,6 +169,12 @@ function MapEditorBody({
   const [status, setStatus] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [size, setSize] = useState({ w: editor.doc.width, h: editor.doc.height });
+  // 되돌리기로 크기가 바뀌면 크기 칸도 따라간다 (예전엔 예전 값이 남아 "크기 바꾸기"가 켜져 있었다).
+  const [shownSize, setShownSize] = useState(`${editor.doc.width}x${editor.doc.height}`);
+  if (shownSize !== `${editor.doc.width}x${editor.doc.height}`) {
+    setShownSize(`${editor.doc.width}x${editor.doc.height}`);
+    setSize({ w: editor.doc.width, h: editor.doc.height });
+  }
   const painting = useRef<{ x: number; y: number } | null>(null);
 
   const manifests = useMemo(() => new Map(entries.map((e) => [e.ref, e.manifest])), [entries]);
@@ -350,9 +356,16 @@ function MapEditorBody({
     }
   };
 
-  const onPointerUp = () => {
+  // 뗀 자리로 스폰 영역을 정한다 (예전엔 마우스가 올라가 있던 칸을 써서, 올려 둔 칸이 없는 손가락 화면에서는
+  // 정해지지 않았다).
+  const onPointerUp = (e: ReactPointerEvent<HTMLCanvasElement>) => {
     painting.current = null;
-    if (spawnDrag && hover) editor.setSpawn(rectOf(spawnDrag, hover));
+    if (spawnDrag) editor.setSpawn(rectOf(spawnDrag, cellAt(e)));
+    setSpawnDrag(null);
+  };
+
+  const onPointerCancel = () => {
+    painting.current = null;
     setSpawnDrag(null);
   };
 
@@ -363,14 +376,24 @@ function MapEditorBody({
     return hasStandableSpawn(layout) ? [] : ['스폰 영역에 설 수 있는 칸이 하나도 없습니다.'];
   })();
 
-  const run = async (action: () => Promise<CommunityMapDto>, ok: string) => {
+  const run = async (
+    action: () => Promise<CommunityMapDto>,
+    ok: string,
+    /** 저장처럼 지금 문서를 보낸 것이면 true: 기다리는 동안 더 고쳤으면 그 문서를 그대로 둔다 */
+    keepEdits = false,
+  ) => {
     setBusy(true);
     setStatus(null);
+    const version = editor.version;
     try {
       const saved = await action();
-      editor.replace(fromDefinition(saved.definition));
+      if (keepEdits && editor.version !== version) {
+        // 보낸 뒤에 더 고친 것을 서버 응답으로 덮어쓰지 않는다 (그 변경은 아직 저장하지 않은 것으로 남음)
+        editor.markSaved(version);
+      } else {
+        editor.replace(fromDefinition(saved.definition));
+      }
       setCustom(saved.custom);
-      setSize({ w: saved.definition.width, h: saved.definition.height });
       setStatus({ kind: 'ok', text: ok });
     } catch (err) {
       setStatus({
@@ -386,6 +409,7 @@ function MapEditorBody({
     run(
       () => apiFetch<CommunityMapDto>(path, { method: 'PUT', ...jsonBody({ definition }) }),
       '저장했습니다. 광장에 있던 사람들은 스폰 영역에서 다시 시작합니다.',
+      true,
     );
 
   const reset = () => {
@@ -542,7 +566,7 @@ function MapEditorBody({
             onPointerDown={onPointerDown}
             onPointerMove={onPointerMove}
             onPointerUp={onPointerUp}
-            onPointerCancel={onPointerUp}
+            onPointerCancel={onPointerCancel}
             onPointerLeave={() => setHover(null)}
           />
         </div>

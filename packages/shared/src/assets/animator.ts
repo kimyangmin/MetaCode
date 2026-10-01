@@ -79,6 +79,8 @@ export const animatorSchema = z.object({
   states: z.array(stateSchema).min(1).max(ANIMATOR_STATE_LIMIT),
   parameters: z.array(parameterSchema).max(ANIMATOR_PARAMETER_LIMIT),
   transitions: z.array(transitionSchema).max(ANIMATOR_TRANSITION_LIMIT),
+  /** 그래프 편집기에서 Any State 상자의 자리 (없으면 편집기가 상태들 왼쪽에 둔다) */
+  anyState: z.object({ x: coordinate, y: coordinate }).optional(),
 });
 
 export type Animator = z.infer<typeof animatorSchema>;
@@ -171,7 +173,11 @@ export function animatorProblems(
 
 // ── 재생 ──
 
-/** 당긴 트리거는 이만큼 기다렸다가 아무 전이도 쓰지 않으면 버린다 */
+/**
+ * 당긴 트리거는 이만큼 기다렸다가 아무 전이도 쓰지 않으면 버린다. 다만 지금 상태(또는 Any State)에서
+ * 그 트리거를 조건으로 "끝나면 넘어가기" 전이가 애니메이션이 끝나기를 기다리는 동안은 버리지 않고, 끝난
+ * 뒤로 이만큼 더 둔다 (예전엔 0.5초보다 긴 애니메이션이면 끝나기 전에 트리거가 사라져 넘어가지 않았다).
+ */
 export const TRIGGER_HOLD_MS = 500;
 /** 한 번에 이어서 넘어갈 수 있는 전이 수 (조건이 서로 맞물려도 멈추게) */
 const MAX_HOPS = 8;
@@ -212,6 +218,30 @@ function satisfied(
 }
 
 /**
+ * 지금 상태의 애니메이션이 끝나기를 기다리는 "끝나면 넘어가기" 전이가 조건으로 쓰는 트리거. 끝난 뒤에도
+ * TRIGGER_HOLD_MS 동안은 남긴다 (끝나는 그 순간의 걸음에서 쓸 수 있게, 다른 조건을 잠깐 기다릴 수 있게).
+ */
+function awaitedTriggers(
+  animator: Animator,
+  runtime: AnimatorRuntime,
+  params: ReturnType<typeof animatorParameters>,
+  now: number,
+  cycleMs: (state: AnimatorState) => number,
+  byName: ReadonlyMap<string, AnimatorState>,
+): Set<string> {
+  const waiting = new Set<string>();
+  const current = byName.get(runtime.state);
+  if (!current || now - runtime.since > cycleMs(current) + TRIGGER_HOLD_MS) return waiting;
+  for (const t of animator.transitions) {
+    if (!t.exitTime || (t.from !== runtime.state && t.from !== ANY_STATE)) continue;
+    for (const c of t.conditions) {
+      if (params.get(c.param)?.type === AnimatorParamType.Trigger) waiting.add(c.param);
+    }
+  }
+  return waiting;
+}
+
+/**
  * 조건을 보고 상태를 옮긴다. 넘어갔으면 true.
  * cycleMs(state)는 그 상태의 애니메이션이 한 번 도는 시간이다 ("끝나면 넘어가기"에 쓴다).
  * Any State에서 지금 상태로 가는 전이는 트리거가 있을 때만 쓴다 (불 값 조건이면 매 프레임 처음부터 다시
@@ -223,14 +253,15 @@ export function stepAnimator(
   now: number,
   cycleMs: (state: AnimatorState) => number,
 ): boolean {
-  for (const [name, at] of runtime.triggers) {
-    if (now - at > TRIGGER_HOLD_MS) runtime.triggers.delete(name);
-  }
   const params = animatorParameters(animator);
   const byName = new Map(animator.states.map((s) => [s.name, s]));
   if (!byName.has(runtime.state)) {
     runtime.state = animator.entry;
     runtime.since = now;
+  }
+  const waiting = awaitedTriggers(animator, runtime, params, now, cycleMs, byName);
+  for (const [name, at] of runtime.triggers) {
+    if (now - at > TRIGGER_HOLD_MS && !waiting.has(name)) runtime.triggers.delete(name);
   }
   let changed = false;
   for (let hop = 0; hop < MAX_HOPS; hop++) {

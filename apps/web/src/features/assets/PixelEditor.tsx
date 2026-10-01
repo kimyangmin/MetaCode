@@ -227,7 +227,7 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
   const doc = editor.doc;
   const [selected, setSelected] = useState<FrameRef>({ animation: 0, frame: 0 });
   const [tool, setTool] = useState<Tool>('pen');
-  const [color, setColor] = useState(1);
+  const [pickedColor, setColor] = useState(1);
   const [mirror, setMirror] = useState(false);
   const [onion, setOnion] = useState(false);
   const [zoom, setZoom] = useState(() => fitZoom(doc.width, doc.height));
@@ -273,6 +273,9 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
     frame: Math.min(selected.frame, animation.frames.length - 1),
   };
   const pixels = animation.frames[ref.frame]!;
+  // 되돌리기로 팔레트가 줄면(색 추가를 되돌림 등) 고른 색이 팔레트 밖일 수 있어 마지막 색으로 맞춘다.
+  // 예전엔 팔레트에 없는 값으로 칠해져 보이지 않았고, 저장하면 "팔레트에 없는 색"으로 막혔다.
+  const color = Math.max(1, Math.min(pickedColor, doc.palette.length));
   const missing = editor.missingAnimations();
   const requiredNames = new Set(requiredOf(doc).map((r) => r.name));
   const sideCharacter = doc.kind === 'character' && doc.style === PlazaStyle.SideScroll;
@@ -387,6 +390,9 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
   // ── 키보드 ── (매번 새로 걸어 지금 선택 상태를 쓴다)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      // GIF 가져오기 창이 떠 있으면 그 창이 키를 받는다. 예전엔 그 창에서 Esc를 누르면 창과 함께 에디터까지
+      // 닫으려 했고, 도구 단축키·되돌리기도 뒤의 그림에 먹었다.
+      if (importing || e.defaultPrevented) return;
       const target = e.target as HTMLElement;
       if (menu && e.key === 'Escape') {
         e.preventDefault();
@@ -704,7 +710,7 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
     }
     e.currentTarget.setPointerCapture(e.pointerId);
     const value = erase ? 0 : color;
-    editor.begin();
+    editor.beginStroke();
     editor.paint(ref, p.x, p.y, value, mirror, brush);
     drag.current = { kind: 'stroke', last: p, value };
   };
@@ -756,6 +762,8 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
     applyPendingSize.current?.();
     const trimmed = doc.kind === 'character' && trimFeet ? editor.trimBelowFeet() : null;
     const result = assetManifestSchema.safeParse(toManifest(editor.doc));
+    // 이 버전을 저장한다 (기다리는 동안 더 고친 것은 저장하지 않은 것으로 남긴다)
+    const version = editor.version;
     if (!result.success) {
       setStatus({ kind: 'error', text: result.error.issues.map((i) => i.message).join(' ') });
       return;
@@ -765,7 +773,7 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
     try {
       const asset = await saveAsset(queryClient, { id: savedId, communityId }, result.data);
       setSavedId(asset.id);
-      editor.markSaved();
+      editor.markSaved(version);
       setStatus({
         kind: 'ok',
         text: trimmed?.animations ? `저장했습니다. ${trimMessage(trimmed)}` : '저장했습니다.',
@@ -798,6 +806,17 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
       );
       if ('error' in result) {
         setStatus({ kind: 'error', text: result.error });
+        return;
+      }
+      // 지금 있는 프레임과 합쳐 한도를 넘으면 가져오지 않는다 (예전엔 가져온 뒤 저장할 때에야 막혔다)
+      const total = editor.frameCountIf((probe) =>
+        probe.importFrames(ref, result.frames, result.palette),
+      );
+      if (total > FRAME_LIMIT[doc.kind]) {
+        setStatus({
+          kind: 'error',
+          text: `가져오면 프레임이 ${total}장이 되어 한도(${FRAME_LIMIT[doc.kind]}장)를 넘습니다.`,
+        });
         return;
       }
       editor.importFrames(ref, result.frames, result.palette);
