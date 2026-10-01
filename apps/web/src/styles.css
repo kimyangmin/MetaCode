@@ -36,25 +36,26 @@
   --mc-danger: #c93a2e;
 }
 
-@media (prefers-color-scheme: dark) {
-  .login,
-  .settings-overlay {
-    /* 다크: 밤하늘 바탕. 무채색 검정이 아니라 남색 */
-    --mc-bg: var(--mc-night);
-    --mc-surface: #22263b;
-    --mc-nav: #1b1e30;
-    --mc-text: #e8ebf4;
-    --mc-muted: #8b9bb4;
-    --mc-line: #343a5a;
-    --mc-hover: #2a2f49;
-    --mc-selected: #3a3326;
-    --mc-link: var(--mc-fountain);
-    --mc-danger: #f0776c;
-  }
+:root[data-theme='dark'] :is(.login, .settings-overlay) {
+  /* 다크: 밤하늘 바탕. 무채색 검정이 아니라 남색 */
+  --mc-bg: var(--mc-night);
+  --mc-surface: #22263b;
+  --mc-nav: #1b1e30;
+  --mc-text: #e8ebf4;
+  --mc-muted: #8b9bb4;
+  --mc-line: #343a5a;
+  --mc-hover: #2a2f49;
+  --mc-selected: #3a3326;
+  --mc-link: var(--mc-fountain);
+  --mc-danger: #f0776c;
 }
 
+/*
+ * 라이트/다크: <html data-theme>(index.html이 첫 화면 전에, 이후 stores/theme.ts가 정함)을 본다.
+ * 설정 → 화면에서 기기 설정을 따르거나 라이트·다크로 고정한다.
+ */
 :root {
-  color-scheme: light dark;
+  color-scheme: light;
   font-family:
     system-ui,
     -apple-system,
@@ -77,24 +78,59 @@
   --danger: #cf222e;
   --ok: #1a7f37;
   --warn: #9a6700;
+
+  /* 코드 블록 색 (ui/CodeBlock.tsx, highlight.js 분류) */
+  --code-keyword: #cf222e;
+  --code-title: #8250df;
+  --code-string: #0a3069;
+  --code-number: #0550ae;
+  --code-comment: #6e7781;
+  --code-builtin: #953800;
+  --code-tag: #116329;
+  --code-added: #116329;
+  --code-added-bg: #dafbe1;
+  --code-removed: #82071e;
+  --code-removed-bg: #ffebe9;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #0d1117;
-    --bg-sidebar: #111620;
-    --bg-rail: #0a0d12;
-    --bg-hover: #1b2230;
-    --bg-active: #232c3b;
-    --bg-input: #161b26;
-    --fg: #e6edf3;
-    --muted: #9198a1;
-    --border: #262d38;
-    --accent: #388bfd;
-    --danger: #f85149;
-    --ok: #3fb950;
-    --warn: #d29922;
-  }
+:root[data-theme='dark'] {
+  color-scheme: dark;
+
+  --bg: #0d1117;
+  --bg-sidebar: #111620;
+  --bg-rail: #0a0d12;
+  --bg-hover: #1b2230;
+  --bg-active: #232c3b;
+  --bg-input: #161b26;
+  --fg: #e6edf3;
+  --muted: #9198a1;
+  --border: #262d38;
+  --accent: #388bfd;
+  --danger: #f85149;
+  --ok: #3fb950;
+  --warn: #d29922;
+
+  --code-keyword: #ff7b72;
+  --code-title: #d2a8ff;
+  --code-string: #a5d6ff;
+  --code-number: #79c0ff;
+  --code-comment: #8b949e;
+  --code-builtin: #ffa657;
+  --code-tag: #7ee787;
+  --code-added: #aff5b4;
+  --code-added-bg: #033a16;
+  --code-removed: #ffdcd7;
+  --code-removed-bg: #67060c;
+}
+
+/*
+ * 라이트/다크 전환 (stores/theme.ts): 기본 교차 페이드 대신, 찍어 둔 예전 화면 위로 새 화면이
+ * 누른 자리에서 원으로 넓어진다 (clip-path는 스크립트가 움직임).
+ */
+:root[data-theme-switching]::view-transition-old(root),
+:root[data-theme-switching]::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
 }
 
 * {
@@ -949,6 +985,80 @@ a.button {
   user-select: text;
 }
 
+/* 코드 블록 색 입히기 (highlight.js의 분류 이름, 색은 :root의 --code-*) */
+.md-codeblock
+  :is(
+    .hljs-keyword,
+    .hljs-doctag,
+    .hljs-template-tag,
+    .hljs-template-variable,
+    .hljs-type,
+    .hljs-variable.language_
+  ) {
+  color: var(--code-keyword);
+}
+
+.md-codeblock :is(.hljs-title, .hljs-title.class_, .hljs-title.function_) {
+  color: var(--code-title);
+}
+
+.md-codeblock :is(.hljs-string, .hljs-regexp, .hljs-meta .hljs-string) {
+  color: var(--code-string);
+}
+
+.md-codeblock
+  :is(
+    .hljs-number,
+    .hljs-literal,
+    .hljs-attr,
+    .hljs-attribute,
+    .hljs-operator,
+    .hljs-variable,
+    .hljs-selector-attr,
+    .hljs-selector-class,
+    .hljs-selector-id,
+    .hljs-meta,
+    .hljs-symbol
+  ) {
+  color: var(--code-number);
+}
+
+.md-codeblock :is(.hljs-built_in, .hljs-params, .hljs-subst) {
+  color: var(--code-builtin);
+}
+
+.md-codeblock :is(.hljs-comment, .hljs-code, .hljs-formula) {
+  color: var(--code-comment);
+  font-style: italic;
+}
+
+.md-codeblock
+  :is(.hljs-name, .hljs-quote, .hljs-selector-tag, .hljs-selector-pseudo, .hljs-section) {
+  color: var(--code-tag);
+}
+
+.md-codeblock .hljs-section {
+  font-weight: 700;
+}
+
+.md-codeblock .hljs-addition {
+  background: var(--code-added-bg);
+  color: var(--code-added);
+}
+
+.md-codeblock .hljs-deletion {
+  background: var(--code-removed-bg);
+  color: var(--code-removed);
+}
+
+.md-codeblock .hljs-emphasis {
+  font-style: italic;
+}
+
+.md-codeblock .hljs-strong {
+  font-weight: 700;
+}
+
 .md-spoiler {
   border-radius: 3px;
   background: var(--muted);
@@ -1303,6 +1413,20 @@ a.button {
 
 .lightbox__bar .button {
   color: #e6edf3;
+}
+
+/* 프로필 사진 크게 보기: 올린 사진은 256px이라 정해 둔 크기로 키운다 (ui/Avatar.tsx의 LARGE_AVATAR_PX) */
+.lightbox--avatar {
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.lightbox--avatar img {
+  width: min(512px, 100vw - 48px, 100dvh - 48px);
+  max-width: none;
+  max-height: none;
+  aspect-ratio: 1;
+  border-radius: 12px;
+  object-fit: cover;
 }
 
 .composer__input {
@@ -3170,6 +3294,19 @@ a {
   gap: 12px;
 }
 
+.profile-popup__avatar {
+  flex: none;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  cursor: zoom-in;
+}
+
+.profile-popup__avatar:hover {
+  filter: brightness(1.1);
+}
+
 .profile-popup__names {
   display: grid;
   gap: 2px;
@@ -3652,6 +3789,112 @@ a {
   font-size: 0.8rem;
   font-weight: 600;
   text-transform: uppercase;
+}
+
+/* 설정 → 화면: 색 모드 고르기 (features/settings/AppearanceSettings.tsx) */
+.theme-picker {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.theme-picker__option {
+  display: grid;
+  gap: 8px;
+  padding: 8px;
+  border: 2px solid var(--border);
+  border-radius: 10px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.theme-picker__option:hover {
+  background: var(--bg-hover);
+}
+
+.theme-picker__option[aria-checked='true'] {
+  border-color: var(--accent);
+}
+
+.theme-picker__label {
+  font-weight: 600;
+}
+
+/* 앱 화면을 줄인 그림. 색은 :root의 라이트/다크 값을 그대로 옮겼다 (지금 모드와 상관없이 그 모드의 모습) */
+.theme-preview {
+  position: relative;
+  display: block;
+  aspect-ratio: 16 / 10;
+  overflow: hidden;
+  border-radius: 6px;
+}
+
+.theme-preview__half {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-columns: 30% 1fr;
+  --p-bg: #ffffff;
+  --p-sidebar: #f6f8fa;
+  --p-line: #d1d9e0;
+  --p-accent: #1f6feb;
+  background: var(--p-bg);
+}
+
+.theme-preview__half[data-scheme='dark'] {
+  --p-bg: #0d1117;
+  --p-sidebar: #111620;
+  --p-line: #262d38;
+  --p-accent: #388bfd;
+}
+
+/* 기기 설정: 오른쪽 아래 절반을 다크로 */
+.theme-preview[data-kind='system'] .theme-preview__half[data-scheme='dark'] {
+  clip-path: polygon(100% 0, 100% 100%, 0 100%);
+}
+
+.theme-preview__sidebar,
+.theme-preview__chat {
+  display: flex;
+  flex-direction: column;
+  gap: 6%;
+  padding: 10% 8%;
+}
+
+.theme-preview__sidebar {
+  background: var(--p-sidebar);
+}
+
+.theme-preview__chat {
+  justify-content: flex-end;
+}
+
+.theme-preview__sidebar span,
+.theme-preview__chat span {
+  height: 7px;
+  border-radius: 4px;
+  background: var(--p-line);
+}
+
+.theme-preview__chat span:nth-child(2) {
+  width: 70%;
+}
+
+.theme-preview__chat span[data-accent] {
+  width: 45%;
+  background: var(--p-accent);
+}
+
+@media (max-width: 480px) {
+  .theme-picker {
+    gap: 8px;
+  }
+
+  .theme-picker__option {
+    padding: 6px;
+  }
 }
 
 .settings-form__footer {

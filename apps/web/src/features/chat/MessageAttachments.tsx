@@ -1,5 +1,6 @@
 import type { AttachmentDto } from '@metacode/shared';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
+import { Lightbox } from '../../ui/Lightbox';
 import { attachmentUrl, downloadAttachment, formatBytes } from './uploads';
 import { Download, File as FileIcon } from 'lucide-react';
 
@@ -84,40 +85,25 @@ export function MessageAttachments({ attachments }: { attachments: AttachmentDto
           </button>
         </div>
       ))}
-      {viewing && <Lightbox image={viewing} onClose={() => setViewing(null)} />}
+      {viewing && <ImageViewer image={viewing} onClose={() => setViewing(null)} />}
     </div>
   );
 }
 
-/** 이미지를 크게 보기. Esc나 바깥을 누르면 닫힌다. */
-function Lightbox({ image, onClose }: { image: AttachmentDto; onClose(): void }) {
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
-
+/** 이미지 첨부를 크게 보기: 파일 이름·크기와 원본 내려받기 */
+function ImageViewer({ image, onClose }: { image: AttachmentDto; onClose(): void }) {
   return (
-    <div
-      className="lightbox"
-      role="dialog"
-      aria-modal="true"
-      aria-label={image.fileName}
-      onMouseDown={(e) => e.target === e.currentTarget && onClose()}
-    >
-      <img src={attachmentUrl(image.id)} alt={image.fileName} />
-      <div className="lightbox__bar">
-        <span>
-          {image.fileName} · {formatBytes(image.size)}
-          {image.width && image.height ? ` · ${image.width}×${image.height}` : ''}
-        </span>
-        <button className="button" onClick={() => downloadAttachment(image)}>
-          원본 내려받기
-        </button>
-        <button className="button" onClick={onClose}>
-          닫기
-        </button>
-      </div>
-    </div>
+    <Lightbox src={attachmentUrl(image.id)} alt={image.fileName} onClose={onClose}>
+      <span>
+        {image.fileName} · {formatBytes(image.size)}
+        {image.width && image.height ? ` · ${image.width}×${image.height}` : ''}
+      </span>
+      <button className="button" onClick={() => downloadAttachment(image)}>
+        원본 내려받기
+      </button>
+      <button className="button" onClick={onClose}>
+        닫기
+      </button>
+    </Lightbox>
   );
 }

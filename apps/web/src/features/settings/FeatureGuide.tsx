@@ -102,6 +102,10 @@ const MARKDOWN: { syntax: string; label: string }[] = [
   { syntax: '||스포일러||', label: '스포일러 (누르면 보임)' },
   { syntax: '`코드`', label: '글 속 코드' },
   { syntax: '```\n코드 블록\n```', label: '코드 블록' },
+  {
+    syntax: '```ts\nconst hello = "world";\n```',
+    label: '언어별 색 (js, ts, py, java, c, cpp, go, rust, sql, sh, json, html, css 등)',
+  },
   { syntax: '[링크](https://example.com)', label: '링크 (http, https만)' },
   { syntax: '# 제목\n## 작은 제목\n### 더 작은 제목', label: '제목' },
   { syntax: '> 인용', label: '인용 (한 줄)' },

@@ -4,6 +4,18 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>MetaCode</title>
+    <script>
+      // 라이트/다크를 첫 화면을 그리기 전에 정한다 (깜빡이지 않게). 규칙은 src/stores/theme.ts와 같다.
+      (function () {
+        var saved = null;
+        try {
+          saved = localStorage.getItem('metacode:theme');
+        } catch (e) {}
+        var dark = window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches;
+        document.documentElement.dataset.theme =
+          saved === 'light' || saved === 'dark' ? saved : dark ? 'dark' : 'light';
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

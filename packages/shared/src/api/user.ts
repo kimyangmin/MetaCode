@@ -49,7 +49,7 @@ export interface UserDetail extends UserProfile {
 export const NICKNAME_MAX_LENGTH = 32;
 export const BIO_MAX_LENGTH = 190;
 /** 프로필 사진으로 올릴 수 있는 원본 크기 */
-export const AVATAR_MAX_BYTES = 8 * 1024 * 1024;
+export const AVATAR_MAX_BYTES = 15 * 1024 * 1024;
 /** 저장하는 프로필 사진 크기 (정사각형, WebP) */
 export const AVATAR_SIZE_PX = 256;
 

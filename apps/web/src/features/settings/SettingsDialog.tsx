@@ -39,6 +39,7 @@ import {
   NoiseSuppressionToggle,
   OutputVolumeSlider,
 } from '../voice/devices';
+import { AppearanceSettings } from './AppearanceSettings';
 import { FeatureGuide } from './FeatureGuide';
 import { useIsPhone } from '../../ui/useMediaQuery';
 import {
@@ -51,6 +52,7 @@ import {
   Palette,
   Pencil,
   PersonStanding,
+  SunMoon,
   X,
 } from 'lucide-react';
 
@@ -66,7 +68,13 @@ const SECTIONS: {
       { id: 'assets', label: '에셋', icon: <Palette aria-hidden /> },
     ],
   },
-  { group: '앱 설정', items: [{ id: 'voice', label: '음성', icon: <Mic aria-hidden /> }] },
+  {
+    group: '앱 설정',
+    items: [
+      { id: 'appearance', label: '화면', icon: <SunMoon aria-hidden /> },
+      { id: 'voice', label: '음성', icon: <Mic aria-hidden /> },
+    ],
+  },
   {
     group: '도움말',
     items: [{ id: 'features', label: '기능', icon: <Keyboard aria-hidden /> }],
@@ -76,6 +84,7 @@ const TITLE: Record<SettingsSection, string> = {
   account: '내 계정',
   character: '캐릭터',
   assets: '에셋',
+  appearance: '화면',
   voice: '음성',
   features: '기능',
 };
@@ -93,7 +102,7 @@ const AssetSettings = lazy(() =>
 
 /**
  * 설정 창: 화면의 80%를 차지하고, 바깥(어두운 곳)을 누르거나 Esc를 누르면 닫힌다.
- * 왼쪽 목록에서 항목을 고른다 (내 계정: 프로필, 음성: 장치와 음량). 로그아웃도 여기에 있다.
+ * 왼쪽 목록에서 항목을 고른다 (내 계정: 프로필, 화면: 라이트/다크, 음성: 장치와 음량). 로그아웃도 여기에 있다.
  */
 export function SettingsDialog() {
   const section = useSettingsStore((s) => s.section);
@@ -166,7 +175,7 @@ function SettingsWindow({ section, closing }: { section: SettingsSection; closin
             </button>
           </div>
           <div className="settings-nav__me">
-            <Avatar user={me} size={44} />
+            <Avatar user={me} size={44} animate />
             <div>
               <strong>{displayName(me)}</strong>
               <span className="settings-nav__username">@{me.username}</span>
@@ -236,6 +245,7 @@ function SettingsWindow({ section, closing }: { section: SettingsSection; closin
                 <AssetSettings />
               </Suspense>
             )}
+            {section === 'appearance' && <AppearanceSettings />}
             {section === 'voice' && <VoiceSettings />}
             {section === 'features' && <FeatureGuide />}
           </div>
@@ -315,7 +325,7 @@ function AccountSettings({ me }: { me: UserDetail }) {
     e.target.value = '';
     if (!file) return;
     if (file.size > AVATAR_MAX_BYTES) {
-      setStatus({ kind: 'error', text: '8MB 이하의 사진만 올릴 수 있습니다.' });
+      setStatus({ kind: 'error', text: '15MB 이하의 사진만 올릴 수 있습니다.' });
       return;
     }
     setStatus(null);
@@ -361,7 +371,7 @@ function AccountSettings({ me }: { me: UserDetail }) {
             </button>
           )}
           <p className="form__hint">
-            JPEG, PNG, GIF, WebP · 8MB 이하. 올릴 때 보일 곳을 고를 수 있습니다.
+            JPEG, PNG, GIF, WebP · 15MB 이하. 올릴 때 보일 곳을 고를 수 있습니다.
           </p>
           <input
             ref={fileRef}
