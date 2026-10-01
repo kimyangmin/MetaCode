@@ -34,7 +34,9 @@ export function MemberList({ communityId }: { communityId: string }) {
                   key={m.user.id}
                   className="members__item"
                   data-online={isOnline(m)}
-                  onClick={(e) => openProfile(m.user, e, communityId)}
+                  onClick={(e) =>
+                    openProfile(m.user, e, communityId, e.currentTarget.closest('.members'))
+                  }
                   title={`${displayName(m.user)} 정보`}
                 >
                   <Avatar user={m.user} size={32} showStatus animate />
