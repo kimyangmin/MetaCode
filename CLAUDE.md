@@ -293,7 +293,7 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
   - 프로필 사진은 둘 다 저장합니다: `avatarKey`(멈춘 사진) + `avatarAnimatedKey`(`<id>-animated.webp`, 없으면 null) → DTO `avatarUrl` / `avatarAnimatedUrl`. 채팅 목록 등 사진이 많이 모이는 곳은 멈춘 사진, 사람마다 한 줄인 목록(멤버, DM, 친구, 새 대화)·정보 팝업·내 사진은 움직이는 사진(`<Avatar animate />`).
   - 올릴 수 있는 원본은 15MB까지입니다 (`AVATAR_MAX_BYTES`, 프로필 사진과 커뮤니티 아이콘·배너가 같이 씀).
   - 커뮤니티 아이콘·배너는 움직이는 사진이면 그것 하나만 저장해 어디서나 움직입니다.
-- **채널 만들기:** 채널 목록의 "텍스트 채널"·"음성 채널" 머리글 오른쪽 +(관리자). 누른 구역의 종류가 골라진 채로 열립니다. 음성 채널이 없어도 관리자에게는 음성 채널 머리글을 보여 줍니다.
+- **채널 만들기:** 커뮤니티를 만들면 텍스트 채널 `일반`과 음성 채널 `일반`이 함께 생깁니다. 채널 목록의 "텍스트 채널"·"음성 채널" 머리글 오른쪽 +(관리자). 누른 구역의 종류가 골라진 채로 열립니다. 음성 채널이 없어도 관리자에게는 음성 채널 머리글을 보여 줍니다.
 - **데스크톱 제목 표시줄 (0.5.0):** `apps/desktop/src/main/titlebar.ts`, 웹 `features/desktop/TitleBar.tsx`
   - 메인 창은 OS 제목 표시줄 없이(`frame: false`, macOS는 `titleBarStyle: 'hidden'`으로 신호등만 남김) 띄우고, Windows·Linux는 메뉴 막대도 없앱니다(`Menu.setApplicationMenu(null)`, 개발 중에는 F12·Ctrl+Shift+I·F5를 되살림).
   - preload는 창을 만들 때 넘긴 인자(`--metacode-titlebar=custom|native-controls`)가 있을 때만 브리지 `window`(최소화·최대화·닫기·최대화 상태)를 둡니다. 분리한 창은 인자가 없어 OS 제목 표시줄을 씁니다. 웹은 `window`가 있을 때만 제목 표시줄을 그리므로 브라우저와 0.4.x 앱에서는 그리지 않습니다.

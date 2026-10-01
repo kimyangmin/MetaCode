@@ -76,13 +76,15 @@ async function communityWithAliceAndBob() {
 }
 
 describe('커뮤니티', () => {
-  it('만들면 소유자가 되고 기본 텍스트 채널 "일반"이 생긴다', async () => {
+  it('만들면 소유자가 되고 기본 텍스트 채널과 음성 채널 "일반"이 생긴다', async () => {
     const alice = await loginUser(t);
     const community = await alice.json<CommunitySummary>('/communities', post({ name: '  팀  ' }));
 
     expect(community).toMatchObject({ name: '팀', myRole: 'OWNER' });
-    expect(community.channels).toHaveLength(1);
-    expect(community.channels[0]).toMatchObject({ type: 'TEXT', name: '일반' });
+    expect(community.channels.map((c) => [c.type, c.name])).toEqual([
+      ['TEXT', '일반'],
+      ['VOICE', '일반'],
+    ]);
     expect(await alice.json<CommunitySummary[]>('/communities')).toHaveLength(1);
   });
 
