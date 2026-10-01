@@ -1,4 +1,5 @@
 import type { MouseEvent } from 'react';
+import { useChatEffectsStore } from '../../stores/chatEffects';
 import { type ColorSchemePreference, useColorSchemeStore } from '../../stores/colorScheme';
 
 const OPTIONS: { id: ColorSchemePreference; label: string }[] = [
@@ -7,10 +8,12 @@ const OPTIONS: { id: ColorSchemePreference; label: string }[] = [
   { id: 'dark', label: '다크' },
 ];
 
-/** 설정 → 화면: 라이트/다크 모드. 이 기기(브라우저)에만 기억한다 */
+/** 설정 → 화면: 라이트/다크 모드, 채팅 연출. 이 기기(브라우저)에만 기억한다 */
 export function AppearanceSettings() {
   const preference = useColorSchemeStore((s) => s.preference);
   const setPreference = useColorSchemeStore((s) => s.setPreference);
+  const deleteAnimation = useChatEffectsStore((s) => s.deleteAnimation);
+  const setDeleteAnimation = useChatEffectsStore((s) => s.setDeleteAnimation);
 
   const choose = (id: ColorSchemePreference, e: MouseEvent<HTMLButtonElement>) => {
     // 키보드로 누르면 좌표가 없으므로 버튼 가운데에서 퍼지게 한다.
@@ -44,6 +47,22 @@ export function AppearanceSettings() {
         기기 설정을 고르면 운영체제의 라이트/다크 모드가 바뀔 때 함께 바뀝니다. 이 기기에만
         저장됩니다.
       </p>
+
+      <h3 className="settings-form__title">채팅 연출</h3>
+      <div className="voice-field">
+        <label className="voice-check">
+          <input
+            type="checkbox"
+            checked={deleteAnimation}
+            onChange={(e) => setDeleteAnimation(e.target.checked)}
+          />
+          메시지 삭제 애니메이션
+        </label>
+        <span className="form__hint">
+          메시지를 지울 때 재가 되어 사라지는 연출을 보여 줍니다. 지운 사람에게만 보이고, 이
+          기기에만 저장됩니다.
+        </span>
+      </div>
     </div>
   );
 }

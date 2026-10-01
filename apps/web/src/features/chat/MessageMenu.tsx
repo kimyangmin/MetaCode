@@ -13,8 +13,10 @@ export interface MenuTarget {
 
 interface MessageMenuProps {
   target: MenuTarget;
-  /** 내가 보낸 메시지면 수정·삭제를 보인다 */
+  /** 내가 보낸 메시지면 수정을 보인다 */
   mine: boolean;
+  /** 삭제를 보일지 (내 메시지, 또는 커뮤니티 소유자·관리자면 남의 메시지도) */
+  canDelete: boolean;
   onReply(message: MessageDto): void;
   onForward(message: MessageDto): void;
   onEdit(message: MessageDto): void;
@@ -24,10 +26,14 @@ interface MessageMenuProps {
 
 const MARGIN = 8;
 
-/** 메시지 우클릭 메뉴: 답장, 전달, 텍스트 복사, (링크 위면) 링크 복사, (내 메시지면) 수정·삭제 */
+/**
+ * 메시지 우클릭 메뉴: 답장, 전달, 텍스트 복사, (링크 위면) 링크 복사, (내 메시지면) 수정,
+ * (내 메시지 또는 관리자면) 삭제
+ */
 export function MessageMenu({
   target,
   mine,
+  canDelete,
   onReply,
   onForward,
   onEdit,
@@ -45,7 +51,7 @@ export function MessageMenu({
       left: Math.max(MARGIN, Math.min(target.x, window.innerWidth - width - MARGIN)),
       top: Math.max(MARGIN, Math.min(target.y, window.innerHeight - height - MARGIN)),
     });
-    el.querySelector<HTMLButtonElement>('button')?.focus();
+    el.querySelector<HTMLButtonElement>('button')?.focus({ preventScroll: true });
   }, [target]);
 
   useEffect(() => {
@@ -57,13 +63,16 @@ export function MessageMenu({
     window.addEventListener('mousedown', onDown);
     window.addEventListener('keydown', onKey);
     window.addEventListener('resize', close);
-    // 목록을 스크롤하면 메뉴가 엉뚱한 곳에 남지 않게 닫는다.
+    // 목록을 스크롤하면 메뉴가 엉뚱한 곳에 남지 않게 닫는다. 휠뿐 아니라 손가락·스크롤바·키보드로
+    // 스크롤해도 닫히도록 어느 요소의 scroll이든 캡처 단계에서 받는다 (scroll은 버블되지 않음).
     window.addEventListener('wheel', close, { passive: true });
+    window.addEventListener('scroll', close, { capture: true, passive: true });
     return () => {
       window.removeEventListener('mousedown', onDown);
       window.removeEventListener('keydown', onKey);
       window.removeEventListener('resize', close);
       window.removeEventListener('wheel', close);
+      window.removeEventListener('scroll', close, { capture: true });
     };
   }, [onClose]);
 
@@ -96,7 +105,7 @@ export function MessageMenu({
           <Pencil aria-hidden /> 수정
         </button>
       )}
-      {mine && (
+      {canDelete && (
         <button
           role="menuitem"
           className="menu__danger"

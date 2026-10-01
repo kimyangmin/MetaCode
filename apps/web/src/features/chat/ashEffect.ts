@@ -39,6 +39,27 @@ export function crumbleEdgeX(progress: number, width: number): number {
 }
 
 const running = new Set<string>();
+
+/**
+ * 이 창에서 지우기를 요청한 메시지. 연출은 지운 사람에게만 보여 주고,
+ * 다른 사람(다른 창)에게는 message:deleted를 받는 즉시 목록에서 뺀다.
+ */
+const ownDeletions = new Set<string>();
+
+/** 지우기 요청을 보내기 전에 적어 둔다 (알림이 확인 응답보다 먼저 올 수 있으므로) */
+export function markOwnDeletion(messageId: string): void {
+  ownDeletions.add(messageId);
+}
+
+/** 지우기가 실패하면 지운다 */
+export function forgetOwnDeletion(messageId: string): void {
+  ownDeletions.delete(messageId);
+}
+
+/** message:deleted를 받았을 때: 이 창에서 지운 메시지면 표시를 지우고 true */
+export function takeOwnDeletion(messageId: string): boolean {
+  return ownDeletions.delete(messageId);
+}
 let filterSeq = 0;
 
 /**
