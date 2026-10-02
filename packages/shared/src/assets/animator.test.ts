@@ -7,6 +7,7 @@ import {
   animatorLocksMovement,
   animatorProblems,
   animatorSchema,
+  animatorWarnings,
   defaultAnimator,
   fireTrigger,
   setAnimatorBool,
@@ -228,8 +229,10 @@ describe('스킬처럼 쓰는 옵션', () => {
     expect(animatorSchema.safeParse(combo).success).toBe(true);
     expect(animatorProblems(combo, names)).toEqual([]);
     expect(
-      animatorSchema.safeParse({ ...combo, parameters: [{ name: 'a', type: 'trigger', key: 'p' }] })
-        .success,
+      animatorSchema.safeParse({
+        ...combo,
+        parameters: [{ name: 'a', type: 'trigger', key: 'Space' }],
+      }).success,
     ).toBe(false);
   });
 
@@ -269,5 +272,71 @@ describe('스킬처럼 쓰는 옵션', () => {
     expect(rt.state).toBe('hit-1');
     stepAnimator(combo, rt, 300, cycle);
     expect(rt.state).toBe('idle');
+  });
+});
+
+describe('애니메이터 경고', () => {
+  const graph = (transitions: Animator['transitions']): Animator => ({
+    entry: 'idle',
+    states: ['idle', 'jump', 'fall'].map((name) => ({ name, animation: 'idle', x: 0, y: 0 })),
+    parameters: [],
+    // 시작 상태는 늘 나가는 길이 있게 (Any State로만 나가면 따로 알리므로)
+    transitions: [{ from: 'idle', to: 'jump', conditions: [{ param: 'jump' }] }, ...transitions],
+  });
+
+  it('기본 그래프에는 경고가 없다', () => {
+    expect(animatorWarnings(defaultAnimator(names)).join(' / ')).toBe('');
+  });
+
+  it('Any State 두 전이가 서로를 끌어당기면 알린다 (떨어지는 동안 jump ↔ fall)', () => {
+    const pingPong = graph([
+      { from: ANY_STATE, to: 'jump', conditions: [{ param: 'airborne', value: true }] },
+      { from: ANY_STATE, to: 'fall', conditions: [{ param: 'falling', value: true }] },
+      { from: 'jump', to: 'idle', conditions: [{ param: 'airborne', value: false }] },
+      { from: 'fall', to: 'idle', conditions: [{ param: 'airborne', value: false }] },
+    ]);
+    expect(animatorWarnings(pingPong).join(' / ')).toContain('jump ↔ fall');
+    // 실제로도 오간다: 걸음마다 다시 들어가서 처음 프레임부터 다시 튼다
+    const rt = startAnimator(pingPong, 0);
+    setAnimatorBool(rt, 'airborne', true);
+    setAnimatorBool(rt, 'falling', true);
+    stepAnimator(pingPong, rt, 0, cycle);
+    stepAnimator(pingPong, rt, 100, cycle);
+    expect(rt.since).toBe(100);
+  });
+
+  it('반대 조건을 더하면 경고가 없고 fall에 머문다', () => {
+    const fixed = graph([
+      {
+        from: ANY_STATE,
+        to: 'jump',
+        conditions: [
+          { param: 'airborne', value: true },
+          { param: 'falling', value: false },
+        ],
+      },
+      { from: ANY_STATE, to: 'fall', conditions: [{ param: 'falling', value: true }] },
+      { from: 'jump', to: 'idle', conditions: [{ param: 'airborne', value: false }] },
+      { from: 'fall', to: 'idle', conditions: [{ param: 'airborne', value: false }] },
+    ]);
+    expect(animatorWarnings(fixed).join(' / ')).toBe('');
+    const rt = startAnimator(fixed, 0);
+    setAnimatorBool(rt, 'airborne', true);
+    setAnimatorBool(rt, 'falling', true);
+    stepAnimator(fixed, rt, 0, cycle);
+    stepAnimator(fixed, rt, 100, cycle);
+    expect([rt.state, rt.since]).toEqual(['fall', 0]);
+  });
+
+  it('나가는 전이가 없는 상태와 들어오는 전이가 없는 상태를 알린다', () => {
+    const warnings = animatorWarnings({
+      ...graph([{ from: ANY_STATE, to: 'fall', conditions: [{ param: 'falling', value: true }] }]),
+      transitions: [
+        { from: ANY_STATE, to: 'fall', conditions: [{ param: 'falling', value: true }] },
+        { from: 'idle', to: 'fall', conditions: [{ param: 'falling', value: true }] },
+      ],
+    }).join(' / ');
+    expect(warnings).toContain('fall 상태에서 나가는 전이가 없습니다');
+    expect(warnings).toContain('jump 상태로 들어오는 전이가 없어');
   });
 });

@@ -5370,6 +5370,106 @@ a {
   background: color-mix(in srgb, var(--accent) 22%, transparent);
 }
 
+/* 미리보기의 광장 상황 고르기와 그때의 파라미터 값 */
+.animator-editor__situations {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.animator-editor__situations button {
+  padding: 5px 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.animator-editor__situations button[aria-checked='true'] {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+  font-weight: 700;
+}
+
+.animator-editor__values {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 0;
+}
+
+.animator-editor__values code {
+  padding: 1px 6px;
+  border-radius: 4px;
+  color: var(--muted);
+  font-size: 0.75rem;
+  text-decoration: line-through;
+}
+
+.animator-editor__values code[data-on] {
+  background: color-mix(in srgb, var(--ok) 22%, transparent);
+  color: var(--fg);
+  text-decoration: none;
+}
+
+/* 저장은 되지만 의도대로 돌지 않을 그래프 */
+.animator-editor__warnings {
+  margin-top: 12px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--mc-ember) 16%, transparent);
+  color: var(--fg);
+}
+
+.animator-editor__warnings ul {
+  margin: 4px 0 0;
+  padding-left: 16px;
+}
+
+/* 광장 키 정하기 (ui/KeyCapture.tsx) */
+.key-capture {
+  display: inline-grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.key-capture__button {
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-input);
+  color: var(--fg);
+  font: inherit;
+  font-size: 0.85rem;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.key-capture__button[aria-pressed='true'] {
+  border-color: var(--accent);
+  animation: key-capture-blink 1s ease-in-out infinite;
+}
+
+@keyframes key-capture-blink {
+  50% {
+    border-color: var(--border);
+  }
+}
+
+.key-capture__button kbd {
+  font-family: inherit;
+  font-weight: 700;
+}
+
+.key-capture__notice {
+  color: var(--danger);
+  font-size: 0.75rem;
+  white-space: normal;
+}
+
 /* 도구 막대 왼쪽 위의 도움말 */
 .animator-editor__help {
   color: var(--accent);

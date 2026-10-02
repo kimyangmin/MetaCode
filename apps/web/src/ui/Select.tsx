@@ -1,19 +1,12 @@
 import { type KeyboardEvent, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronDown } from 'lucide-react';
+import { claimKeyboard } from './keyboardClaim';
 
 export interface SelectOption {
   value: string;
   label: string;
   disabled?: boolean;
-}
-
-/** 펼친 목록이 있는 Select 수 (에디터의 단축키가 목록을 고르는 키를 가로채지 않게) */
-let openCount = 0;
-
-/** 펼쳐진 Select 목록이 있는지. 에디터의 키 처리(Esc로 닫기, 방향키 등)는 이때 아무것도 하지 않는다 */
-export function isSelectOpen(): boolean {
-  return openCount > 0;
 }
 
 /** 목록이 아래에 들어가지 않으면 위로 펼친다. 이 높이를 넘으면 목록 안에서 스크롤한다 */
@@ -23,7 +16,7 @@ const LIST_MAX_HEIGHT = 280;
  * 앱 안에서 그리는 고르기 칸 (브라우저 기본 select 대신). 에디터·애니메이터에서 기본 select가 가끔 열리지
  * 않거나 고른 값이 먹지 않는 일이 있어서, 우클릭 메뉴처럼 앱이 직접 목록을 그린다.
  * 키보드: 닫혀 있을 때 ↑↓로 바로 바꾸고, Enter·Space·Alt+↓로 펼친다. 펼쳤을 때 ↑↓·Home·End로 옮기고
- * Enter로 고르며 Esc·Tab으로 닫는다.
+ * Enter로 고르며 Esc·Tab으로 닫는다. 펼친 동안은 키보드를 차지한다(`claimKeyboard`).
  */
 export function Select({
   value,
@@ -80,14 +73,8 @@ export function Select({
     if (option.value !== value) onChange(option.value);
   };
 
-  // 펼친 동안 세어 둔다 (에디터 단축키가 비켜 가게)
-  useEffect(() => {
-    if (!open) return;
-    openCount++;
-    return () => {
-      openCount--;
-    };
-  }, [open]);
+  // 펼친 동안은 키보드를 이 칸이 쓴다 (에디터 단축키가 비켜 가게)
+  useEffect(() => (open ? claimKeyboard() : undefined), [open]);
 
   // 목록 자리: 버튼 바로 아래 (모자라면 위). 화면에 고정해 그려서 스크롤되는 칸 안에서도 잘리지 않는다.
   useLayoutEffect(() => {

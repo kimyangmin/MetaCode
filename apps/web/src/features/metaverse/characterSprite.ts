@@ -84,7 +84,7 @@ export function emoteDurationMs(manifest: AssetManifest): number {
   return emote ? emote.frames.length * emote.frameMs : 0;
 }
 
-/** 틀고 있는 캐릭터 모션 (숫자 키). 한 번 트는 모션은 until이 끝나는 시각, 반복은 Infinity */
+/** 틀고 있는 캐릭터 모션 (키). 한 번 트는 모션은 until이 끝나는 시각, 반복은 Infinity */
 export interface PlayingMotion {
   name: string;
   loop: boolean;

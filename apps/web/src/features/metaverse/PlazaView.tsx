@@ -11,6 +11,8 @@ import {
   type UserProfile,
   characterFor,
   characterMotions,
+  inputKeyFromCode,
+  inputKeyLabel,
   isBuiltinRef,
   mapStyle,
   messagePresentation,
@@ -71,17 +73,10 @@ function zoomStepOf(e: KeyboardEvent): 1 | -1 | null {
   return null;
 }
 
-/**
- * 모션 키: 숫자(모션, 애니메이터 파라미터)나 글자(애니메이터 파라미터의 스킬 키). 한글 자판에서도 되도록
- * 자리(code)로 본다.
- */
+/** 모션 키: 에디터에서 단 키 그대로 (한글 자판에서도 되도록 자리 code로 본다). 조합 키는 모션이 아니다 */
 function motionKeyOf(e: KeyboardEvent): string | null {
   if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return null;
-  const digit = /^(?:Digit|Numpad)(\d)$/.exec(e.code);
-  if (digit) return digit[1]!;
-  const letter = /^Key([A-Z])$/.exec(e.code);
-  if (letter) return letter[1]!.toLowerCase();
-  return /^[0-9a-z]$/.test(e.key) ? e.key : null;
+  return inputKeyFromCode(e.code);
 }
 
 export interface PlazaViewProps {
@@ -367,7 +362,7 @@ export default function PlazaView({ plazaId, me, channelLabels, voiceLabels }: P
       zoom(step);
       return;
     }
-    // 숫자·글자 키: 캐릭터 모션 (누르고 있어서 반복되는 keydown은 그 키의 모션이면 삼킨다)
+    // 모션 키: 캐릭터 모션 (누르고 있어서 반복되는 keydown은 그 키의 모션이면 삼킨다)
     const motionKey = motionKeyOf(e);
     if (motionKey && motions.some((m) => m.key === motionKey)) {
       e.preventDefault();
@@ -397,10 +392,8 @@ export default function PlazaView({ plazaId, me, channelLabels, voiceLabels }: P
   const onKeyUp = (e: KeyboardEvent) => {
     scene?.release(e.key);
     // 누르는 동안 켜는 모션(모아 쏘기 등)은 키를 떼면 끈다. Shift 등을 같이 눌렀다 떼도 끄도록 자리로 본다.
-    const digit = /^(?:Digit|Numpad)(\d)$/.exec(e.code);
-    const letter = /^Key([A-Z])$/.exec(e.code);
-    const key = digit ? digit[1]! : letter ? letter[1]!.toLowerCase() : e.key.toLowerCase();
-    scene?.releaseMotion(key);
+    const key = inputKeyFromCode(e.code);
+    if (key) scene?.releaseMotion(key);
   };
 
   return (
@@ -440,7 +433,7 @@ export default function PlazaView({ plazaId, me, channelLabels, voiceLabels }: P
       {status === 'ready' && focused && (
         <p className="plaza__hint">
           {side ? '←→ 걷기 · Space 점프 · ↓ 내려가기 · ' : ''}
-          {motions.length > 0 ? '숫자·글자 키 모션 · ' : ''}/ 를 누르면 바로 채팅
+          {motions.length > 0 ? '모션 키 · ' : ''}/ 를 누르면 바로 채팅
         </p>
       )}
       {zoomToast !== null && (
@@ -466,7 +459,7 @@ export default function PlazaView({ plazaId, me, channelLabels, voiceLabels }: P
                       hostRef.current?.focus({ preventScroll: true });
                     }}
                   >
-                    <kbd>{motion.key.toUpperCase()}</kbd>
+                    <kbd>{inputKeyLabel(motion.key)}</kbd>
                     <span>{motion.label}</span>
                     {motion.loop && <Repeat2 role="img" aria-label="반복" />}
                   </button>
@@ -479,7 +472,7 @@ export default function PlazaView({ plazaId, me, channelLabels, voiceLabels }: P
             className="plaza-motions__toggle"
             aria-expanded={motionsOpen}
             aria-label="모션"
-            title="모션 (숫자·글자 키)"
+            title="모션"
             onClick={() => setMotionsOpen((v) => !v)}
           >
             <Sparkles aria-hidden />
@@ -491,7 +484,7 @@ export default function PlazaView({ plazaId, me, channelLabels, voiceLabels }: P
 }
 
 /**
- * 내 캐릭터의 모션 (숫자 키). 직접 그린 캐릭터에 추가한 것만 있고, 광장이 받아 둔 것과 같은 캐시로 받는다.
+ * 내 캐릭터의 모션 (키). 직접 그린 캐릭터에 추가한 것만 있고, 광장이 받아 둔 것과 같은 캐시로 받는다.
  */
 function useMyMotions(me: UserProfile, style: PlazaStyle) {
   const character = characterFor(me, style);

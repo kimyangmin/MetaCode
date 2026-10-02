@@ -1,4 +1,5 @@
 import {
+  SUGGESTED_KEYS,
   FRAME_LIMIT,
   PALETTE_MAX_COLORS,
   PlazaStyle,
@@ -192,6 +193,38 @@ describe('색 바꾸기', () => {
   });
 });
 
+describe('머리 위·양옆 빈 곳 정리', () => {
+  it('모든 프레임에서 함께 빈 위 줄과 양옆을 잘라 해상도를 줄이고, 가운데·발밑은 그대로 둔다', () => {
+    const doc = new PixelDocument(newDoc('character', '캐릭터'));
+    doc.resizeCharacter(40, 48);
+    const idle = { animation: 0, frame: 0 };
+    const walk = { animation: 4, frame: 0 };
+    doc.begin();
+    // 대기: 가운데 기둥 (x 15~24, y 20~47). 걷기: 더 왼쪽(x 12)과 더 위(y 10)까지
+    for (let y = 20; y < 48; y++) for (let x = 15; x < 25; x++) doc.paint(idle, x, y, 1);
+    doc.paint(walk, 12, 10, 2);
+    doc.paint(walk, 20, 47, 2);
+    // 위는 10줄, 양옆은 덜 빈 왼쪽(12칸)만큼 똑같이 (오른쪽은 15칸 비어 있음)
+    expect(doc.trimMargins()).toEqual({ top: 10, sides: 12 });
+    expect([doc.doc.width, doc.doc.height]).toEqual([16, 38]);
+    expect(doc.pick(walk, 0, 0)).toBe(2);
+    expect(doc.pick(walk, 8, 37)).toBe(2);
+    expect(doc.pick(idle, 3, 37)).toBe(1);
+    expect(doc.trimMargins()).toEqual({ top: 0, sides: 0 });
+    doc.undo();
+    expect([doc.doc.width, doc.doc.height]).toEqual([40, 48]);
+  });
+
+  it('16px 아래로는 줄이지 않고, 그림이 없으면 하지 않는다', () => {
+    const doc = new PixelDocument(newDoc('character', '캐릭터'));
+    expect(doc.trimMargins()).toEqual({ top: 0, sides: 0 });
+    doc.begin();
+    doc.paint({ animation: 0, frame: 0 }, 8, 31, 1);
+    expect(doc.trimMargins()).toEqual({ top: 16, sides: 0 });
+    expect([doc.doc.width, doc.doc.height]).toEqual([16, 16]);
+  });
+});
+
 describe('발 아래 빈 줄 정리', () => {
   it('애니메이션마다 공통으로 빈 줄만큼 내리고, 한 애니메이션 안의 높이 차이는 남긴다', () => {
     const doc = new PixelDocument(newDoc('character', '캐릭터'));
@@ -301,15 +334,29 @@ describe('캐릭터 모션과 점프', () => {
     });
   });
 
-  it('키 열 개를 다 쓰면 더 더할 수 없고, 필수 애니메이션은 지울 수 없다', () => {
+  it('처음 붙여 줄 키를 다 쓰면 더 더할 수 없고, 필수 애니메이션은 지울 수 없다', () => {
     const doc = character();
-    for (let i = 0; i < 10; i++) expect(doc.addMotion()).not.toBeNull();
+    for (let i = 0; i < SUGGESTED_KEYS.length; i++) expect(doc.addMotion()).not.toBeNull();
     expect(doc.addMotion()).toBeNull();
     const count = doc.doc.animations.length;
     doc.removeAnimation(0); // idle-down
     expect(doc.doc.animations).toHaveLength(count);
     doc.removeAnimation(count - 1);
     expect(doc.doc.animations).toHaveLength(count - 1);
+  });
+
+  it('키는 아무 키나 직접 달 수 있지만, 광장이 쓰는 키나 겹치는 키는 받지 않는다', () => {
+    const doc = character();
+    const first = doc.addMotion()!;
+    const second = doc.addMotion()!;
+    doc.updateMotion(first, { key: 'F2' });
+    expect(doc.doc.animations[first]!.key).toBe('F2');
+    doc.updateMotion(second, { key: 'F2' });
+    doc.updateMotion(second, { key: 'Space' });
+    expect(doc.doc.animations[second]!.key).toBe('2');
+    expect(doc.keyTaken('F2')).toBe(true);
+    expect(doc.keyTaken('F2', 'F2')).toBe(false);
+    expect(assetManifestSchema.safeParse(toManifest(doc.doc)).success).toBe(true);
   });
 
   it('점프는 걷기의 두 번째 프레임으로 시작하고, 둘 다 있으면 더하지 않는다', () => {

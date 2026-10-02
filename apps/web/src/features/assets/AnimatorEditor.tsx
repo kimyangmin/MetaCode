@@ -15,8 +15,7 @@ import {
   type AssetAnimation,
   BUILTIN_ANIMATOR_PARAMETERS,
   MOTION_LABEL_MAX_LENGTH,
-  PARAMETER_KEYS,
-  type ParameterKey,
+  SUGGESTED_KEYS,
   PlazaStyle,
   animatorAnimationChoices,
   animatorAnimationExists,
@@ -25,6 +24,7 @@ import {
   animatorLocksMovement,
   animatorProblems,
   animatorStateSpeed,
+  animatorWarnings,
   defaultAnimator,
   fireTrigger,
   setAnimatorBool,
@@ -39,7 +39,9 @@ import {
   useRef,
   useState,
 } from 'react';
-import { Select, isSelectOpen } from '../../ui/Select';
+import { isKeyboardClaimed } from '../../ui/keyboardClaim';
+import { KeyCapture } from '../../ui/KeyCapture';
+import { Select } from '../../ui/Select';
 import { NODE_H, NODE_W, type SkillKind, addSkill, freeName, snap } from './animatorSkills';
 import { type EditorAnimation, type PixelDocument, usedMotionKeys } from './editorModel';
 import { frameCanvas } from './pixelCanvas';
@@ -74,9 +76,6 @@ type Dir = (typeof DIRECTIONS)[number]['id'];
 const SPEEDS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4];
 /** "끝나면 넘어가기"의 지점 고르기 (애니메이션 한 바퀴의 %) */
 const EXIT_POINTS = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100];
-
-/** 파라미터 키 이름 (글자 키는 대문자로 보인다) */
-const keyLabel = (key: string) => key.toUpperCase();
 
 /** 상태 상자 아래 줄: 애니메이션과 옵션 */
 function stateDetail(state: AnimatorState): string {
@@ -146,9 +145,9 @@ export function AnimatorEditor({
           <h2>애니메이터</h2>
           <p>
             상태(애니메이션)와 전이(화살표)로 광장에서 어떤 애니메이션을 언제 틀지 정합니다. 걷는
-            중·공중·착지·첨부 보냄 같은 광장의 상황과, 숫자·글자 키로 당기는 직접 만든 트리거로
-            상태를 옮길 수 있어 게임 캐릭터처럼 기술·콤보·모아 쏘기를 만들 수 있습니다. 애니메이터가
-            없으면 대기·걷기·점프·첨부 모션을 정해진 규칙대로 틉니다.
+            중·공중·착지·첨부 보냄 같은 광장의 상황과, 직접 단 키로 당기는 트리거로 상태를 옮길 수
+            있어 게임 캐릭터처럼 기술·콤보·모아 쏘기를 만들 수 있습니다. 애니메이터가 없으면
+            대기·걷기·점프·첨부 모션을 정해진 규칙대로 틉니다.
           </p>
           <div className="animator-editor__row">
             <button
@@ -256,6 +255,7 @@ function AnimatorGraph({
 
   const commit = (next: Animator, key?: string) => editor.setAnimator(next, key);
   const problems = animatorProblems(animator, names);
+  const warnings = animatorWarnings(animator);
   const params = animatorParameters(animator);
   const byName = new Map(animator.states.map((s) => [s.name, s]));
   const choices = animatorAnimationChoices(names);
@@ -589,7 +589,8 @@ function AnimatorGraph({
         <h4>직접 만든 것</h4>
         {animator.parameters.length === 0 && (
           <p className="form__hint">
-            숫자·글자 키를 달면 광장에서 그 키로 트리거를 당기거나 켜고 끕니다.
+            키를 달면 광장에서 그 키로 트리거를 당기거나 켜고 끕니다 (키 칸을 누르고 원하는 키를
+            누름).
           </p>
         )}
         <ul className="animator-editor__custom">
@@ -666,6 +667,16 @@ function AnimatorGraph({
             <ul>
               {problems.map((p) => (
                 <li key={p}>{p}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+        {warnings.length > 0 && (
+          <div className="animator-editor__warnings" role="status">
+            <strong>저장은 되지만 의도대로 돌지 않을 수 있습니다</strong>
+            <ul>
+              {warnings.map((w) => (
+                <li key={w}>{w}</li>
               ))}
             </ul>
           </div>
@@ -1177,18 +1188,11 @@ function ParameterRow({
         </button>
       </div>
       <div className="animator-editor__row">
-        <Select
-          value={parameter.key ?? ''}
+        <KeyCapture
+          value={parameter.key}
           aria-label="광장에서 누를 키"
-          options={[
-            { value: '', label: '키 없음' },
-            ...PARAMETER_KEYS.filter((k) => k === parameter.key || !usedKeys.has(k)).map((k) => ({
-              value: k,
-              label: `${keyLabel(k)} 키`,
-            })),
-          ]}
-          onChange={(value) => {
-            const key = (value || undefined) as ParameterKey | undefined;
+          taken={(key) => key !== parameter.key && usedKeys.has(key)}
+          onChange={(key) => {
             const next = { ...parameter };
             if (key) next.key = key;
             else delete next.key;
@@ -1230,6 +1234,35 @@ function ParameterRow({
 const PREVIEW_BOX = 128;
 
 /**
+ * 미리보기에서 고르는 광장의 상황. 광장에서는 공중이면 위치가 바뀌므로 걷는 중(moving)도 켜져 있고, 떨어지는
+ * 중이면 공중이다. 예전엔 셋을 따로 켜고 꺼서 광장에서 나올 수 없는 조합(서 있는데 떨어지는 중 등)을 만들었고,
+ * 떨어지는 중은 공중을 먼저 켜야 눌렸다.
+ */
+const SITUATIONS = {
+  stand: {
+    label: '서 있음',
+    hint: '모두 꺼짐',
+    values: { moving: false, airborne: false, falling: false },
+  },
+  walk: {
+    label: '걷는 중',
+    hint: 'moving',
+    values: { moving: true, airborne: false, falling: false },
+  },
+  rise: {
+    label: '뛰어오르는 중',
+    hint: 'moving + airborne (횡스크롤. 땅에서 바뀌면 jump 트리거)',
+    values: { moving: true, airborne: true, falling: false },
+  },
+  fall: {
+    label: '떨어지는 중',
+    hint: 'moving + airborne + falling (횡스크롤. 땅으로 돌아오면 land 트리거)',
+    values: { moving: true, airborne: true, falling: true },
+  },
+} as const;
+type Situation = keyof typeof SITUATIONS;
+
+/**
  * 애니메이터 미리보기: 광장처럼 그래프를 돌린다. 걷는 중·공중을 켜고 끄고, 트리거를 당겨 볼 수 있다.
  * 에디터 문서의 프레임을 바로 그리므로 저장하지 않아도 그린 그림이 보인다.
  */
@@ -1249,19 +1282,20 @@ function AnimatorPreview({
   const ref = useRef<HTMLCanvasElement>(null);
   /** 그래프를 돌리는 상태. 첫 프레임에 만든다 (처음부터 누르면 비운다) */
   const runtime = useRef<AnimatorRuntime | null>(null);
-  const [moving, setMoving] = useState(false);
-  const [airborne, setAirborne] = useState(false);
-  const [falling, setFalling] = useState(false);
+  /** 광장의 상황 (걷는 중·공중·떨어지는 중을 광장과 같은 조합으로 정한다) */
+  const [situation, setSituation] = useState<Situation>('stand');
   /** 지금 상태가 이동을 막는지 (보여 주기만 한다) */
   const [locked, setLocked] = useState(false);
   /** 직접 만든 불 값 파라미터 (이름 → 값). 매 프레임 그래프에 넣고, 처음부터면 함께 끈다 */
   const [flags, setFlags] = useState<Record<string, boolean>>({});
   const [shown, setShown] = useState(animator.entry);
   // 그리는 루프는 한 번만 걸고, 바뀐 값은 이 ref로 읽는다.
-  const live = useRef({ animator, dir, moving, airborne, falling, flags });
+  const live = useRef({ animator, dir, situation, flags });
   useEffect(() => {
-    live.current = { animator, dir, moving, airborne, falling, flags };
+    live.current = { animator, dir, situation, flags };
   });
+  /** 땅 ↔ 공중이 바뀌면 광장처럼 jump·land 트리거를 당긴다 (그리는 루프가 본다) */
+  const landed = useRef(true);
   const { width, height } = editor.doc;
   const longest = Math.max(width, height);
   const scale = Math.max(1, Math.floor(PREVIEW_BOX / longest));
@@ -1272,14 +1306,8 @@ function AnimatorPreview({
     let drawn = '';
     let shownState = '';
     const tick = (now: number) => {
-      const {
-        animator: graph,
-        dir: facing,
-        moving: walk,
-        airborne: air,
-        falling: fall,
-        flags: on,
-      } = live.current;
+      const { animator: graph, dir: facing, situation: place, flags: on } = live.current;
+      const { moving: walk, airborne: air, falling: fall } = SITUATIONS[place].values;
       runtime.current ??= startAnimator(graph, now);
       const doc = editor.doc;
       // 문서의 애니메이션을 매니페스트 꼴로 (프레임 번호는 애니메이션 안의 순서)
@@ -1294,7 +1322,11 @@ function AnimatorPreview({
       const rt = runtime.current;
       setAnimatorBool(rt, 'moving', walk);
       setAnimatorBool(rt, 'airborne', air);
-      setAnimatorBool(rt, 'falling', air && fall);
+      setAnimatorBool(rt, 'falling', fall);
+      if (landed.current === air) {
+        fireTrigger(rt, air ? 'jump' : 'land', now);
+        landed.current = !air;
+      }
       for (const p of graph.parameters) {
         if (p.type === AnimatorParamType.Bool) setAnimatorBool(rt, p.name, on[p.name] ?? false);
       }
@@ -1393,28 +1425,33 @@ function AnimatorPreview({
             runtime.current = null;
             // 그래프와 함께 불 값도 처음으로 (예전엔 체크 표시는 남고 값만 꺼져 서로 달랐다)
             setFlags({});
+            landed.current = true;
           }}
         >
           <RotateCcw aria-hidden />
         </button>
       </div>
-      <label className="pixel-editor__check">
-        <input type="checkbox" checked={moving} onChange={(e) => setMoving(e.target.checked)} />
-        moving (걷는 중)
-      </label>
-      <label className="pixel-editor__check">
-        <input type="checkbox" checked={airborne} onChange={(e) => setAirborne(e.target.checked)} />
-        airborne (공중)
-      </label>
-      <label className="pixel-editor__check">
-        <input
-          type="checkbox"
-          checked={falling}
-          disabled={!airborne}
-          onChange={(e) => setFalling(e.target.checked)}
-        />
-        falling (떨어지는 중)
-      </label>
+      <div className="animator-editor__situations" role="radiogroup" aria-label="광장의 상황">
+        {(Object.keys(SITUATIONS) as Situation[]).map((id) => (
+          <button
+            key={id}
+            type="button"
+            role="radio"
+            aria-checked={situation === id}
+            title={SITUATIONS[id].hint}
+            onClick={() => setSituation(id)}
+          >
+            {SITUATIONS[id].label}
+          </button>
+        ))}
+      </div>
+      <p className="animator-editor__values">
+        {(['moving', 'airborne', 'falling'] as const).map((name) => (
+          <code key={name} data-on={SITUATIONS[situation].values[name] || undefined}>
+            {name}
+          </code>
+        ))}
+      </p>
       {bools.map((p) =>
         p.hold ? (
           // 누르는 동안 켜지는 불 값은 광장처럼 누르고 있는 동안만 켠다
@@ -1577,7 +1614,7 @@ function EditorDialog({
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape' || isSelectOpen()) return;
+      if (e.key !== 'Escape' || isKeyboardClaimed()) return;
       e.preventDefault();
       e.stopPropagation();
       onClose();
@@ -1653,6 +1690,14 @@ function AnimatorGuide({ onClose }: { onClose(): void }) {
             먼저/나중에로 순서를 바꿈).
           </li>
         </ul>
+        <h3>경고</h3>
+        <p>
+          저장은 되지만 의도대로 돌지 않을 그래프는 왼쪽 파라미터 칸 아래 노란 칸에 알려 줍니다.
+          예를 들어 Any State → jump(airborne)와 Any State → fall(falling)을 함께 두면 떨어지는 동안
+          두 조건이 다 맞아 jump와 fall을 매 프레임 오가며 첫 프레임에 멈춘 것처럼 보입니다. 이때는
+          Any State → jump에 <code>falling</code> 거짓 조건을 더하거나, fall을 &ldquo;Any State
+          전이로 끊기지 않기&rdquo;로 둡니다.
+        </p>
         <h3>Any State</h3>
         <p>
           여기서 나가는 화살표는 <strong>어느 상태에서든</strong> 조건이 맞으면 넘어갑니다 (첨부를
@@ -1675,8 +1720,9 @@ function AnimatorGuide({ onClose }: { onClose(): void }) {
             켜기&rdquo;로 누르고 있는 동안만 켭니다 (모아 쏘기, 막기).
           </li>
           <li>
-            키는 숫자 1~0과 글자 Z X C V A S D F Q W E R 중에서 답니다. 광장의 다른 사람 화면에도
-            똑같이 보입니다.
+            키는 파라미터의 키 칸을 누른 뒤 원하는 키를 직접 눌러 답니다 (Backspace로 지우기).
+            광장이 쓰는 방향키·스페이스·/·Enter와 Ctrl·Alt 조합은 달 수 없습니다. 광장의 다른 사람
+            화면에도 똑같이 보입니다.
           </li>
         </ul>
         <h3>이렇게 만들어 보세요</h3>
@@ -1736,7 +1782,7 @@ function SkillDialog({
   onClose(): void;
   onCreate(next: Animator): void;
 }) {
-  const freeKeys = PARAMETER_KEYS.filter((k) => !usedKeys.has(k));
+  const freeKeys = SUGGESTED_KEYS.filter((k) => !usedKeys.has(k));
   const [kind, setKind] = useState<SkillKind>('once');
   const [name, setName] = useState('skill');
   const [label, setLabel] = useState('');
@@ -1768,7 +1814,7 @@ function SkillDialog({
     const result = addSkill(animator, {
       kind,
       name,
-      key: (key || undefined) as ParameterKey | undefined,
+      key: key || undefined,
       label,
       animations: animations.slice(0, slots.length).filter(Boolean),
       lockMove,
@@ -1808,14 +1854,11 @@ function SkillDialog({
         </label>
         <div className="pixel-editor__row">
           키
-          <Select
-            value={key}
+          <KeyCapture
+            value={key || undefined}
             aria-label="광장에서 누를 키"
-            options={[
-              { value: '', label: '키 없음' },
-              ...freeKeys.map((k) => ({ value: k, label: `${keyLabel(k)} 키` })),
-            ]}
-            onChange={setKey}
+            taken={(k) => usedKeys.has(k)}
+            onChange={(k) => setKey(k ?? '')}
           />
           <input
             value={label}

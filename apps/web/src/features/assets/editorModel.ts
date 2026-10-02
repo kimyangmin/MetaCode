@@ -10,8 +10,9 @@ import {
   EMOTE_ANIMATION,
   FRAME_LIMIT,
   JUMP_ANIMATIONS,
-  MOTION_KEYS,
   type MotionKey,
+  SUGGESTED_KEYS,
+  isAssignableKey,
   PALETTE_MAX_COLORS,
   PlazaStyle,
   REQUIRED_CHARACTER_ANIMATIONS,
@@ -32,7 +33,7 @@ export interface EditorAnimation {
   name: string;
   frames: Uint16Array[];
   frameMs: number;
-  /** 캐릭터 모션(광장에서 숫자 키로 트는 것)이면 키, 이름, 반복 */
+  /** 캐릭터 모션(광장에서 키로 트는 것)이면 키, 이름, 반복 */
   key?: MotionKey;
   label?: string;
   loop?: boolean;
@@ -143,6 +144,26 @@ function canResizeCharacter(doc: EditorDoc, width: number, height: number): bool
     ok(height) &&
     (width !== doc.width || height !== doc.height)
   );
+}
+
+/** 그림이 있는 칸을 감싸는 범위 (빈 프레임이면 null) */
+function drawnBox(
+  pixels: Uint16Array,
+  width: number,
+  height: number,
+): { top: number; left: number; right: number } | null {
+  let top = -1;
+  let left = width;
+  let right = -1;
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      if (!pixels[y * width + x]) continue;
+      if (top === -1) top = y;
+      if (x < left) left = x;
+      if (x > right) right = x;
+    }
+  }
+  return top === -1 ? null : { top, left, right };
 }
 
 /** 캐릭터 해상도를 그 자리에서 바꾼다 (edit() 안에서 부른다). 그림은 발밑 가운데를 기준으로 남긴다 */
@@ -623,16 +644,22 @@ export class PixelDocument {
     });
   }
 
-  // ── 캐릭터 모션 (숫자 키), 점프 ──
+  // ── 캐릭터 모션 (키), 점프 ──
 
   /**
-   * 아직 쓰지 않은 모션 키 (1, 2, …, 9, 0 순서). 애니메이터의 직접 만든 파라미터에 단 키도 쓴 것으로 본다
-   * (예전엔 빠져 있어서 모션을 더하면 파라미터와 같은 키가 붙어 "모션 키가 겹칩니다"로 저장이 막혔다).
+   * 새 모션에 처음 붙여 줄 수 있는 키 (`SUGGESTED_KEYS` 순서, 1·2·…·0·Z·X…). 애니메이터의 직접 만든 파라미터에
+   * 단 키도 쓴 것으로 본다 (예전엔 빠져 있어서 모션을 더하면 파라미터와 같은 키가 붙어 저장이 막혔다).
+   * 키는 에디터에서 아무 키나 눌러 바꿀 수 있다 (`keyTaken`).
    */
   freeMotionKeys(except?: MotionKey): MotionKey[] {
     const used = usedMotionKeys(this.doc);
     if (except) used.delete(except);
-    return MOTION_KEYS.filter((key) => !used.has(key));
+    return SUGGESTED_KEYS.filter((key) => !used.has(key));
+  }
+
+  /** 그 키를 이미 모션이나 애니메이터 파라미터가 쓰는지 (except는 빼고 센다) */
+  keyTaken(key: string, except?: string): boolean {
+    return key !== except && usedMotionKeys(this.doc).has(key);
   }
 
   canAddAnimation(): boolean {
@@ -667,7 +694,9 @@ export class PixelDocument {
   updateMotion(index: number, change: { label?: string; key?: MotionKey; loop?: boolean }): void {
     const animation = this.doc.animations[index];
     if (!animation || !isMotion(animation)) return;
-    if (change.key && !this.freeMotionKeys(animation.key).includes(change.key)) return;
+    if (change.key && (!isAssignableKey(change.key) || this.keyTaken(change.key, animation.key))) {
+      return;
+    }
     this.edit(
       (doc) => Object.assign(doc.animations[index]!, change),
       change.label !== undefined ? `motion-label:${index}` : undefined,
@@ -735,7 +764,7 @@ export class PixelDocument {
 
   /**
    * 가져온 그림(GIF)들로 애니메이션을 한 번에 채운다 (되돌리기 한 단계). target이 번호면 그 애니메이션의
-   * 프레임을 바꾸고, motion이면 남은 숫자 키로 새 모션을 만들고, animation이면 숫자 키 없는 새 애니메이션을
+   * 프레임을 바꾸고, motion이면 남은 키로 새 모션을 만들고, animation이면 키 없는 새 애니메이션을
    * 만든다 (애니메이터의 상태가 틀 것: 이름은 파일 이름에서, 겹치면 -2, -3 …). mirror면 왼쪽·오른쪽
    * 애니메이션의 반대쪽도 좌우 반전한 그림으로 채운다. 채운 첫 애니메이션의 번호를 돌려준다 (없으면 null).
    * size를 주면(캐릭터에 그림이 들어가게 해상도를 넓힐 때) 같은 되돌리기 단계에서 먼저 해상도를 바꾼다
@@ -776,7 +805,7 @@ export class PixelDocument {
             }) - 1;
         } else {
           const used = usedMotionKeys(doc);
-          const key = MOTION_KEYS.find((k) => !used.has(k));
+          const key = SUGGESTED_KEYS.find((k) => !used.has(k));
           if (!key || doc.kind !== 'character' || doc.animations.length >= ANIMATION_LIMIT) {
             continue;
           }
@@ -1057,6 +1086,39 @@ export class PixelDocument {
       animations: shifts.filter((rows) => rows > 0).length,
       rows: Math.max(...shifts),
     };
+  }
+
+  /**
+   * 캐릭터의 머리 위·양옆 빈 곳 정리: 모든 프레임에서 함께 비어 있는 위 줄과 양옆 열을 잘라 해상도를 줄인다.
+   * 광장은 발밑 가운데를 기준으로 세우므로 양옆은 덜 빈 쪽만큼만 똑같이 자르고(가운데가 그대로),
+   * 해상도 최소(16px) 아래로는 줄이지 않는다. 발 아래는 trimBelowFeet가 맡는다. 빈 프레임은 세지 않는다.
+   * 광장에서는 세로가 광장 크기만큼 그려지므로, 위가 비어 있던 캐릭터는 정리하면 그만큼 커 보인다.
+   * 잘라 낸 위 줄 수와 한쪽 열 수를 돌려준다.
+   */
+  trimMargins(): { top: number; sides: number } {
+    const { kind, width, height } = this.doc;
+    const none = { top: 0, sides: 0 };
+    if (kind !== 'character') return none;
+    let top = height;
+    let left = width;
+    let right = width;
+    for (const animation of this.doc.animations) {
+      for (const pixels of animation.frames) {
+        const box = drawnBox(pixels, width, height);
+        if (!box) continue;
+        top = Math.min(top, box.top);
+        left = Math.min(left, box.left);
+        right = Math.min(right, width - 1 - box.right);
+      }
+    }
+    if (top === height) return none;
+    const cut = {
+      top: Math.max(0, Math.min(top, height - CHARACTER_MIN_SIZE)),
+      sides: Math.max(0, Math.min(left, right, Math.floor((width - CHARACTER_MIN_SIZE) / 2))),
+    };
+    if (cut.top === 0 && cut.sides === 0) return none;
+    this.edit((doc) => resizeCharacterDoc(doc, width - cut.sides * 2, height - cut.top));
+    return cut;
   }
 
   /**

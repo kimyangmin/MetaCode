@@ -8,7 +8,6 @@ import {
   FRAME_MS_MAX,
   FRAME_MS_MIN,
   MOTION_LABEL_MAX_LENGTH,
-  type MotionKey,
   OBJECT_MAX_TILES,
   PALETTE_MAX_COLORS,
   PLAZA_STYLES,
@@ -33,7 +32,9 @@ import {
 } from 'react';
 import { useUnsavedGuard } from './unsavedGuard';
 import { ApiError } from '../../api/client';
-import { Select, isSelectOpen } from '../../ui/Select';
+import { isKeyboardClaimed } from '../../ui/keyboardClaim';
+import { KeyCapture } from '../../ui/KeyCapture';
+import { Select } from '../../ui/Select';
 import { saveAsset } from './api';
 import { AnimatorEditor, withStatesFor } from './AnimatorEditor';
 import {
@@ -152,21 +153,35 @@ function trimMessage(trimmed: { animations: number; rows: number }): string {
   return `애니메이션 ${trimmed.animations}개의 발 아래 빈 줄을 정리했습니다 (최대 ${trimmed.rows}줄).`;
 }
 
-function readTrimFeet(): boolean {
+const TRIM_MARGINS_KEY = 'metacode:editor-trim-margins';
+
+function marginMessage(cut: { top: number; sides: number }): string {
+  const parts = [
+    ...(cut.top ? [`머리 위 ${cut.top}줄`] : []),
+    ...(cut.sides ? [`양옆 ${cut.sides}칸씩`] : []),
+  ];
+  return `${parts.join(', ')} 빈 곳을 잘라 해상도를 줄였습니다.`;
+}
+
+/** 자동 정리 설정 (기본 켬). 켜고 끈 것은 이 기기에 기억한다 */
+function readTrim(key: string): boolean {
   try {
-    return localStorage.getItem(TRIM_FEET_KEY) !== 'off';
+    return localStorage.getItem(key) !== 'off';
   } catch {
     return true;
   }
 }
 
-function saveTrimFeet(on: boolean) {
+function saveTrim(key: string, on: boolean) {
   try {
-    localStorage.setItem(TRIM_FEET_KEY, on ? 'on' : 'off');
+    localStorage.setItem(key, on ? 'on' : 'off');
   } catch {
     // 기억하지 못해도 이번 편집에는 적용된다.
   }
 }
+
+const readTrimFeet = () => readTrim(TRIM_FEET_KEY);
+const readTrimMargins = () => readTrim(TRIM_MARGINS_KEY);
 
 const BRUSH_KEY = 'metacode:editor-brush';
 
@@ -253,6 +268,7 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
   const [cropFit, setCropFit] = useState(false);
   const [clipboard, setClipboard] = useState<Clip | null>(null);
   const [trimFeet, setTrimFeet] = useState(readTrimFeet);
+  const [trimMargins, setTrimMargins] = useState(readTrimMargins);
   const fileRef = useRef<HTMLInputElement>(null);
   // 해상도 칸에 입력해 두고 아직 적용하지 않은 크기를 적용한다 (저장하기 전에 부른다)
   const applyPendingSize = useRef<(() => void) | null>(null);
@@ -409,7 +425,7 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
     const onKey = (e: KeyboardEvent) => {
       // GIF 가져오기 창이 떠 있으면 그 창이 키를 받는다. 예전엔 그 창에서 Esc를 누르면 창과 함께 에디터까지
       // 닫으려 했고, 도구 단축키·되돌리기도 뒤의 그림에 먹었다.
-      if (importing || e.defaultPrevented || isSelectOpen()) return;
+      if (importing || e.defaultPrevented || isKeyboardClaimed()) return;
       // 애니메이터의 도움말·스킬 만들기 창이 떠 있으면 그 창이 키를 받는다 (Esc로 그 창만 닫힘)
       if (rootRef.current?.querySelector('.dialog__overlay')) return;
       const target = e.target as HTMLElement;
@@ -780,6 +796,8 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
   const save = async () => {
     applyPendingSize.current?.();
     const trimmed = doc.kind === 'character' && trimFeet ? editor.trimBelowFeet() : null;
+    // 발 아래를 먼저 내린 뒤 머리 위·양옆을 자른다 (내린 만큼 위가 더 비므로)
+    const cut = doc.kind === 'character' && trimMargins ? editor.trimMargins() : null;
     const result = assetManifestSchema.safeParse(toManifest(editor.doc));
     // 이 버전을 저장한다 (기다리는 동안 더 고친 것은 저장하지 않은 것으로 남긴다)
     const version = editor.version;
@@ -795,7 +813,11 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
       editor.markSaved(version);
       setStatus({
         kind: 'ok',
-        text: trimmed?.animations ? `저장했습니다. ${trimMessage(trimmed)}` : '저장했습니다.',
+        text: [
+          '저장했습니다.',
+          ...(trimmed?.animations ? [trimMessage(trimmed)] : []),
+          ...(cut && (cut.top || cut.sides) ? [marginMessage(cut)] : []),
+        ].join(' '),
       });
     } catch (err) {
       setStatus({
@@ -1476,17 +1498,28 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
 
               {doc.kind === 'character' && (
                 <section>
-                  <h3>발 아래 정리</h3>
+                  <h3>빈 곳 정리</h3>
                   <label className="pixel-editor__check">
                     <input
                       type="checkbox"
                       checked={trimFeet}
                       onChange={(e) => {
                         setTrimFeet(e.target.checked);
-                        saveTrimFeet(e.target.checked);
+                        saveTrim(TRIM_FEET_KEY, e.target.checked);
                       }}
                     />
                     저장할 때 발 아래 빈 줄 자동 정리
+                  </label>
+                  <label className="pixel-editor__check">
+                    <input
+                      type="checkbox"
+                      checked={trimMargins}
+                      onChange={(e) => {
+                        setTrimMargins(e.target.checked);
+                        saveTrim(TRIM_MARGINS_KEY, e.target.checked);
+                      }}
+                    />
+                    저장할 때 머리 위·양옆 빈 곳 자동 정리
                   </label>
                   <div className="pixel-editor__row">
                     <button
@@ -1494,11 +1527,14 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
                       className="button"
                       onClick={() => {
                         const trimmed = editor.trimBelowFeet();
+                        const cut = editor.trimMargins();
+                        const messages = [
+                          ...(trimmed.animations ? [trimMessage(trimmed)] : []),
+                          ...(cut.top || cut.sides ? [marginMessage(cut)] : []),
+                        ];
                         setStatus({
                           kind: 'ok',
-                          text: trimmed.animations
-                            ? trimMessage(trimmed)
-                            : '발 아래에 정리할 빈 줄이 없습니다.',
+                          text: messages.length ? messages.join(' ') : '정리할 빈 곳이 없습니다.',
                         });
                       }}
                     >
@@ -1506,9 +1542,15 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
                     </button>
                   </div>
                   <p className="form__hint">
-                    광장은 그림의 맨 아래를 발밑으로 세웁니다. 애니메이션마다 모든 프레임에서 함께
-                    비어 있는 아래 줄만큼 그림을 내려서 캐릭터가 떠 보이지 않게 합니다 (걷기의
-                    들썩임은 그대로).
+                    발 아래: 광장은 그림의 맨 아래를 발밑으로 세웁니다. 애니메이션마다 모든
+                    프레임에서 함께 비어 있는 아래 줄만큼 그림을 내려서 떠 보이지 않게 합니다
+                    (걷기의 들썩임은 그대로).
+                  </p>
+                  <p className="form__hint">
+                    머리 위·양옆: 모든 프레임에서 함께 비어 있는 위 줄과 양옆 열을 잘라 해상도를
+                    줄입니다 (양옆은 가운데가 그대로이게 똑같이, 16px 아래로는 줄이지 않음).
+                    광장에서는 세로가 광장 크기만큼 그려지므로 위가 비어 있던 캐릭터는 그만큼 커
+                    보입니다.
                   </p>
                 </section>
               )}
@@ -1563,7 +1605,7 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
                       type="button"
                       className="button"
                       disabled={editor.freeMotionKeys().length === 0 || !editor.canAddAnimation()}
-                      title="광장에서 숫자 키(1~9, 0)로 트는 모션"
+                      title="광장에서 키를 눌러 트는 모션 (키는 직접 바꿀 수 있음)"
                       onClick={() => {
                         const at = editor.addMotion();
                         if (at !== null) setSelected({ animation: at, frame: 0 });
@@ -1842,7 +1884,7 @@ const PaletteSwatches = memo(function PaletteSwatches({
   );
 });
 
-/** 캐릭터 모션 설정: 이름, 숫자 키, 반복, 지우기 */
+/** 캐릭터 모션 설정: 이름, 키, 반복, 지우기 */
 function MotionSettings({
   editor,
   index,
@@ -1854,7 +1896,6 @@ function MotionSettings({
   animation: EditorAnimation;
   onRemove(): void;
 }) {
-  const keys = editor.freeMotionKeys(animation.key);
   return (
     <section>
       <h3>모션</h3>
@@ -1867,15 +1908,16 @@ function MotionSettings({
           onChange={(e) => editor.updateMotion(index, { label: e.target.value })}
         />
       </label>
-      <label className="pixel-editor__row">
+      <div className="pixel-editor__row">
         키
-        <Select
-          value={animation.key ?? ''}
-          options={keys.map((key) => ({ value: key, label: key }))}
-          onChange={(key) => editor.updateMotion(index, { key: key as MotionKey })}
-          aria-label="광장에서 누를 숫자 키"
+        <KeyCapture
+          value={animation.key}
+          allowNone={false}
+          taken={(key) => editor.keyTaken(key, animation.key)}
+          onChange={(key) => key && editor.updateMotion(index, { key })}
+          aria-label="광장에서 누를 키"
         />
-      </label>
+      </div>
       <label className="pixel-editor__check">
         <input
           type="checkbox"
@@ -1885,7 +1927,8 @@ function MotionSettings({
         움직일 때까지 반복 (끄면 한 번)
       </label>
       <p className="form__hint">
-        광장에서 이 숫자 키를 누르면 틉니다. 반복하는 모션은 다시 누르거나 움직이면 멈춥니다.
+        광장에서 이 키를 누르면 틉니다. 키 칸을 누른 뒤 원하는 키를 누르면 바뀝니다. 반복하는 모션은
+        다시 누르거나 움직이면 멈춥니다.
       </p>
       <button type="button" className="button button--danger" onClick={onRemove}>
         이 모션 지우기

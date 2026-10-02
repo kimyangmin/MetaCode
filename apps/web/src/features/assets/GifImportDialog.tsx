@@ -1,12 +1,7 @@
-import {
-  CHARACTER_MAX_SIZE,
-  FRAME_LIMIT,
-  FRAME_MS_MAX,
-  FRAME_MS_MIN,
-  MOTION_KEYS,
-} from '@metacode/shared';
+import { CHARACTER_MAX_SIZE, FRAME_LIMIT, FRAME_MS_MAX, FRAME_MS_MIN } from '@metacode/shared';
 import { useEffect, useMemo, useState } from 'react';
-import { Select, isSelectOpen } from '../../ui/Select';
+import { isKeyboardClaimed } from '../../ui/keyboardClaim';
+import { Select } from '../../ui/Select';
 import { ANIMATION_LIMIT, type PixelDocument } from './editorModel';
 import {
   type Anchor,
@@ -27,7 +22,7 @@ export interface GifFile {
 
 /** 새 모션으로 넣기 (select의 값) */
 const NEW_MOTION = 'new-motion';
-/** 숫자 키 없는 새 애니메이션으로 넣기 (애니메이터의 상태가 틀 것, select의 값) */
+/** 키 없는 새 애니메이션으로 넣기 (애니메이터의 상태가 틀 것, select의 값) */
 const NEW_ANIMATION = 'new-animation';
 
 /** 파일 이름에서 확장자를 뺀 것 (walk-left.gif → walk-left) */
@@ -112,7 +107,7 @@ export function GifImportDialog({
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape' || isSelectOpen()) return;
+      if (e.key !== 'Escape' || isKeyboardClaimed()) return;
       // 아래의 도트 에디터까지 닫히지 않게 한다.
       e.preventDefault();
       e.stopPropagation();
@@ -237,7 +232,7 @@ export function GifImportDialog({
                     label: a.label ?? a.name,
                   })),
                   ...(character && freeKeys > 0
-                    ? [{ value: NEW_MOTION, label: '+ 새 모션으로 추가 (숫자 키)' }]
+                    ? [{ value: NEW_MOTION, label: '+ 새 모션으로 추가 (키 자동)' }]
                     : []),
                   ...(character
                     ? [{ value: NEW_ANIMATION, label: '+ 새 애니메이션으로 추가 (애니메이터용)' }]
@@ -284,8 +279,8 @@ export function GifImportDialog({
         )}
         {tooManyMotions && (
           <p className="form__error">
-            숫자 키가 {freeKeys}개 남아 있어 새 모션을 {newMotions}개 만들 수 없습니다 (모션은
-            {` ${MOTION_KEYS.length}`}개까지).
+            처음 붙여 줄 키가 {freeKeys}개 남아 있어 새 모션을 {newMotions}개 만들 수 없습니다.
+            일부는 &quot;+ 새 애니메이션으로 추가&quot;로 넣은 뒤 키를 직접 다세요.
           </p>
         )}
         {tooManyAnimations && (

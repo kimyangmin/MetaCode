@@ -4,21 +4,24 @@ import { TILE_SIZE } from '../plaza/layout.js';
 import { type Animator, AnimatorParamType, animatorProblems, animatorSchema } from './animator.js';
 import {
   ASSET_NAME_PATTERN,
-  MOTION_KEYS,
   MOTION_LABEL_MAX_LENGTH,
-  PARAMETER_KEYS,
   type ParameterKey,
+  compareInputKeys,
+  inputKeySchema,
 } from './keys.js';
 import { type FramePixels, decodeFrame, isBlank } from './pixels.js';
 
 export {
   ASSET_NAME_PATTERN,
-  MOTION_KEYS,
   MOTION_LABEL_MAX_LENGTH,
   type MotionKey,
-  PARAMETER_KEYS,
   type ParameterKey,
-  SKILL_KEYS,
+  SUGGESTED_KEYS,
+  compareInputKeys,
+  inputKeyFromCode,
+  inputKeyLabel,
+  inputKeySchema,
+  isAssignableKey,
 } from './keys.js';
 
 /**
@@ -299,7 +302,7 @@ const animationSchema = z.object({
   /** 캐릭터 모션: 화면에 보일 이름 (애니메이션 이름은 영문이라 따로 둔다) */
   label: z.string().trim().min(1).max(MOTION_LABEL_MAX_LENGTH).optional(),
   /** 캐릭터 모션: 광장에서 이 숫자 키를 누르면 튼다 */
-  key: z.enum(MOTION_KEYS).optional(),
+  key: inputKeySchema.optional(),
   /** 캐릭터 모션: 움직이거나 다시 누를 때까지 반복한다 (없으면 한 번) */
   loop: z.boolean().optional(),
 });
@@ -348,7 +351,7 @@ export function decodeFrames(manifest: AssetManifest): (FramePixels | null)[] {
 export interface CharacterMotion {
   /** 애니메이션 이름 (애니메이터 파라미터면 파라미터 이름) */
   name: string;
-  /** 숫자 키(모션, 파라미터) 또는 글자 키(파라미터만) */
+  /** 광장에서 누르는 키 (에디터에서 누른 키를 그대로 단다) */
   key: ParameterKey;
   label: string;
   /** 반복 모션, 애니메이터의 불 값 파라미터면 켜고 끄기 */
@@ -381,9 +384,7 @@ export function characterMotions(
       parameter: p.type,
       ...(p.type === AnimatorParamType.Bool && p.hold ? { hold: true } : {}),
     }));
-  return [...animations, ...parameters].sort(
-    (a, b) => PARAMETER_KEYS.indexOf(a.key) - PARAMETER_KEYS.indexOf(b.key),
-  );
+  return [...animations, ...parameters].sort((a, b) => compareInputKeys(a.key, b.key));
 }
 
 /** 캐릭터에 빠진 애니메이션 (없거나, 프레임이 모자라거나, 빈 프레임이 있음) */
@@ -471,7 +472,7 @@ export function manifestProblems(manifest: AssetManifest): string[] {
       else if (keys.has(animation.key)) found.push(`모션 키 ${animation.key}가 겹칩니다.`);
       else keys.add(animation.key);
     }
-    // 애니메이터 파라미터의 숫자 키도 모션 키와 겹칠 수 없다.
+    // 애니메이터 파라미터의 키도 모션 키와 겹칠 수 없다.
     for (const parameter of manifest.animator?.parameters ?? []) {
       if (parameter.key === undefined) continue;
       if (keys.has(parameter.key)) found.push(`모션 키 ${parameter.key}가 겹칩니다.`);

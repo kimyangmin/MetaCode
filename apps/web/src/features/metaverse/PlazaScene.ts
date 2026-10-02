@@ -161,7 +161,7 @@ interface Actor {
   emoteUntil: number;
   /** 첨부 모션이 없는 캐릭터가 첨부 메시지를 보내 제자리에서 뛰는 것이 끝나는 시각 */
   hopUntil: number;
-  /** 틀고 있는 캐릭터 모션 (숫자 키). 움직이면 멈춘다 */
+  /** 틀고 있는 캐릭터 모션 (키). 움직이면 멈춘다 */
   motion: (PlayingMotion & { start: number }) | null;
   /** 캐릭터에 애니메이터가 있으면 그 상태 (없으면 정해진 규칙대로 튼다) */
   animator: AnimatorRuntime | null;
@@ -373,7 +373,7 @@ export class PlazaScene extends Phaser.Scene {
     if (event.moving) actor.motion = null;
   }
 
-  // ── 캐릭터 모션 (숫자 키) ──
+  // ── 캐릭터 모션 (키) ──
 
   /** 내 캐릭터의 모션 (키 순서). 직접 그린 캐릭터에 추가한 것만 있다 */
   myMotions() {
@@ -382,7 +382,7 @@ export class PlazaScene extends Phaser.Scene {
   }
 
   /**
-   * 숫자 키: 내 캐릭터의 그 키 모션을 튼다. 반복 모션을 다시 누르면 멈춘다. 그 키의 모션이 없으면 false
+   * 모션 키: 내 캐릭터의 그 키 모션을 튼다. 반복 모션을 다시 누르면 멈춘다. 그 키의 모션이 없으면 false
    * (PlazaView가 키를 브라우저에 그대로 넘긴다).
    */
   playMotion(key: string): boolean {
@@ -789,7 +789,7 @@ export class PlazaScene extends Phaser.Scene {
 
   /**
    * 애니메이터가 있는 캐릭터: 걷는 중·공중을 파라미터로 넣고 그래프를 한 걸음 옮긴 뒤 그 상태의 모습.
-   * 숫자 키 모션(키가 달린 애니메이션)을 틀고 있으면 그것이 먼저다.
+   * 키 모션(키가 달린 애니메이션)을 틀고 있으면 그것이 먼저다.
    */
   private renderAnimatorPose(actor: Actor, now: number): void {
     const runtime = actor.animator!;
