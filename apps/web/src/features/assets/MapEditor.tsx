@@ -60,19 +60,19 @@ const TOOLS: { id: Tool; label: string; side?: string; icon: ReactNode }[] = [
   { id: 'ground', label: '바닥 칠하기', side: '땅·배경 칠하기', icon: <Brush aria-hidden /> },
   {
     id: 'overlay',
-    label: '장식 칠하기 (바닥 위에 겹침)',
-    side: '장식 칠하기 (캐릭터 앞에 겹침)',
+    label: '장식 칠하기',
+    side: '장식 칠하기',
     icon: <Flower2 aria-hidden />,
   },
   { id: 'fill', label: '바닥 채우기', side: '땅·배경 채우기', icon: <PaintBucket aria-hidden /> },
   { id: 'object', label: '오브젝트 놓기', icon: <TreePine aria-hidden /> },
   {
     id: 'erase',
-    label: '지우기 (오브젝트, 장식)',
-    side: '지우기 (오브젝트, 장식, 땅)',
+    label: '지우기',
+    side: '지우기',
     icon: <Eraser aria-hidden />,
   },
-  { id: 'spawn', label: '스폰 영역 (끌어서)', icon: <Flag aria-hidden /> },
+  { id: 'spawn', label: '스폰 영역', icon: <Flag aria-hidden /> },
 ];
 
 /** 횡스크롤 맵의 팔레트에서 앞에 보일 타일 (옆에서 본 타일) */
@@ -603,8 +603,8 @@ function MapEditorBody({
           <p className="form__hint">
             {tab === 'tile'
               ? side
-                ? '옆에서 본 맵입니다. 빈칸은 하늘이고, 빨간 칸(지나갈 수 없는 타일)은 딛고 서는 땅, 노란 선(발판)은 위에서만 딛습니다. 장식은 캐릭터 앞에 겹쳐 그립니다.'
-                : '바닥은 땅, 장식은 바닥 위에 겹쳐 그립니다. 빨간 칸은 지나갈 수 없습니다.'
+                ? '빨간 칸은 땅, 노란 선은 발판입니다.'
+                : '빨간 칸은 지나갈 수 없습니다.'
               : side
                 ? '누른 칸이 오브젝트 그림의 왼쪽 아래가 됩니다. 횡스크롤에서 오브젝트는 배경이라 막지 않습니다.'
                 : '누른 칸이 오브젝트 그림의 왼쪽 아래가 됩니다.'}

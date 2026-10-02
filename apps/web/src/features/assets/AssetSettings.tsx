@@ -27,10 +27,7 @@ export function AssetSettings() {
   return (
     <div className="settings-form asset-settings">
       <MyCharacters onPick={() => setPicking(true)} />
-      <p className="form__hint">
-        커뮤니티 광장에 쓸 타일·오브젝트와 광장 맵은 커뮤니티 이름 옆 메뉴의 커뮤니티 설정 →
-        광장에서 만듭니다 (소유자·관리자).
-      </p>
+      <p className="form__hint">타일·오브젝트와 광장 맵은 커뮤니티 설정 → 광장에서 만듭니다.</p>
       {picking && (
         <BuiltinPicker
           kinds={['character']}
@@ -96,10 +93,7 @@ function MyCharacters({ onPick }: { onPick(): void }) {
     <section className="asset-section">
       <h3 className="settings-form__title">내 캐릭터</h3>
       <p className="form__hint">
-        광장에서 쓸 캐릭터를 직접 그립니다 ({assets.length}/{CHARACTER_ASSET_LIMIT}). 에디터의 광장
-        방식에서 탑다운용(대기·걷기 4방향)과 횡스크롤용(오른쪽을 보는 대기·걷기·점프, 왼쪽은 좌우
-        반전)을 고르고, 필요한 애니메이션을 모두 그려야 저장할 수 있습니다. 에디터는 새 창으로
-        열려서 그리는 동안에도 채팅과 광장을 볼 수 있습니다.
+        광장에서 쓸 캐릭터를 직접 그립니다 ({assets.length}/{CHARACTER_ASSET_LIMIT}).
       </p>
       <AssetGrid assets={assets} />
       <div className="asset-section__actions">

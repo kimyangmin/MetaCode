@@ -231,12 +231,8 @@ export function GifImportDialog({
                     value: String(index),
                     label: a.label ?? a.name,
                   })),
-                  ...(character && freeKeys > 0
-                    ? [{ value: NEW_MOTION, label: '+ 새 모션으로 추가 (키 자동)' }]
-                    : []),
-                  ...(character
-                    ? [{ value: NEW_ANIMATION, label: '+ 새 애니메이션으로 추가 (애니메이터용)' }]
-                    : []),
+                  ...(character && freeKeys > 0 ? [{ value: NEW_MOTION, label: '+ 새 모션' }] : []),
+                  ...(character ? [{ value: NEW_ANIMATION, label: '+ 새 애니메이션' }] : []),
                 ]}
                 onChange={(value) => {
                   setError(null);
@@ -262,15 +258,9 @@ export function GifImportDialog({
         )}
         {character && (width !== doc.width || height !== doc.height) && (
           <p className="form__hint">
-            그림이 들어가도록 해상도를 {doc.width}×{doc.height}에서 {width}×{height}로 넓힙니다
-            (그린 그림은 발밑 가운데에 그대로 남습니다).
+            해상도가 {doc.width}×{doc.height}에서 {width}×{height}로 바뀝니다.
           </p>
         )}
-        <p className="form__hint">
-          색은 줄이지 않고 모두 지금 팔레트에 더합니다. 그 애니메이션의 프레임은 {source} 장면으로
-          바뀝니다 (되돌리기로 돌아갈 수 있음). 장면마다 시간이 다르면 같은 장면을 되풀이해
-          맞춥니다.
-        </p>
         {tooBig && (
           <p className="form__error">
             {source} 그림이 이 에셋({doc.width}×{doc.height})보다 큽니다. 오브젝트는 크기를 먼저

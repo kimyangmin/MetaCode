@@ -143,12 +143,7 @@ export function AnimatorEditor({
       <section className="animator-editor animator-editor--empty" aria-label="애니메이터">
         <div className="animator-editor__intro">
           <h2>애니메이터</h2>
-          <p>
-            상태(애니메이션)와 전이(화살표)로 광장에서 어떤 애니메이션을 언제 틀지 정합니다. 걷는
-            중·공중·착지·첨부 보냄 같은 광장의 상황과, 직접 단 키로 당기는 트리거로 상태를 옮길 수
-            있어 게임 캐릭터처럼 기술·콤보·모아 쏘기를 만들 수 있습니다. 애니메이터가 없으면
-            대기·걷기·점프·첨부 모션을 정해진 규칙대로 틉니다.
-          </p>
+          <p>광장에서 언제 어떤 애니메이션을 틀지 상태와 전이로 정합니다.</p>
           <div className="animator-editor__row">
             <button
               type="button"
@@ -498,7 +493,7 @@ function AnimatorGraph({
           type="button"
           className="icon-button animator-editor__help"
           aria-label="애니메이터 도움말"
-          title="애니메이터 도움말 (유니티 Animator를 처음 쓴다면)"
+          title="도움말"
           onClick={() => setDialog('guide')}
         >
           <CircleHelp aria-hidden />
@@ -516,7 +511,7 @@ function AnimatorGraph({
           type="button"
           className="button"
           disabled={animator.states.length >= ANIMATOR_STATE_LIMIT || !editor.canAddAnimation()}
-          title="GIF를 새 애니메이션으로 넣고 그것을 트는 상태를 만듭니다 (모션을 따로 만들지 않아도 됨)"
+          title="GIF로 상태 만들기"
           onClick={onAddFromGif}
         >
           <ImagePlus aria-hidden /> GIF로 상태
@@ -528,7 +523,7 @@ function AnimatorGraph({
             animator.states.length >= ANIMATOR_STATE_LIMIT ||
             animator.parameters.length >= ANIMATOR_PARAMETER_LIMIT
           }
-          title="키를 누르면 쓰는 기술, 콤보, 모아 쏘기를 상태·전이·파라미터째 한 번에 만듭니다"
+          title="기술·콤보·모아 쏘기 만들기"
           onClick={() => setDialog('skill')}
         >
           <Swords aria-hidden /> 스킬 만들기
@@ -538,7 +533,7 @@ function AnimatorGraph({
           className="button"
           aria-pressed={linking !== null}
           disabled={!selection || selection.kind === 'transition'}
-          title="고른 상태에서 다른 상태로 가는 화살표를 만듭니다 (다음에 누르는 상태로)"
+          title="고른 상태에서 화살표 만들기"
           onClick={() =>
             setLinking(
               selection?.kind === 'any'
@@ -551,17 +546,13 @@ function AnimatorGraph({
         >
           <Link2 aria-hidden /> 전이 만들기
         </button>
-        {linking !== null && (
-          <span className="form__hint">이어 줄 상태를 누르세요 (빈 곳을 누르면 취소)</span>
-        )}
+        {linking !== null && <span className="form__hint">이어 줄 상태를 누르세요</span>}
         <span className="animator-editor__spacer" />
         <button
           type="button"
           className="button button--danger"
           onClick={() => {
-            if (
-              window.confirm('애니메이터를 없앨까요? 정해진 규칙대로 틀게 됩니다 (되돌리기 가능).')
-            ) {
+            if (window.confirm('애니메이터를 없앨까요?')) {
               editor.setAnimator(undefined);
             }
           }}
@@ -587,12 +578,7 @@ function AnimatorGraph({
           ))}
         </ul>
         <h4>직접 만든 것</h4>
-        {animator.parameters.length === 0 && (
-          <p className="form__hint">
-            키를 달면 광장에서 그 키로 트리거를 당기거나 켜고 끕니다 (키 칸을 누르고 원하는 키를
-            누름).
-          </p>
-        )}
+        {animator.parameters.length === 0 && <p className="form__hint">없음</p>}
         <ul className="animator-editor__custom">
           {animator.parameters.map((p, i) => (
             <ParameterRow
@@ -789,10 +775,6 @@ function AnimatorGraph({
             ))}
           </g>
         </svg>
-        <p className="animator-editor__hint">
-          빈 곳을 끌어 그래프를 옮기고, 상태를 끌어 자리를 바꿉니다. 같은 상태 안에서는 Any State
-          전이를 먼저, 그다음 그 상태의 전이를 위에서부터 봅니다.
-        </p>
       </div>
 
       <aside className="animator-editor__inspector" aria-label="설정">
@@ -816,10 +798,7 @@ function AnimatorGraph({
         ) : selection?.kind === 'any' ? (
           <section>
             <h3>Any State</h3>
-            <p className="form__hint">
-              여기서 나가는 전이는 어느 상태에서든 조건이 맞으면 넘어갑니다 (첨부 보냄 → emote 등).
-              지금 상태로 다시 들어가는 전이는 트리거가 있을 때만 씁니다.
-            </p>
+            <p className="form__hint">어느 상태에서든 조건이 맞으면 넘어갑니다.</p>
             <button type="button" className="button" onClick={() => setLinking(ANY_STATE)}>
               <Link2 aria-hidden /> 여기서 전이 만들기
             </button>
@@ -839,10 +818,7 @@ function AnimatorGraph({
         ) : (
           <section>
             <h3>그래프</h3>
-            <p className="form__hint">
-              상태를 누르면 애니메이션과 전이를, 화살표를 누르면 조건을 고칩니다. 주황 테두리가 처음
-              시작하는 상태입니다.
-            </p>
+            <p className="form__hint">상태나 화살표를 누르세요.</p>
           </section>
         )}
         <AnimatorPreview
@@ -957,17 +933,13 @@ function StateInspector({
         />
       </div>
       <StateClip editor={editor} state={state} dir={dir} />
-      <p className="form__hint">
-        방향이 붙은 애니메이션(walk-left 등)은 방향을 뗀 이름으로 고르면 광장이 보는 방향의 것을
-        씁니다.
-      </p>
       <label className="pixel-editor__check">
         <input
           type="checkbox"
           checked={state.loop !== false}
           onChange={(e) => onChange({ loop: e.target.checked ? undefined : false })}
         />
-        반복 (끄면 한 번 틀고 마지막 프레임에 머묾)
+        반복
       </label>
       <div className="pixel-editor__row">
         재생 속도
@@ -984,7 +956,7 @@ function StateInspector({
           checked={!!state.lockMove}
           onChange={(e) => onChange({ lockMove: e.target.checked || undefined })}
         />
-        이 상태 동안 이동 막기 (기술을 쓰는 동안 제자리에)
+        이동 막기
       </label>
       <label className="pixel-editor__check">
         <input
@@ -992,7 +964,7 @@ function StateInspector({
           checked={!!state.noInterrupt}
           onChange={(e) => onChange({ noInterrupt: e.target.checked || undefined })}
         />
-        Any State 전이로 끊기지 않기 (콤보 중에 키를 다시 눌러도 처음부터 다시 틀지 않음)
+        Any State로 끊기지 않기
       </label>
       <div className="animator-editor__row">
         <button type="button" className="button" disabled={entry} onClick={onEntry}>
@@ -1106,7 +1078,7 @@ function TransitionInspector({
             )
           }
         />
-        끝나면 넘어가기 (지금 애니메이션을 한 번 다 튼 뒤에)
+        끝나면 넘어가기
       </label>
       {transition.exitTime && (
         <div className="pixel-editor__row">
@@ -1121,12 +1093,6 @@ function TransitionInspector({
             onChange={(v) => onChange({ exitAt: Number(v) === 100 ? undefined : Number(v) / 100 })}
           />
         </div>
-      )}
-      {transition.exitTime && (transition.exitAt ?? 1) < 1 && (
-        <p className="form__hint">
-          콤보처럼 앞 동작이 끝나기 전에 다음 동작으로 이으려면 지점을 앞당깁니다. 그 전에 당긴
-          트리거는 지점에 이를 때까지 남아 있습니다.
-        </p>
       )}
       <div className="animator-editor__row">
         <button type="button" className="button" onClick={() => onMove(-1)} title="먼저 보기">
@@ -1224,7 +1190,7 @@ function ParameterRow({
               onChange(next);
             }}
           />
-          키를 누르는 동안만 켜기 (모아 쏘기 등. 끄면 누를 때마다 켜고 끔)
+          누르는 동안만 켜기
         </label>
       )}
     </li>
@@ -1251,12 +1217,12 @@ const SITUATIONS = {
   },
   rise: {
     label: '뛰어오르는 중',
-    hint: 'moving + airborne (횡스크롤. 땅에서 바뀌면 jump 트리거)',
+    hint: 'moving + airborne',
     values: { moving: true, airborne: true, falling: false },
   },
   fall: {
     label: '떨어지는 중',
-    hint: 'moving + airborne + falling (횡스크롤. 땅으로 돌아오면 land 트리거)',
+    hint: 'moving + airborne + falling',
     values: { moving: true, airborne: true, falling: true },
   },
 } as const;
@@ -1467,7 +1433,7 @@ function AnimatorPreview({
             onPointerUp={() => setFlags((f) => ({ ...f, [p.name]: false }))}
             onPointerCancel={() => setFlags((f) => ({ ...f, [p.name]: false }))}
           >
-            {p.name} (누르는 동안)
+            {p.name}
           </button>
         ) : (
           <label key={p.name} className="pixel-editor__check">
@@ -1759,12 +1725,12 @@ const SKILL_KINDS: { id: SkillKind; label: string; hint: string }[] = [
   {
     id: 'combo',
     label: '콤보',
-    hint: '누를 때마다 1타 → 2타 → 3타. 치는 중에 누르면 이어지고, 안 누르면 끝나고 돌아옵니다.',
+    hint: '치는 중에 다시 누르면 다음 타로 이어집니다.',
   },
   {
     id: 'hold',
     label: '모아 쏘기',
-    hint: '누르고 있는 동안 모으기를 되풀이하고, 떼면 쏘기를 한 번 튼 뒤 돌아옵니다.',
+    hint: '누르는 동안 모으고, 떼면 쏩니다.',
   },
 ];
 
@@ -1803,8 +1769,8 @@ function SkillDialog({
             { label: '3타', optional: true },
           ]
         : [
-            { label: '모으기 (누르는 동안 되풀이)', optional: false },
-            { label: '쏘기 (떼면 한 번)', optional: true },
+            { label: '모으기', optional: false },
+            { label: '쏘기', optional: true },
           ];
   const create = () => {
     if (!ASSET_NAME_PATTERN.test(name)) {
@@ -1844,7 +1810,7 @@ function SkillDialog({
         </div>
         <p className="form__hint">{SKILL_KINDS.find((k) => k.id === kind)!.hint}</p>
         <label className="pixel-editor__field">
-          이름 (파라미터·상태 이름, 영문)
+          이름 (영문)
           <input
             value={name}
             maxLength={24}
@@ -1871,7 +1837,7 @@ function SkillDialog({
         {slots.map((slot, i) => (
           <div key={`${kind}-${i}`} className="pixel-editor__row">
             {slot.label}
-            {slot.optional ? ' (없어도 됨)' : ''}
+            {slot.optional ? ' (선택)' : ''}
             <Select
               value={animations[i] ?? ''}
               aria-label={slot.label}
@@ -1903,12 +1869,8 @@ function SkillDialog({
             checked={lockMove}
             onChange={(e) => setLockMove(e.target.checked)}
           />
-          기술을 쓰는 동안 이동 막기
+          이동 막기
         </label>
-        <p className="form__hint">
-          쓸 애니메이션이 없으면 먼저 그림 화면에서 애니메이션을 만들거나 &ldquo;GIF로 상태&rdquo;로
-          넣으세요. 만든 뒤에도 그래프에서 고칠 수 있습니다 (되돌리기 가능).
-        </p>
         {error && (
           <p className="form__error" role="alert">
             {error}

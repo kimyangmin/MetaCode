@@ -120,7 +120,7 @@ const TOOLS: { id: Tool; label: string; icon: ReactNode; key: string }[] = [
   { id: 'eraser', label: '지우개', icon: <Eraser aria-hidden />, key: 'e' },
   { id: 'fill', label: '채우기', icon: <PaintBucket aria-hidden />, key: 'g' },
   { id: 'picker', label: '스포이트', icon: <Pipette aria-hidden />, key: 'i' },
-  { id: 'lasso', label: '올가미 (고른 곳을 끌어 옮기기)', icon: <Lasso aria-hidden />, key: 'l' },
+  { id: 'lasso', label: '올가미', icon: <Lasso aria-hidden />, key: 'l' },
   { id: 'crop', label: '자르기', icon: <Scissors aria-hidden />, key: 'c' },
 ];
 
@@ -928,7 +928,7 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
     const metas = files.filter((f) => lower(f).endsWith('.meta'));
     const pngs = files.filter((f) => lower(f).endsWith('.png'));
     if (anims.length === 0) {
-      setStatus({ kind: 'error', text: '.anim 파일을 함께 골라 주세요 (그림 PNG와 .meta도).' });
+      setStatus({ kind: 'error', text: '.anim, PNG, .meta를 함께 고르세요.' });
       return;
     }
     try {
@@ -1026,7 +1026,7 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
     downloadBytes(zip, `${base}-unity.zip`, 'application/zip');
     setStatus({
       kind: 'ok',
-      text: `유니티용으로 내보냈습니다 (스프라이트 ${count}칸, 애니메이션 ${clips.length}개).`,
+      text: '유니티용으로 내보냈습니다.',
     });
   };
 
@@ -1086,17 +1086,17 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
             items={[
               {
                 label: 'PNG',
-                hint: '프레임 크기 그림 또는 가로로 이어 붙인 시트',
+                hint: '그림 한 장 또는 가로 시트',
                 run: () => fileRef.current?.click(),
               },
               {
                 label: 'GIF',
-                hint: '움직이는 GIF를 애니메이션으로 (여러 파일이면 파일 이름으로 정함)',
+                hint: '애니메이션으로',
                 run: () => gifRef.current?.click(),
               },
               {
                 label: '유니티 .anim',
-                hint: '.anim과 스프라이트 시트 PNG, 그 .meta를 함께 고르세요',
+                hint: '.anim + PNG + .meta',
                 run: () => unityRef.current?.click(),
               },
             ]}
@@ -1106,11 +1106,11 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
             open={menu === 'export'}
             onToggle={(open) => setMenu(open ? 'export' : null)}
             items={[
-              { label: 'PNG', hint: '지금 애니메이션을 가로로 이어 붙인 시트', run: onExport },
-              { label: 'GIF', hint: '지금 애니메이션을 움직이는 GIF로', run: onExportGif },
+              { label: 'PNG', hint: '지금 애니메이션 시트', run: onExport },
+              { label: 'GIF', hint: '지금 애니메이션', run: onExportGif },
               {
                 label: '유니티 .anim (ZIP)',
-                hint: '모든 애니메이션: 스프라이트 시트 PNG + .meta + .anim',
+                hint: '모든 애니메이션',
                 run: () => void onExportUnity(),
               },
             ]}
@@ -1331,11 +1331,7 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
                 </div>
               ) : tool === 'lasso' || active ? (
                 <div className="pixel-editor__bar" role="toolbar" aria-label="선택 영역">
-                  {!active && (
-                    <span className="form__hint">
-                      둘러 그려서 고르고, 고른 곳을 끌어 옮깁니다 (방향키로 한 칸씩).
-                    </span>
-                  )}
+                  {!active && <span className="form__hint">둘러 그려서 고르세요.</span>}
                   <button
                     type="button"
                     className="button"
@@ -1483,9 +1479,7 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
                     색 지우기
                   </button>
                 </div>
-                <p className="form__hint">
-                  {doc.palette.length}색 (색 수 제한 없음) · 오른쪽 버튼으로 지웁니다
-                </p>
+                <p className="form__hint">{doc.palette.length}색</p>
               </section>
 
               {doc.kind === 'tile' && (
@@ -1497,7 +1491,7 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
                       checked={doc.solid}
                       onChange={(e) => editor.setSolid(e.target.checked)}
                     />
-                    지나갈 수 없음 (벽, 물, 나무 등. 횡스크롤에서는 딛고 서는 땅)
+                    지나갈 수 없음
                   </label>
                   <label className="pixel-editor__check">
                     <input
@@ -1505,7 +1499,7 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
                       checked={doc.platform}
                       onChange={(e) => editor.setPlatform(e.target.checked)}
                     />
-                    발판 (횡스크롤: 위에서만 딛고 아래에서는 뛰어 지나감)
+                    발판 (횡스크롤)
                   </label>
                 </section>
               )}
@@ -1528,8 +1522,8 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
                   <h3>애니메이터</h3>
                   <p className="form__hint">
                     {doc.animator
-                      ? `상태 ${doc.animator.states.length}개 · 전이 ${doc.animator.transitions.length}개. 광장에서 이 그래프대로 애니메이션을 틉니다.`
-                      : '없으면 대기·걷기·점프·첨부 모션(있으면)을 정해진 규칙대로 틉니다. 상태 그래프로 언제 무엇을 틀지 직접 정할 수 있습니다 (유니티 Animator처럼).'}
+                      ? `상태 ${doc.animator.states.length}개 · 전이 ${doc.animator.transitions.length}개`
+                      : '없으면 기본 규칙대로 틉니다.'}
                   </p>
                   <button type="button" className="button" onClick={() => setAnimatorOpen(true)}>
                     <Workflow aria-hidden /> 애니메이터 열기
@@ -1549,7 +1543,7 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
                         saveTrim(TRIM_FEET_KEY, e.target.checked);
                       }}
                     />
-                    저장할 때 발 아래 빈 줄 자동 정리
+                    저장할 때 발 아래 정리
                   </label>
                   <label className="pixel-editor__check">
                     <input
@@ -1560,7 +1554,7 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
                         saveTrim(TRIM_MARGINS_KEY, e.target.checked);
                       }}
                     />
-                    저장할 때 머리 위·양옆 빈 곳 자동 정리
+                    저장할 때 머리 위·양옆 정리
                   </label>
                   <div className="pixel-editor__row">
                     <button
@@ -1582,17 +1576,6 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
                       지금 정리
                     </button>
                   </div>
-                  <p className="form__hint">
-                    발 아래: 광장은 그림의 맨 아래를 발밑으로 세웁니다. 애니메이션마다 모든
-                    프레임에서 함께 비어 있는 아래 줄만큼 그림을 내려서 떠 보이지 않게 합니다
-                    (걷기의 들썩임은 그대로).
-                  </p>
-                  <p className="form__hint">
-                    머리 위·양옆: 모든 프레임에서 함께 비어 있는 위 줄과 양옆 열을 잘라 해상도를
-                    줄입니다 (양옆은 가운데가 그대로이게 똑같이, 16px 아래로는 줄이지 않음).
-                    광장에서는 세로가 광장 크기만큼 그려지므로 위가 비어 있던 캐릭터는 그만큼 커
-                    보입니다.
-                  </p>
                 </section>
               )}
 
@@ -1601,8 +1584,8 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
                 {doc.kind === 'character' && (
                   <p className="form__hint">
                     {sideCharacter
-                      ? '✓·✗ 표시가 있는 것은 모두 그려야 저장할 수 있습니다 (걷기는 2프레임 이상, 점프는 1프레임 이상). 오른쪽만 그리면 왼쪽은 광장에서 좌우 반전됩니다. 첨부 모션은 없어도 됩니다 (없으면 첨부를 보낼 때 제자리에서 뜀).'
-                      : '✓·✗ 표시가 있는 것은 모두 그려야 저장할 수 있습니다 (걷기는 2프레임 이상). 첨부 모션은 없어도 됩니다 (없으면 첨부를 보낼 때 제자리에서 뜀).'}
+                      ? '✓·✗ 표시는 모두 그려야 저장됩니다. 왼쪽은 오른쪽을 뒤집어 씁니다.'
+                      : '✓·✗ 표시는 모두 그려야 저장됩니다.'}
                   </p>
                 )}
                 <ul className="pixel-editor__animations">
@@ -1841,7 +1824,7 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
                 프레임 지우기
               </button>
               <span className="form__hint">
-                {frameCount}/{FRAME_LIMIT[doc.kind]}장 (같은 그림은 한 장)
+                {frameCount}/{FRAME_LIMIT[doc.kind]}장
               </span>
             </div>
           </footer>
@@ -1965,12 +1948,8 @@ function MotionSettings({
           checked={!!animation.loop}
           onChange={(e) => editor.updateMotion(index, { loop: e.target.checked })}
         />
-        움직일 때까지 반복 (끄면 한 번)
+        반복
       </label>
-      <p className="form__hint">
-        광장에서 이 키를 누르면 틉니다. 키 칸을 누른 뒤 원하는 키를 누르면 바뀝니다. 반복하는 모션은
-        다시 누르거나 움직이면 멈춥니다.
-      </p>
       <button type="button" className="button button--danger" onClick={onRemove}>
         이 모션 지우기
       </button>
@@ -1981,28 +1960,28 @@ function MotionSettings({
 /** 필수가 아닌 애니메이션(첨부 모션, 점프, 남겨 둔 왼쪽·위·아래, 애니메이터용)의 설명 */
 function leftoverHint(name: string, side: boolean): string {
   if (name === 'emote') {
-    return '첨부 메시지를 보냈을 때 광장에서 한 번 틉니다. 지우면 첨부를 보낼 때 제자리에서 뛰기만 합니다.';
+    return '첨부를 보냈을 때 한 번 틉니다.';
   }
   if (!STANDARD_ANIMATIONS.has(name)) {
-    return '애니메이터의 상태가 트는 애니메이션입니다. 지우면 이것을 가리키던 상태가 빨간 점선으로 보이고 저장이 막힙니다.';
+    return '애니메이터 상태가 쓰는 애니메이션입니다.';
   }
   if (side && name.endsWith('-left')) {
-    return '왼쪽 모습을 따로 그린 것입니다. 지우면 오른쪽을 좌우 반전해서 씁니다 (좌우가 다른 캐릭터만 남겨 두세요).';
+    return '지우면 오른쪽을 뒤집어 씁니다.';
   }
   if (side) {
-    return '횡스크롤용 캐릭터는 쓰지 않는 애니메이션입니다 (탑다운으로 되돌릴 때를 위해 남겨 두었습니다).';
+    return '횡스크롤에서는 쓰지 않습니다.';
   }
-  return '횡스크롤 광장에서 뛰어오르거나 떨어질 때 한 번 틉니다. 지우면 걷기의 두 번째 프레임을 씁니다.';
+  return '횡스크롤 광장에서 공중일 때 틉니다.';
 }
 
 const STYLE_OPTION: Record<PlazaStyle, { label: string; hint: string }> = {
   [PlazaStyle.TopDown]: {
     label: '탑다운',
-    hint: '위에서 내려다보는 광장용. 대기·걷기 4방향(아래·왼쪽·오른쪽·위)을 그립니다 (첨부 모션은 골라서). 횡스크롤 광장에서도 쓸 수 있습니다.',
+    hint: '대기·걷기 4방향을 그립니다.',
   },
   [PlazaStyle.SideScroll]: {
     label: '횡스크롤',
-    hint: '옆에서 보는 광장용. 오른쪽을 보는 대기·걷기·점프를 그립니다 (첨부 모션은 골라서). 왼쪽은 오른쪽을 좌우 반전해서 쓰고, 위·아래 모습이 없어서 탑다운 광장에서는 쓸 수 없습니다.',
+    hint: '오른쪽 대기·걷기·점프를 그립니다. 탑다운 광장에서는 쓸 수 없습니다.',
   },
 };
 
@@ -2106,9 +2085,7 @@ function CharacterSizeSettings({
         )}
       </div>
       <p className="form__hint">
-        가로·세로 각각 {CHARACTER_MIN_SIZE}~{CHARACTER_MAX_SIZE}px입니다. 광장에서는 아래의 광장
-        크기(세로)에 맞춰 그리고 가로는 그림 비율대로라, 해상도를 올리면 같은 자리에 더 촘촘하게
-        그려집니다. 크기를 바꾸면 그림은 발밑 가운데를 기준으로 남습니다.
+        {CHARACTER_MIN_SIZE}~{CHARACTER_MAX_SIZE}px
       </p>
       <label className="pixel-editor__row">
         광장 크기
@@ -2122,10 +2099,6 @@ function CharacterSizeSettings({
           aria-label="광장에서 캐릭터 세로 크기"
         />
       </label>
-      <p className="form__hint">
-        광장에서 이 캐릭터를 얼마나 크게 그릴지 정합니다 (그림판의 굵은 가로선이 1타일). 부딪히고
-        걷는 범위는 크기와 상관없이 발밑만 봅니다.
-      </p>
     </section>
   );
 }
@@ -2213,10 +2186,7 @@ function ObjectSettings({ editor }: { editor: PixelDocument }) {
           aria-label="세로 칸"
         />
       </div>
-      <p className="form__hint">
-        지나갈 수 없는 칸을 누르세요. 보통 아래 줄(밑동)만 막아야 캐릭터가 뒤로 지나가며 가려집니다.
-        오브젝트는 맵에서 그림의 왼쪽 아래 칸에 놓입니다.
-      </p>
+      <p className="form__hint">지나갈 수 없는 칸을 누르세요.</p>
       <div
         className="pixel-editor__footprint"
         style={{ gridTemplateColumns: `repeat(${cols}, 24px)` }}
