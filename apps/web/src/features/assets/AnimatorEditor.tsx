@@ -1198,6 +1198,8 @@ function ParameterRow({
 }
 
 const PREVIEW_BOX = 128;
+/** 당긴 트리거 버튼이 켜진 모습으로 보이는 시간 */
+const FIRED_FLASH_MS = 250;
 
 /**
  * 미리보기에서 고르는 광장의 상황. 광장에서는 공중이면 위치가 바뀌므로 걷는 중(moving)도 켜져 있고, 떨어지는
@@ -1250,6 +1252,10 @@ function AnimatorPreview({
   const runtime = useRef<AnimatorRuntime | null>(null);
   /** 광장의 상황 (걷는 중·공중·떨어지는 중을 광장과 같은 조합으로 정한다) */
   const [situation, setSituation] = useState<Situation>('stand');
+  /** 방금 당긴 트리거 (버튼을 잠깐 켜진 모습으로) */
+  const [fired, setFired] = useState<string | null>(null);
+  const firedTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  useEffect(() => () => clearTimeout(firedTimer.current), []);
   /** 지금 상태가 이동을 막는지 (보여 주기만 한다) */
   const [locked, setLocked] = useState(false);
   /** 직접 만든 불 값 파라미터 (이름 → 값). 매 프레임 그래프에 넣고, 처음부터면 함께 끈다 */
@@ -1445,9 +1451,14 @@ function AnimatorPreview({
           <button
             key={p.name}
             type="button"
-            className="button"
+            className="button animator-editor__flag"
+            // 당긴 트리거도 불 값처럼 잠깐 켜진 모습을 보여 준다
+            aria-pressed={fired === p.name}
             onClick={() => {
               if (runtime.current) fireTrigger(runtime.current, p.name, performance.now());
+              setFired(p.name);
+              clearTimeout(firedTimer.current);
+              firedTimer.current = setTimeout(() => setFired(null), FIRED_FLASH_MS);
             }}
           >
             {p.name}
