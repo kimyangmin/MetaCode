@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { ASSET_NAME_PATTERN, MOTION_KEYS, MOTION_LABEL_MAX_LENGTH } from './keys.js';
+import { ASSET_NAME_PATTERN, MOTION_LABEL_MAX_LENGTH, PARAMETER_KEYS } from './keys.js';
 
 /**
  * 캐릭터 애니메이터 (유니티 Animator와 비슷한 상태 그래프).
@@ -7,8 +7,11 @@ import { ASSET_NAME_PATTERN, MOTION_KEYS, MOTION_LABEL_MAX_LENGTH } from './keys
  *   광장이 보는 방향의 `walk-<방향>`을 찾는다 (횡스크롤용은 왼쪽이 없으면 오른쪽을 뒤집는 규칙 그대로).
  * - 전이(transition) = 상태에서 상태로 넘어가는 화살표. 조건(파라미터)을 모두 만족하고, "끝나면"이면
  *   애니메이션이 한 번 다 돈 뒤에 넘어간다. 출발이 Any State(`*`)면 어느 상태에서든 넘어간다.
- * - 파라미터: 광장이 정하는 것(걷는 중, 공중, 뛰어오름, 착지, 첨부 보냄)과 직접 만든 것(숫자 키로 당기는
- *   트리거, 켜고 끄는 불 값).
+ * - 파라미터: 광장이 정하는 것(걷는 중, 공중, 떨어지는 중, 뛰어오름, 착지, 첨부 보냄)과 직접 만든 것(숫자·
+ *   글자 키로 당기는 트리거, 켜고 끄거나 누르는 동안 켜지는 불 값).
+ * - 스킬처럼 쓰는 상태 옵션: 재생 속도, 이동 막기(그 상태 동안 내 캐릭터가 움직이지 않음), Any State 전이로
+ *   끊기지 않기(콤보 중에 같은 키를 다시 눌러도 처음부터 다시 틀지 않게). 전이는 애니메이션의 몇 % 지점에서
+ *   넘어갈지(exitAt) 정할 수 있다.
  * 애니메이터가 없는 캐릭터는 예전 규칙(대기·걷기·점프·첨부 모션)대로 튼다.
  */
 
@@ -25,6 +28,7 @@ export const BUILTIN_ANIMATOR_PARAMETERS: readonly {
 }[] = [
   { name: 'moving', type: AnimatorParamType.Bool, label: '걷는 중' },
   { name: 'airborne', type: AnimatorParamType.Bool, label: '공중 (횡스크롤)' },
+  { name: 'falling', type: AnimatorParamType.Bool, label: '떨어지는 중 (횡스크롤)' },
   { name: 'jump', type: AnimatorParamType.Trigger, label: '뛰어오름' },
   { name: 'land', type: AnimatorParamType.Trigger, label: '착지' },
   { name: 'emote', type: AnimatorParamType.Trigger, label: '첨부 보냄' },
@@ -37,6 +41,12 @@ export const ANIMATOR_CONDITION_LIMIT = 4;
 /** 그래프 위 좌표 범위 (px) */
 const GRAPH_EXTENT = 10000;
 
+/** 상태의 재생 속도 (배) */
+export const ANIMATOR_SPEED_MIN = 0.25;
+export const ANIMATOR_SPEED_MAX = 4;
+/** 전이가 넘어가는 지점 (애니메이션 한 바퀴의 비율) */
+export const ANIMATOR_EXIT_AT_MIN = 0.05;
+
 const nameSchema = z.string().regex(ASSET_NAME_PATTERN, '이름은 영문 소문자로 시작해야 합니다.');
 const coordinate = z.number().int().min(-GRAPH_EXTENT).max(GRAPH_EXTENT);
 
@@ -46,6 +56,12 @@ const stateSchema = z.object({
   animation: nameSchema,
   /** false면 한 번 틀고 마지막 프레임에 머문다 (없으면 반복) */
   loop: z.boolean().optional(),
+  /** 재생 속도 (없으면 1배). "끝나면 넘어가기"도 이 속도로 잰다 */
+  speed: z.number().min(ANIMATOR_SPEED_MIN).max(ANIMATOR_SPEED_MAX).optional(),
+  /** 이 상태 동안 내 캐릭터가 움직이지 않는다 (기술을 쓰는 동안 등. 횡스크롤의 떨어지기는 그대로) */
+  lockMove: z.boolean().optional(),
+  /** 이 상태에서는 Any State 전이를 보지 않는다 (콤보 중에 키를 다시 눌러도 처음부터 다시 틀지 않게) */
+  noInterrupt: z.boolean().optional(),
   /** 그래프 편집기에서의 자리 */
   x: coordinate,
   y: coordinate,
@@ -54,8 +70,10 @@ const stateSchema = z.object({
 const parameterSchema = z.object({
   name: nameSchema,
   type: z.enum([AnimatorParamType.Trigger, AnimatorParamType.Bool]),
-  /** 광장에서 이 숫자 키를 누르면 트리거를 당기거나 불 값을 뒤집는다 */
-  key: z.enum(MOTION_KEYS).optional(),
+  /** 광장에서 이 키(숫자 또는 글자)를 누르면 트리거를 당기거나 불 값을 뒤집는다 */
+  key: z.enum(PARAMETER_KEYS).optional(),
+  /** 불 값: 키를 누르는 동안만 켠다 (모아 쏘기 등). 없으면 누를 때마다 켜고 끈다 */
+  hold: z.boolean().optional(),
   /** 모션 목록(✨)에 보일 이름 */
   label: z.string().trim().min(1).max(MOTION_LABEL_MAX_LENGTH).optional(),
 });
@@ -72,6 +90,8 @@ const transitionSchema = z.object({
   conditions: z.array(conditionSchema).max(ANIMATOR_CONDITION_LIMIT),
   /** 지금 상태의 애니메이션이 한 번 다 돈 뒤에만 넘어간다 (유니티의 Has Exit Time) */
   exitTime: z.boolean().optional(),
+  /** exitTime이면 애니메이션의 이 비율 지점부터 넘어간다 (없으면 1 = 끝까지. 유니티의 Exit Time 값) */
+  exitAt: z.number().min(ANIMATOR_EXIT_AT_MIN).max(1).optional(),
 });
 
 export const animatorSchema = z.object({
@@ -147,6 +167,9 @@ export function animatorProblems(
       problems.push(`파라미터 이름 ${parameter.name}이(가) 겹칩니다.`);
     }
     custom.add(parameter.name);
+    if (parameter.hold && parameter.type !== AnimatorParamType.Bool) {
+      problems.push(`${parameter.name}: 누르는 동안 켜기는 불 값에만 씁니다.`);
+    }
   }
 
   const params = animatorParameters(animator);
@@ -234,6 +257,7 @@ function awaitedTriggers(
   if (!current || now - runtime.since > cycleMs(current) + TRIGGER_HOLD_MS) return waiting;
   for (const t of animator.transitions) {
     if (!t.exitTime || (t.from !== runtime.state && t.from !== ANY_STATE)) continue;
+    if (t.from === ANY_STATE && current.noInterrupt) continue;
     for (const c of t.conditions) {
       if (params.get(c.param)?.type === AnimatorParamType.Trigger) waiting.add(c.param);
     }
@@ -251,8 +275,10 @@ export function stepAnimator(
   animator: Animator,
   runtime: AnimatorRuntime,
   now: number,
-  cycleMs: (state: AnimatorState) => number,
+  baseCycleMs: (state: AnimatorState) => number,
 ): boolean {
+  // 상태의 재생 속도만큼 한 바퀴가 짧아지거나 길어진다
+  const cycleMs = (state: AnimatorState) => baseCycleMs(state) / animatorStateSpeed(state);
   const params = animatorParameters(animator);
   const byName = new Map(animator.states.map((s) => [s.name, s]));
   if (!byName.has(runtime.state)) {
@@ -267,21 +293,27 @@ export function stepAnimator(
   for (let hop = 0; hop < MAX_HOPS; hop++) {
     const current = byName.get(runtime.state);
     if (!current) break;
-    const finished = now - runtime.since >= cycleMs(current);
+    const elapsed = now - runtime.since;
+    const cycle = cycleMs(current);
     const candidates = [
-      ...animator.transitions.filter(
-        (t) =>
-          t.from === ANY_STATE &&
-          (t.to !== runtime.state ||
-            t.conditions.some((c) => params.get(c.param)?.type === AnimatorParamType.Trigger)),
-      ),
+      // 끊기지 않는 상태(콤보 등)에서는 Any State 전이를 보지 않는다
+      ...(current.noInterrupt
+        ? []
+        : animator.transitions.filter(
+            (t) =>
+              t.from === ANY_STATE &&
+              (t.to !== runtime.state ||
+                t.conditions.some((c) => params.get(c.param)?.type === AnimatorParamType.Trigger)),
+          )),
       ...animator.transitions.filter((t) => t.from === runtime.state),
     ];
     const next = candidates.find(
       (t) =>
         byName.has(t.to) &&
         // 조건이 없는 전이는 "끝나면"으로 본다 (검증이 막지만, 예전 데이터에서도 멈추지 않게)
-        ((t.exitTime ?? false) || t.conditions.length === 0 ? finished : true) &&
+        ((t.exitTime ?? false) || t.conditions.length === 0
+          ? elapsed >= cycle * (t.exitAt ?? 1)
+          : true) &&
         satisfied(t, runtime, params),
     );
     if (!next) break;
@@ -291,6 +323,17 @@ export function stepAnimator(
     changed = true;
   }
   return changed;
+}
+
+/** 상태의 재생 속도 (배). 없거나 범위 밖이면 1 */
+export function animatorStateSpeed(state: Pick<AnimatorState, 'speed'>): number {
+  const speed = state.speed ?? 1;
+  return speed >= ANIMATOR_SPEED_MIN && speed <= ANIMATOR_SPEED_MAX ? speed : 1;
+}
+
+/** 지금 상태가 이동을 막는지 (기술을 쓰는 동안 등) */
+export function animatorLocksMovement(animator: Animator, runtime: AnimatorRuntime): boolean {
+  return animator.states.some((s) => s.name === runtime.state && s.lockMove);
 }
 
 /**

@@ -4,9 +4,23 @@ export function rgb(hex: string): [number, number, number] {
   return [(v >> 16) & 0xff, (v >> 8) & 0xff, v & 0xff];
 }
 
+/**
+ * 픽셀 값(1부터) → [r, g, b] (0이나 팔레트 밖은 undefined). 쓰는 색만 그때 바꾼다: 팔레트에 색이 아주 많아도
+ * (색 제한 없음) 한 장 그릴 때마다 모든 색을 바꾸지 않게.
+ */
+export function paletteColors(
+  palette: readonly string[],
+): (value: number) => [number, number, number] | undefined {
+  const cache: ([number, number, number] | undefined)[] = [];
+  return (value) => {
+    if (value <= 0 || value > palette.length) return undefined;
+    return (cache[value] ??= rgb(palette[value - 1]!));
+  };
+}
+
 /** 팔레트 픽셀 한 장(0 = 투명)을 원래 크기 캔버스로 (도트 에디터·애니메이터 미리보기·내보내기) */
 export function frameCanvas(
-  pixels: Uint8Array,
+  pixels: Uint16Array,
   width: number,
   height: number,
   palette: readonly string[],
@@ -15,9 +29,9 @@ export function frameCanvas(
   canvas.width = width;
   canvas.height = height;
   const image = new ImageData(width, height);
-  const colors = palette.map(rgb);
+  const colorOf = paletteColors(palette);
   pixels.forEach((v, i) => {
-    const c = v > 0 ? colors[v - 1] : undefined;
+    const c = colorOf(v);
     if (!c) return;
     image.data.set([c[0], c[1], c[2], 255], i * 4);
   });

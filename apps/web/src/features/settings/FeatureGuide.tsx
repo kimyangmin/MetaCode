@@ -62,6 +62,10 @@ const SHORTCUTS: { title: string; items: Shortcut[] }[] = [
         keys: '1~9 / 0',
         what: '내 캐릭터의 모션 (도트 에디터에서 추가, 반복 모션은 다시 누르거나 움직이면 멈춤)',
       },
+      {
+        keys: 'Z X C V A S D F Q W E R',
+        what: '애니메이터에서 키를 단 기술 (콤보는 치는 중에 다시, 모아 쏘기는 누르고 있다가 떼기)',
+      },
       { keys: '/', what: '채팅 입력창으로. 보내면 광장으로 돌아옵니다' },
       { keys: 'Shift+Tab', what: '광장 ↔ 채팅 입력창' },
     ],
@@ -89,6 +93,10 @@ const SHORTCUTS: { title: string; items: Shortcut[] }[] = [
       { keys: 'Delete', what: '고른 곳 지우기' },
       { keys: 'Enter', what: '자르기 적용' },
       { keys: '오른쪽 버튼', what: '지우개' },
+      { keys: '[ / ]', what: '붓 가늘게 · 굵게' },
+      { keys: 'Ctrl+= / Ctrl+-', what: '그림판 확대 · 축소 (Ctrl+휠도, 맵 에디터도 같음)' },
+      { keys: 'Ctrl+0', what: '그림판을 창에 맞추기' },
+      { keys: 'Esc', what: '애니메이터에서 그림으로 돌아가기 · 에디터 닫기' },
     ],
   },
 ];

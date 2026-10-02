@@ -62,8 +62,8 @@ describe('선택 영역', () => {
   });
 
   it('옮기고 얹으면 투명한 칸은 아래가 비친다', () => {
-    const base = Uint8Array.from([1, 1, 1, 1]);
-    const values = Uint8Array.from([0, 2, 0, 0]);
+    const base = Uint16Array.from([1, 1, 1, 1]);
+    const values = Uint16Array.from([0, 2, 0, 0]);
     const mask = Uint8Array.from([1, 1, 0, 0]);
     expect(Array.from(stamp(base, values, mask))).toEqual([1, 2, 1, 1]);
     expect(Array.from(shiftPixels(Uint8Array.from([1, 2, 3, 4]), 2, 2, 1, 0))).toEqual([
@@ -72,7 +72,7 @@ describe('선택 영역', () => {
   });
 
   it('복사한 조각은 같은 자리에 붙고, 작은 그림에서는 넘친 부분을 버린다', () => {
-    const pixels = new Uint8Array(W * W);
+    const pixels = new Uint16Array(W * W);
     const mask = new Uint8Array(W * W);
     pixels[3 * W + 6] = 5;
     mask[3 * W + 6] = 1;
@@ -93,7 +93,7 @@ describe('선택 영역', () => {
   });
 
   it('맨 아래 빈 줄을 센다', () => {
-    const pixels = new Uint8Array(W * 4);
+    const pixels = new Uint16Array(W * 4);
     expect(emptyRowsBelow(pixels, W, 4)).toBe(4);
     pixels[1 * W + 3] = 1;
     expect(emptyRowsBelow(pixels, W, 4)).toBe(2);

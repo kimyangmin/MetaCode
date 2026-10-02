@@ -87,15 +87,15 @@ export function maskBounds(mask: Uint8Array, width: number): Rect | null {
   return x1 < 0 ? null : { x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 };
 }
 
-/** 통째로 (dx, dy)만큼 옮긴다. 밖으로 나간 부분은 버린다 */
-export function shiftPixels(
-  pixels: Uint8Array,
+/** 통째로 (dx, dy)만큼 옮긴다. 밖으로 나간 부분은 버린다 (픽셀 값이나 마스크) */
+export function shiftPixels<T extends Uint8Array | Uint16Array>(
+  pixels: T,
   width: number,
   height: number,
   dx: number,
   dy: number,
-): Uint8Array {
-  const next = new Uint8Array(width * height);
+): T {
+  const next = pixels.slice().fill(0) as T;
   for (let y = 0; y < height; y++) {
     const ny = y + dy;
     if (ny < 0 || ny >= height) continue;
@@ -109,17 +109,17 @@ export function shiftPixels(
 }
 
 /** 마스크 안만 남긴 값 (밖은 0) */
-export function maskedValues(pixels: Uint8Array, mask: Uint8Array): Uint8Array {
+export function maskedValues(pixels: Uint16Array, mask: Uint8Array): Uint16Array {
   return pixels.map((v, i) => (mask[i] ? v : 0));
 }
 
 /** 마스크 안을 투명하게 */
-export function clearMasked(pixels: Uint8Array, mask: Uint8Array): Uint8Array {
+export function clearMasked(pixels: Uint16Array, mask: Uint8Array): Uint16Array {
   return pixels.map((v, i) => (mask[i] ? 0 : v));
 }
 
 /** base 위에 values를 얹는다. 마스크 안의 투명한 칸은 base가 비친다 */
-export function stamp(base: Uint8Array, values: Uint8Array, mask: Uint8Array): Uint8Array {
+export function stamp(base: Uint16Array, values: Uint16Array, mask: Uint8Array): Uint16Array {
   return base.map((v, i) => (mask[i] && values[i] ? values[i]! : v));
 }
 
@@ -128,14 +128,14 @@ export function stamp(base: Uint8Array, values: Uint8Array, mask: Uint8Array): U
  */
 export interface Clip {
   rect: Rect;
-  values: Uint8Array;
+  values: Uint16Array;
   mask: Uint8Array;
 }
 
-export function copyClip(pixels: Uint8Array, mask: Uint8Array, width: number): Clip | null {
+export function copyClip(pixels: Uint16Array, mask: Uint8Array, width: number): Clip | null {
   const rect = maskBounds(mask, width);
   if (!rect) return null;
-  const values = new Uint8Array(rect.w * rect.h);
+  const values = new Uint16Array(rect.w * rect.h);
   const clipMask = new Uint8Array(rect.w * rect.h);
   for (let y = 0; y < rect.h; y++) {
     for (let x = 0; x < rect.w; x++) {
@@ -153,8 +153,8 @@ export function placeClip(
   clip: Clip,
   width: number,
   height: number,
-): { values: Uint8Array; mask: Uint8Array } {
-  const values = new Uint8Array(width * height);
+): { values: Uint16Array; mask: Uint8Array } {
+  const values = new Uint16Array(width * height);
   const mask = new Uint8Array(width * height);
   const { rect } = clip;
   for (let y = 0; y < rect.h; y++) {
@@ -192,7 +192,7 @@ export function maskOutline(
 }
 
 /** 맨 아래부터 비어 있는 줄 수 (그림이 없으면 height) */
-export function emptyRowsBelow(pixels: Uint8Array, width: number, height: number): number {
+export function emptyRowsBelow(pixels: Uint16Array, width: number, height: number): number {
   for (let y = height - 1; y >= 0; y--) {
     for (let x = 0; x < width; x++) if (pixels[y * width + x]) return height - 1 - y;
   }

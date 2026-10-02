@@ -163,7 +163,7 @@ describe('PNG 가져오기', () => {
     ]);
     const result = indexImage(rgba, 4, 1, 2, 1, ['#ff0000']);
     expect(result).toEqual({
-      frames: [Uint8Array.from([1, 0]), Uint8Array.from([2, 1])],
+      frames: [Uint16Array.from([1, 0]), Uint16Array.from([2, 1])],
       palette: ['#ff0000', '#00ff00'],
     });
   });
@@ -172,10 +172,10 @@ describe('PNG 가져오기', () => {
     expect(indexImage(new Uint8ClampedArray(12), 3, 1, 2, 1, [])).toHaveProperty('error');
     const full = Array.from(
       { length: PALETTE_MAX_COLORS },
-      (_, i) => `#${i.toString(16).padStart(2, '0')}0000`,
+      (_, i) => `#${i.toString(16).padStart(6, '0')}`,
     );
-    const result = indexImage(Uint8ClampedArray.from(pixel(9, 1, 1)), 1, 1, 1, 1, full);
-    expect('frames' in result && result.frames[0]![0]).toBe(10); // #090000
+    const result = indexImage(Uint8ClampedArray.from(pixel(1, 0, 9)), 1, 1, 1, 1, full);
+    expect('frames' in result && result.frames[0]![0]).toBe(10); // #000009
   });
 });
 
@@ -418,7 +418,7 @@ describe('GIF로 애니메이션 채우기', () => {
     const doc = new PixelDocument(fromManifest(builtinAsset('builtin:char-short')!));
     const { width, height, palette } = doc.doc;
     const left = doc.doc.animations.findIndex((a) => a.name === 'walk-left');
-    const frame = new Uint8Array(width * height);
+    const frame = new Uint16Array(width * height);
     frame[0] = 1;
     const first = doc.importAnimations(
       [
@@ -426,7 +426,7 @@ describe('GIF로 애니메이션 채우기', () => {
         { target: { motion: 'dance' }, frames: [frame], frameMs: 200, mirror: true },
       ],
       palette,
-      (p) => Uint8Array.from(p).reverse(),
+      (p) => Uint16Array.from(p).reverse(),
     );
     expect(first).toBe(left);
     const right = doc.doc.animations.find((a) => a.name === 'walk-right')!;
@@ -440,7 +440,7 @@ describe('GIF로 애니메이션 채우기', () => {
   it('숫자 키 없는 새 애니메이션으로도 넣는다 (애니메이터용, 이름은 파일 이름에서, 겹치면 -2)', () => {
     const doc = new PixelDocument(fromManifest(builtinAsset('builtin:char-short')!));
     const { width, height, palette } = doc.doc;
-    const frame = new Uint8Array(width * height);
+    const frame = new Uint16Array(width * height);
     frame[0] = 1;
     const count = doc.doc.animations.length;
     const keys = doc.freeMotionKeys().length;
@@ -625,7 +625,7 @@ describe('모션 키', () => {
     doc.setStyle(PlazaStyle.SideScroll);
     const down = doc.doc.animations.findIndex((a) => a.name === 'idle-down');
     doc.edit((d) => {
-      d.animations[down]!.frames = [new Uint8Array(d.width * d.height)];
+      d.animations[down]!.frames = [new Uint16Array(d.width * d.height)];
     });
     const motion = doc.doc.animations[doc.addMotion()!]!;
     expect(motion.frames[0]).toEqual(idleRight);
@@ -635,7 +635,7 @@ describe('모션 키', () => {
 describe('가져오기와 프레임 한도', () => {
   it('해상도를 넓히며 가져오면 되돌리기 한 번에 해상도와 그림이 함께 돌아간다', () => {
     const doc = new PixelDocument(newDoc('character', '새'));
-    const frame = new Uint8Array(32 * 40);
+    const frame = new Uint16Array(32 * 40);
     frame[32 * 40 - 1] = 1;
     const at = doc.importAnimations(
       [{ target: 0, frames: [frame], frameMs: 100, mirror: false }],
@@ -654,7 +654,7 @@ describe('가져오기와 프레임 한도', () => {
   it('가져오기 전에 사본으로 프레임 수를 세어 보고, 문서는 바꾸지 않는다', () => {
     const doc = new PixelDocument(newDoc('tile', '타일'));
     const frames = Array.from({ length: 20 }, (_, i) => {
-      const f = new Uint8Array(256);
+      const f = new Uint16Array(256);
       f[i] = 1;
       return f;
     });

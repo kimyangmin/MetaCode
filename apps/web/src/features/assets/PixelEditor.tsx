@@ -16,7 +16,7 @@ import {
   STANDARD_ANIMATIONS,
   TILE_SIZE,
   assetManifestSchema,
-  decodePixels,
+  decodeFrame,
 } from '@metacode/shared';
 import { useQueryClient } from '@tanstack/react-query';
 import {
@@ -24,13 +24,16 @@ import {
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
   type RefObject,
+  memo,
   useCallback,
   useEffect,
   useMemo,
   useRef,
   useState,
 } from 'react';
+import { useUnsavedGuard } from './unsavedGuard';
 import { ApiError } from '../../api/client';
+import { Select, isSelectOpen } from '../../ui/Select';
 import { saveAsset } from './api';
 import { AnimatorEditor, withStatesFor } from './AnimatorEditor';
 import {
@@ -126,7 +129,7 @@ interface Selection {
   key: string;
   version: number;
   mask: Uint8Array;
-  lifted: { base: Uint8Array; values: Uint8Array } | null;
+  lifted: { base: Uint16Array; values: Uint16Array } | null;
 }
 
 type Drag =
@@ -138,8 +141,8 @@ type Drag =
       moved: Point;
       begun: boolean;
       mask: Uint8Array;
-      base: Uint8Array;
-      values: Uint8Array;
+      base: Uint16Array;
+      values: Uint16Array;
     }
   | { kind: 'crop'; start: Point };
 
@@ -203,6 +206,9 @@ const ANIMATION_LABEL = new Map<string, string>([
 ]);
 
 /** 애니메이션 목록에 보일 이름: 필수·점프는 정해진 이름, 모션은 사용자가 붙인 이름 */
+/** 글을 쓰거나 값을 고르는 칸: 여기서 누른 키는 에디터 단축키로 쓰지 않는다 */
+export const TYPING_TARGET = 'input, textarea, select, [role="combobox"]';
+
 function animationLabel(animation: EditorAnimation): string {
   return animation.label ?? ANIMATION_LABEL.get(animation.name) ?? animation.name;
 }
@@ -238,6 +244,7 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
   const [menu, setMenu] = useState<'import' | 'export' | null>(null);
   const [animatorOpen, setAnimatorOpen] = useState(false);
   const wheel = useRef(0);
+  const rootRef = useRef<HTMLDivElement>(null);
   const [status, setStatus] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [selection, setSelection] = useState<Selection | null>(null);
@@ -297,16 +304,26 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
       : null;
   const canFit = doc.kind === 'character' || doc.kind === 'object';
 
+  /** 팔레트에서 색을 고른다 (지우개·스포이트였으면 연필로) */
+  const pickColor = useCallback((value: number) => {
+    setColor(value);
+    setTool((t) => (t === 'eraser' || t === 'picker' ? 'pen' : t));
+  }, []);
+
+  /** 닫기를 확인받았다 (창을 닫을 때 브라우저가 한 번 더 묻지 않게) */
+  const discarding = useRef(false);
   const requestClose = useCallback(() => {
     if (editor.dirty && !window.confirm('저장하지 않은 변경이 있습니다. 닫을까요?')) return;
+    discarding.current = true;
     onClose();
   }, [editor, onClose]);
+  useUnsavedGuard(editor, discarding);
 
   // ── 선택 영역 ──
 
   /** 떠 있는 선택을 (dx, dy)만큼 옮긴 결과로 프레임을 다시 만든다 */
   const floatTo = (
-    from: { mask: Uint8Array; base: Uint8Array; values: Uint8Array },
+    from: { mask: Uint8Array; base: Uint16Array; values: Uint16Array },
     dx: number,
     dy: number,
   ) => {
@@ -360,7 +377,7 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
     const placed = placeClip(clipboard, doc.width, doc.height);
     if (isEmptyMask(placed.mask)) return;
     editor.begin();
-    const base = Uint8Array.from(pixels);
+    const base = Uint16Array.from(pixels);
     editor.setFrame(ref, stamp(base, placed.values, placed.mask));
     setSelection({
       key: frameKey,
@@ -392,7 +409,9 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
     const onKey = (e: KeyboardEvent) => {
       // GIF 가져오기 창이 떠 있으면 그 창이 키를 받는다. 예전엔 그 창에서 Esc를 누르면 창과 함께 에디터까지
       // 닫으려 했고, 도구 단축키·되돌리기도 뒤의 그림에 먹었다.
-      if (importing || e.defaultPrevented) return;
+      if (importing || e.defaultPrevented || isSelectOpen()) return;
+      // 애니메이터의 도움말·스킬 만들기 창이 떠 있으면 그 창이 키를 받는다 (Esc로 그 창만 닫힘)
+      if (rootRef.current?.querySelector('.dialog__overlay')) return;
       const target = e.target as HTMLElement;
       if (menu && e.key === 'Escape') {
         e.preventDefault();
@@ -406,7 +425,7 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
           setAnimatorOpen(false);
           return;
         }
-        if (target.closest('input, textarea, select')) return;
+        if (target.closest(TYPING_TARGET)) return;
         const undoKey = (e.ctrlKey || e.metaKey) && e.key.toLowerCase();
         if (undoKey === 'z') {
           e.preventDefault();
@@ -428,7 +447,7 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
         } else requestClose();
         return;
       }
-      if (target.closest('input, textarea, select')) return;
+      if (target.closest(TYPING_TARGET)) return;
       const mod = e.ctrlKey || e.metaKey;
       const key = e.key.toLowerCase();
       const arrows: Record<string, [number, number]> = {
@@ -920,7 +939,7 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
     const sprites: SheetSprite[] = manifest.frames.map((frame, i) => {
       const col = i % cols;
       const row = Math.floor(i / cols);
-      const pixels = decodePixels(frame, width * height) ?? new Uint8Array(width * height);
+      const pixels = decodeFrame(frame, width * height) ?? new Uint16Array(width * height);
       ctx.drawImage(
         frameCanvas(pixels, width, height, manifest.palette),
         col * width,
@@ -992,7 +1011,13 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
   };
 
   return (
-    <div className="pixel-editor" role="dialog" aria-modal="true" aria-label="도트 에디터">
+    <div
+      ref={rootRef}
+      className="pixel-editor"
+      role="dialog"
+      aria-modal="true"
+      aria-label="도트 에디터"
+    >
       <header className="pixel-editor__header">
         <span className="pixel-editor__kind">{KIND_LABEL[doc.kind]}</span>
         <input
@@ -1357,22 +1382,12 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
             <aside className="pixel-editor__side">
               <section>
                 <h3>팔레트</h3>
-                <div className="pixel-editor__palette">
-                  {doc.palette.map((hex, i) => (
-                    <button
-                      key={i}
-                      type="button"
-                      className="pixel-editor__swatch"
-                      style={{ background: hex }}
-                      aria-pressed={color === i + 1 && tool !== 'eraser'}
-                      title={hex}
-                      onClick={() => {
-                        setColor(i + 1);
-                        if (tool === 'eraser' || tool === 'picker') setTool('pen');
-                      }}
-                    />
-                  ))}
-                </div>
+                <PaletteSwatches
+                  palette={doc.palette}
+                  version={editor.version}
+                  selected={tool === 'eraser' ? 0 : color}
+                  onPick={pickColor}
+                />
                 <div className="pixel-editor__row">
                   <input
                     type="color"
@@ -1406,7 +1421,7 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
                   </button>
                 </div>
                 <p className="form__hint">
-                  {doc.palette.length}/{PALETTE_MAX_COLORS}색 · 오른쪽 버튼으로 지웁니다
+                  {doc.palette.length}색 (색 수 제한 없음) · 오른쪽 버튼으로 지웁니다
                 </p>
               </section>
 
@@ -1777,6 +1792,56 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
   );
 }
 
+/** 팔레트 칸을 처음에 보여 줄 수 (색이 아주 많으면 나머지는 "더 보기"로 펼친다) */
+const SWATCH_PAGE = 256;
+
+/**
+ * 팔레트 칸들. 색 수 제한이 없어 GIF·PNG를 가져오면 색이 수천 개일 수 있으므로, 그림판 위에서 마우스를
+ * 움직일 때마다(에디터가 다시 그려질 때마다) 칸을 모두 다시 그리지 않게 팔레트가 바뀔 때만 그리고,
+ * 처음엔 SWATCH_PAGE개만 보인다.
+ */
+const PaletteSwatches = memo(function PaletteSwatches({
+  palette,
+  selected,
+  onPick,
+}: {
+  palette: readonly string[];
+  /** 팔레트를 그 자리에서 고치므로 바뀐 것은 문서 버전으로 안다 */
+  version: number;
+  /** 고른 픽셀 값 (지우개면 0) */
+  selected: number;
+  onPick(value: number): void;
+}) {
+  const [shown, setShown] = useState(SWATCH_PAGE);
+  const visible = palette.slice(0, shown);
+  return (
+    <>
+      <div className="pixel-editor__palette">
+        {visible.map((hex, i) => (
+          <button
+            key={i}
+            type="button"
+            className="pixel-editor__swatch"
+            style={{ background: hex }}
+            aria-pressed={selected === i + 1}
+            title={hex}
+            onClick={() => onPick(i + 1)}
+          />
+        ))}
+      </div>
+      {palette.length > shown && (
+        <button
+          type="button"
+          className="button pixel-editor__more-colors"
+          onClick={() => setShown((n) => n + SWATCH_PAGE * 4)}
+        >
+          색 {palette.length - shown}개 더 보기
+        </button>
+      )}
+    </>
+  );
+});
+
 /** 캐릭터 모션 설정: 이름, 숫자 키, 반복, 지우기 */
 function MotionSettings({
   editor,
@@ -1804,17 +1869,12 @@ function MotionSettings({
       </label>
       <label className="pixel-editor__row">
         키
-        <select
-          value={animation.key}
-          onChange={(e) => editor.updateMotion(index, { key: e.target.value as MotionKey })}
+        <Select
+          value={animation.key ?? ''}
+          options={keys.map((key) => ({ value: key, label: key }))}
+          onChange={(key) => editor.updateMotion(index, { key: key as MotionKey })}
           aria-label="광장에서 누를 숫자 키"
-        >
-          {keys.map((key) => (
-            <option key={key} value={key}>
-              {key}
-            </option>
-          ))}
-        </select>
+        />
       </label>
       <label className="pixel-editor__check">
         <input
@@ -1968,17 +2028,15 @@ function CharacterSizeSettings({
       </p>
       <label className="pixel-editor__row">
         광장 크기
-        <select
-          value={doc.plazaHeight}
-          onChange={(e) => editor.setPlazaHeight(Number(e.target.value))}
+        <Select
+          value={String(doc.plazaHeight)}
+          options={CHARACTER_PLAZA_HEIGHTS.map((h) => ({
+            value: String(h),
+            label: `세로 ${h}타일${h === CHARACTER_PLAZA_HEIGHT_DEFAULT ? ' (기본)' : ''}`,
+          }))}
+          onChange={(h) => editor.setPlazaHeight(Number(h))}
           aria-label="광장에서 캐릭터 세로 크기"
-        >
-          {CHARACTER_PLAZA_HEIGHTS.map((h) => (
-            <option key={h} value={h}>
-              세로 {h}타일{h === CHARACTER_PLAZA_HEIGHT_DEFAULT ? ' (기본)' : ''}
-            </option>
-          ))}
-        </select>
+        />
       </label>
       <p className="form__hint">
         광장에서 이 캐릭터를 얼마나 크게 그릴지 정합니다 (그림판의 굵은 가로선이 1타일). 부딪히고
@@ -2058,28 +2116,18 @@ function ObjectSettings({ editor }: { editor: PixelDocument }) {
       <h3>오브젝트</h3>
       <div className="pixel-editor__row">
         크기
-        <select
-          value={cols}
-          onChange={(e) => editor.resize(Number(e.target.value), rows)}
+        <Select
+          value={String(cols)}
+          options={sizes.map((n) => ({ value: String(n), label: `가로 ${n}칸` }))}
+          onChange={(n) => editor.resize(Number(n), rows)}
           aria-label="가로 칸"
-        >
-          {sizes.map((n) => (
-            <option key={n} value={n}>
-              가로 {n}칸
-            </option>
-          ))}
-        </select>
-        <select
-          value={rows}
-          onChange={(e) => editor.resize(cols, Number(e.target.value))}
+        />
+        <Select
+          value={String(rows)}
+          options={sizes.map((n) => ({ value: String(n), label: `세로 ${n}칸` }))}
+          onChange={(n) => editor.resize(cols, Number(n))}
           aria-label="세로 칸"
-        >
-          {sizes.map((n) => (
-            <option key={n} value={n}>
-              세로 {n}칸
-            </option>
-          ))}
-        </select>
+        />
       </div>
       <p className="form__hint">
         지나갈 수 없는 칸을 누르세요. 보통 아래 줄(밑동)만 막아야 캐릭터가 뒤로 지나가며 가려집니다.
@@ -2115,7 +2163,7 @@ function FrameThumb({
   doc,
   revision,
 }: {
-  pixels: Uint8Array;
+  pixels: Uint16Array;
   doc: EditorDoc;
   revision: number;
 }) {

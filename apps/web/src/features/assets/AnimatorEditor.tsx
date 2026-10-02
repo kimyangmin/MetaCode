@@ -5,6 +5,7 @@ import {
   ANIMATOR_TRANSITION_LIMIT,
   ANY_STATE,
   ASSET_NAME_PATTERN,
+  type AnimatorParameter,
   type Animator,
   type AnimatorCondition,
   AnimatorParamType,
@@ -13,15 +14,17 @@ import {
   type AnimatorTransition,
   type AssetAnimation,
   BUILTIN_ANIMATOR_PARAMETERS,
-  MOTION_KEYS,
   MOTION_LABEL_MAX_LENGTH,
-  type MotionKey,
+  PARAMETER_KEYS,
+  type ParameterKey,
   PlazaStyle,
   animatorAnimationChoices,
   animatorAnimationExists,
   animatorClip,
   animatorParameters,
+  animatorLocksMovement,
   animatorProblems,
+  animatorStateSpeed,
   defaultAnimator,
   fireTrigger,
   setAnimatorBool,
@@ -30,20 +33,29 @@ import {
 } from '@metacode/shared';
 import {
   type PointerEvent as ReactPointerEvent,
+  type ReactNode,
   useEffect,
   useMemo,
   useRef,
   useState,
 } from 'react';
-import type { EditorAnimation, PixelDocument } from './editorModel';
+import { Select, isSelectOpen } from '../../ui/Select';
+import { NODE_H, NODE_W, type SkillKind, addSkill, freeName, snap } from './animatorSkills';
+import { type EditorAnimation, type PixelDocument, usedMotionKeys } from './editorModel';
 import { frameCanvas } from './pixelCanvas';
-import { ArrowDown, ArrowUp, ImagePlus, Link2, Plus, RotateCcw, Trash2, X } from 'lucide-react';
+import {
+  ArrowDown,
+  ArrowUp,
+  CircleHelp,
+  ImagePlus,
+  Link2,
+  Plus,
+  RotateCcw,
+  Swords,
+  Trash2,
+  X,
+} from 'lucide-react';
 
-/** 그래프 위 상태 상자 크기 */
-const NODE_W = 150;
-const NODE_H = 48;
-/** 끌어 옮길 때 맞추는 칸 */
-const GRID = 8;
 /** 같은 두 상태 사이의 전이 화살표 간격 */
 const EDGE_GAP = 12;
 
@@ -58,14 +70,21 @@ const DIRECTIONS = [
 ] as const;
 type Dir = (typeof DIRECTIONS)[number]['id'];
 
-const snap = (v: number) => Math.round(v / GRID) * GRID;
+/** 재생 속도 고르기 */
+const SPEEDS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4];
+/** "끝나면 넘어가기"의 지점 고르기 (애니메이션 한 바퀴의 %) */
+const EXIT_POINTS = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100];
 
-/** 비어 있는 이름 (base, base-2, base-3 …) */
-function freeName(base: string, used: ReadonlySet<string>): string {
-  if (!used.has(base)) return base;
-  let n = 2;
-  while (used.has(`${base}-${n}`)) n++;
-  return `${base}-${n}`;
+/** 파라미터 키 이름 (글자 키는 대문자로 보인다) */
+const keyLabel = (key: string) => key.toUpperCase();
+
+/** 상태 상자 아래 줄: 애니메이션과 옵션 */
+function stateDetail(state: AnimatorState): string {
+  const parts = [state.animation];
+  if (state.loop === false) parts.push('한 번');
+  if (animatorStateSpeed(state) !== 1) parts.push(`×${animatorStateSpeed(state)}`);
+  if (state.lockMove) parts.push('이동 막음');
+  return parts.join(' · ');
 }
 
 /**
@@ -89,7 +108,13 @@ export function withStatesFor(animator: Animator, animations: readonly string[])
 /** 전이에 붙일 짧은 설명 (그래프의 화살표 옆) */
 function conditionText(transition: AnimatorTransition): string {
   const parts = transition.conditions.map((c) => (c.value === false ? `!${c.param}` : c.param));
-  if (transition.exitTime) parts.push('끝나면');
+  if (transition.exitTime) {
+    parts.push(
+      transition.exitAt && transition.exitAt < 1
+        ? `${Math.round(transition.exitAt * 100)}%`
+        : '끝나면',
+    );
+  }
   return parts.join(' · ');
 }
 
@@ -112,6 +137,7 @@ export function AnimatorEditor({
   // 그릴 때마다 센다: 에디터는 애니메이션 목록을 그 자리에서 고치므로(GIF로 상태 추가 등) 배열로 memo하면
   // 새 애니메이션을 못 보고 "없는 애니메이션"으로 잡았다.
   const names = new Set(doc.animations.map((a) => a.name));
+  const [guide, setGuide] = useState(false);
 
   if (!animator) {
     return (
@@ -120,8 +146,9 @@ export function AnimatorEditor({
           <h2>애니메이터</h2>
           <p>
             상태(애니메이션)와 전이(화살표)로 광장에서 어떤 애니메이션을 언제 틀지 정합니다. 걷는
-            중·공중· 착지·첨부 보냄 같은 광장의 상황과, 숫자 키로 당기는 직접 만든 트리거로 상태를
-            옮길 수 있습니다. 애니메이터가 없으면 대기·걷기·점프·첨부 모션을 정해진 규칙대로 틉니다.
+            중·공중·착지·첨부 보냄 같은 광장의 상황과, 숫자·글자 키로 당기는 직접 만든 트리거로
+            상태를 옮길 수 있어 게임 캐릭터처럼 기술·콤보·모아 쏘기를 만들 수 있습니다. 애니메이터가
+            없으면 대기·걷기·점프·첨부 모션을 정해진 규칙대로 틉니다.
           </p>
           <div className="animator-editor__row">
             <button
@@ -145,11 +172,15 @@ export function AnimatorEditor({
             >
               빈 그래프로 시작
             </button>
+            <button type="button" className="button" onClick={() => setGuide(true)}>
+              <CircleHelp aria-hidden /> 애니메이터가 처음이라면
+            </button>
             <button type="button" className="button" onClick={onClose}>
               닫기
             </button>
           </div>
         </div>
+        {guide && <AnimatorGuide onClose={() => setGuide(false)} />}
       </section>
     );
   }
@@ -216,16 +247,19 @@ function AnimatorGraph({
   const svgRef = useRef<SVGSVGElement>(null);
   const dragSeq = useRef(0);
   const [runtimeState, setRuntimeState] = useState<string | null>(null);
+  /** 떠 있는 창: 도움말, 스킬 만들기 */
+  const [dialog, setDialog] = useState<'guide' | 'skill' | null>(null);
+  /** 미리보기와 고른 상태의 애니메이션이 함께 쓰는 보는 방향 */
+  const [dir, setDir] = useState<Dir>(
+    editor.doc.style === PlazaStyle.SideScroll ? 'right' : 'down',
+  );
 
   const commit = (next: Animator, key?: string) => editor.setAnimator(next, key);
   const problems = animatorProblems(animator, names);
   const params = animatorParameters(animator);
   const byName = new Map(animator.states.map((s) => [s.name, s]));
   const choices = animatorAnimationChoices(names);
-  const usedKeys = new Set<string>([
-    ...editor.doc.animations.map((a) => a.key).filter((k): k is MotionKey => !!k),
-    ...animator.parameters.map((p) => p.key).filter((k): k is MotionKey => !!k),
-  ]);
+  const usedKeys = usedMotionKeys(editor.doc);
 
   // ── 좌표 ──
   const graphPoint = (e: { clientX: number; clientY: number }) => {
@@ -460,6 +494,15 @@ function AnimatorGraph({
   return (
     <section className="animator-editor" aria-label="애니메이터">
       <div className="animator-editor__toolbar">
+        <button
+          type="button"
+          className="icon-button animator-editor__help"
+          aria-label="애니메이터 도움말"
+          title="애니메이터 도움말 (유니티 Animator를 처음 쓴다면)"
+          onClick={() => setDialog('guide')}
+        >
+          <CircleHelp aria-hidden />
+        </button>
         <h2>애니메이터</h2>
         <button
           type="button"
@@ -477,6 +520,18 @@ function AnimatorGraph({
           onClick={onAddFromGif}
         >
           <ImagePlus aria-hidden /> GIF로 상태
+        </button>
+        <button
+          type="button"
+          className="button"
+          disabled={
+            animator.states.length >= ANIMATOR_STATE_LIMIT ||
+            animator.parameters.length >= ANIMATOR_PARAMETER_LIMIT
+          }
+          title="키를 누르면 쓰는 기술, 콤보, 모아 쏘기를 상태·전이·파라미터째 한 번에 만듭니다"
+          onClick={() => setDialog('skill')}
+        >
+          <Swords aria-hidden /> 스킬 만들기
         </button>
         <button
           type="button"
@@ -534,7 +589,7 @@ function AnimatorGraph({
         <h4>직접 만든 것</h4>
         {animator.parameters.length === 0 && (
           <p className="form__hint">
-            숫자 키를 달면 광장에서 그 키로 트리거를 당기거나 켜고 끕니다.
+            숫자·글자 키를 달면 광장에서 그 키로 트리거를 당기거나 켜고 끕니다.
           </p>
         )}
         <ul className="animator-editor__custom">
@@ -707,8 +762,7 @@ function AnimatorGraph({
                   {state.name}
                 </text>
                 <text x={12} y={37} className="animator-editor__node-anim">
-                  {state.animation}
-                  {state.loop === false ? ' · 한 번' : ''}
+                  {stateDetail(state)}
                 </text>
                 {state.name === animator.entry && (
                   <text
@@ -734,6 +788,8 @@ function AnimatorGraph({
         {selectedState ? (
           <StateInspector
             key={selectedState.name}
+            editor={editor}
+            dir={dir}
             state={selectedState}
             entry={animator.entry === selectedState.name}
             choices={choices}
@@ -778,8 +834,27 @@ function AnimatorGraph({
             </p>
           </section>
         )}
-        <AnimatorPreview editor={editor} animator={animator} onState={setRuntimeState} />
+        <AnimatorPreview
+          editor={editor}
+          animator={animator}
+          dir={dir}
+          onDir={setDir}
+          onState={setRuntimeState}
+        />
       </aside>
+      {dialog === 'guide' && <AnimatorGuide onClose={() => setDialog(null)} />}
+      {dialog === 'skill' && (
+        <SkillDialog
+          animator={animator}
+          choices={choices}
+          usedKeys={usedKeys}
+          onClose={() => setDialog(null)}
+          onCreate={(next) => {
+            commit(next);
+            setDialog(null);
+          }}
+        />
+      )}
     </section>
   );
 }
@@ -807,6 +882,8 @@ function TransitionList({
 }
 
 function StateInspector({
+  editor,
+  dir,
   state,
   entry,
   choices,
@@ -819,6 +896,8 @@ function StateInspector({
   onRemove,
   onSelectTransition,
 }: {
+  editor: PixelDocument;
+  dir: Dir;
   state: AnimatorState;
   entry: boolean;
   choices: string[];
@@ -852,19 +931,21 @@ function StateInspector({
           }}
         />
       </label>
-      <label className="pixel-editor__field">
+      <div className="pixel-editor__field">
         애니메이션
-        <select value={state.animation} onChange={(e) => onChange({ animation: e.target.value })}>
-          {!choices.includes(state.animation) && (
-            <option value={state.animation}>{state.animation} (없음)</option>
-          )}
-          {choices.map((c) => (
-            <option key={c} value={c}>
-              {c}
-            </option>
-          ))}
-        </select>
-      </label>
+        <Select
+          value={state.animation}
+          aria-label="상태의 애니메이션"
+          options={[
+            ...(choices.includes(state.animation)
+              ? []
+              : [{ value: state.animation, label: `${state.animation} (없음)` }]),
+            ...choices.map((c) => ({ value: c, label: c })),
+          ]}
+          onChange={(animation) => onChange({ animation })}
+        />
+      </div>
+      <StateClip editor={editor} state={state} dir={dir} />
       <p className="form__hint">
         방향이 붙은 애니메이션(walk-left 등)은 방향을 뗀 이름으로 고르면 광장이 보는 방향의 것을
         씁니다.
@@ -876,6 +957,31 @@ function StateInspector({
           onChange={(e) => onChange({ loop: e.target.checked ? undefined : false })}
         />
         반복 (끄면 한 번 틀고 마지막 프레임에 머묾)
+      </label>
+      <div className="pixel-editor__row">
+        재생 속도
+        <Select
+          value={String(animatorStateSpeed(state))}
+          aria-label="재생 속도"
+          options={SPEEDS.map((v) => ({ value: String(v), label: `×${v}` }))}
+          onChange={(v) => onChange({ speed: Number(v) === 1 ? undefined : Number(v) })}
+        />
+      </div>
+      <label className="pixel-editor__check">
+        <input
+          type="checkbox"
+          checked={!!state.lockMove}
+          onChange={(e) => onChange({ lockMove: e.target.checked || undefined })}
+        />
+        이 상태 동안 이동 막기 (기술을 쓰는 동안 제자리에)
+      </label>
+      <label className="pixel-editor__check">
+        <input
+          type="checkbox"
+          checked={!!state.noInterrupt}
+          onChange={(e) => onChange({ noInterrupt: e.target.checked || undefined })}
+        />
+        Any State 전이로 끊기지 않기 (콤보 중에 키를 다시 눌러도 처음부터 다시 틀지 않음)
       </label>
       <div className="animator-editor__row">
         <button type="button" className="button" disabled={entry} onClick={onEntry}>
@@ -931,31 +1037,27 @@ function TransitionInspector({
           const type = params.get(condition.param)?.type;
           return (
             <li key={i}>
-              <select
+              <Select
                 value={condition.param}
                 aria-label="파라미터"
-                onChange={(e) => setCondition(i, withValue(e.target.value, condition.value))}
-              >
-                {!params.has(condition.param) && (
-                  <option value={condition.param}>{condition.param} (없음)</option>
-                )}
-                {names.map((n) => (
-                  <option key={n} value={n}>
-                    {n}
-                  </option>
-                ))}
-              </select>
+                options={[
+                  ...(params.has(condition.param)
+                    ? []
+                    : [{ value: condition.param, label: `${condition.param} (없음)` }]),
+                  ...names.map((n) => ({ value: n, label: n })),
+                ]}
+                onChange={(param) => setCondition(i, withValue(param, condition.value))}
+              />
               {type === AnimatorParamType.Bool ? (
-                <select
+                <Select
                   value={condition.value === false ? 'false' : 'true'}
                   aria-label="값"
-                  onChange={(e) =>
-                    setCondition(i, { param: condition.param, value: e.target.value === 'true' })
-                  }
-                >
-                  <option value="true">참</option>
-                  <option value="false">거짓</option>
-                </select>
+                  options={[
+                    { value: 'true', label: '참' },
+                    { value: 'false', label: '거짓' },
+                  ]}
+                  onChange={(v) => setCondition(i, { param: condition.param, value: v === 'true' })}
+                />
               ) : (
                 <span className="form__hint">당기면</span>
               )}
@@ -987,10 +1089,34 @@ function TransitionInspector({
         <input
           type="checkbox"
           checked={!!transition.exitTime}
-          onChange={(e) => onChange({ exitTime: e.target.checked || undefined })}
+          onChange={(e) =>
+            onChange(
+              e.target.checked ? { exitTime: true } : { exitTime: undefined, exitAt: undefined },
+            )
+          }
         />
         끝나면 넘어가기 (지금 애니메이션을 한 번 다 튼 뒤에)
       </label>
+      {transition.exitTime && (
+        <div className="pixel-editor__row">
+          넘어가는 지점
+          <Select
+            value={String(Math.round((transition.exitAt ?? 1) * 100))}
+            aria-label="애니메이션의 몇 % 지점에서 넘어갈지"
+            options={EXIT_POINTS.map((v) => ({
+              value: String(v),
+              label: v === 100 ? '끝까지 (100%)' : `${v}%`,
+            }))}
+            onChange={(v) => onChange({ exitAt: Number(v) === 100 ? undefined : Number(v) / 100 })}
+          />
+        </div>
+      )}
+      {transition.exitTime && (transition.exitAt ?? 1) < 1 && (
+        <p className="form__hint">
+          콤보처럼 앞 동작이 끝나기 전에 다음 동작으로 이으려면 지점을 앞당깁니다. 그 전에 당긴
+          트리거는 지점에 이를 때까지 남아 있습니다.
+        </p>
+      )}
       <div className="animator-editor__row">
         <button type="button" className="button" onClick={() => onMove(-1)} title="먼저 보기">
           <ArrowUp aria-hidden /> 먼저
@@ -1013,10 +1139,10 @@ function ParameterRow({
   onChange,
   onRemove,
 }: {
-  parameter: Animator['parameters'][number];
+  parameter: AnimatorParameter;
   usedKeys: ReadonlySet<string>;
   taken(name: string): boolean;
-  onChange(next: Animator['parameters'][number], key?: string): void;
+  onChange(next: AnimatorParameter, key?: string): void;
   onRemove(): void;
 }) {
   const [name, setName] = useState(parameter.name);
@@ -1051,24 +1177,24 @@ function ParameterRow({
         </button>
       </div>
       <div className="animator-editor__row">
-        <select
+        <Select
           value={parameter.key ?? ''}
-          aria-label="광장에서 누를 숫자 키"
-          onChange={(e) => {
-            const key = (e.target.value || undefined) as MotionKey | undefined;
+          aria-label="광장에서 누를 키"
+          options={[
+            { value: '', label: '키 없음' },
+            ...PARAMETER_KEYS.filter((k) => k === parameter.key || !usedKeys.has(k)).map((k) => ({
+              value: k,
+              label: `${keyLabel(k)} 키`,
+            })),
+          ]}
+          onChange={(value) => {
+            const key = (value || undefined) as ParameterKey | undefined;
             const next = { ...parameter };
             if (key) next.key = key;
             else delete next.key;
             onChange(next);
           }}
-        >
-          <option value="">키 없음</option>
-          {MOTION_KEYS.filter((k) => k === parameter.key || !usedKeys.has(k)).map((k) => (
-            <option key={k} value={k}>
-              {k} 키
-            </option>
-          ))}
-        </select>
+        />
         <input
           value={parameter.label ?? ''}
           maxLength={MOTION_LABEL_MAX_LENGTH}
@@ -1082,6 +1208,21 @@ function ParameterRow({
           }}
         />
       </div>
+      {parameter.type === AnimatorParamType.Bool && (
+        <label className="pixel-editor__check">
+          <input
+            type="checkbox"
+            checked={!!parameter.hold}
+            onChange={(e) => {
+              const next = { ...parameter };
+              if (e.target.checked) next.hold = true;
+              else delete next.hold;
+              onChange(next);
+            }}
+          />
+          키를 누르는 동안만 켜기 (모아 쏘기 등. 끄면 누를 때마다 켜고 끔)
+        </label>
+      )}
     </li>
   );
 }
@@ -1095,27 +1236,31 @@ const PREVIEW_BOX = 128;
 function AnimatorPreview({
   editor,
   animator,
+  dir,
+  onDir,
   onState,
 }: {
   editor: PixelDocument;
   animator: Animator;
+  dir: Dir;
+  onDir(dir: Dir): void;
   onState(state: string | null): void;
 }) {
   const ref = useRef<HTMLCanvasElement>(null);
   /** 그래프를 돌리는 상태. 첫 프레임에 만든다 (처음부터 누르면 비운다) */
   const runtime = useRef<AnimatorRuntime | null>(null);
-  const [dir, setDir] = useState<Dir>(
-    editor.doc.style === PlazaStyle.SideScroll ? 'right' : 'down',
-  );
   const [moving, setMoving] = useState(false);
   const [airborne, setAirborne] = useState(false);
+  const [falling, setFalling] = useState(false);
+  /** 지금 상태가 이동을 막는지 (보여 주기만 한다) */
+  const [locked, setLocked] = useState(false);
   /** 직접 만든 불 값 파라미터 (이름 → 값). 매 프레임 그래프에 넣고, 처음부터면 함께 끈다 */
   const [flags, setFlags] = useState<Record<string, boolean>>({});
   const [shown, setShown] = useState(animator.entry);
   // 그리는 루프는 한 번만 걸고, 바뀐 값은 이 ref로 읽는다.
-  const live = useRef({ animator, dir, moving, airborne, flags });
+  const live = useRef({ animator, dir, moving, airborne, falling, flags });
   useEffect(() => {
-    live.current = { animator, dir, moving, airborne, flags };
+    live.current = { animator, dir, moving, airborne, falling, flags };
   });
   const { width, height } = editor.doc;
   const longest = Math.max(width, height);
@@ -1127,7 +1272,14 @@ function AnimatorPreview({
     let drawn = '';
     let shownState = '';
     const tick = (now: number) => {
-      const { animator: graph, dir: facing, moving: walk, airborne: air, flags: on } = live.current;
+      const {
+        animator: graph,
+        dir: facing,
+        moving: walk,
+        airborne: air,
+        falling: fall,
+        flags: on,
+      } = live.current;
       runtime.current ??= startAnimator(graph, now);
       const doc = editor.doc;
       // 문서의 애니메이션을 매니페스트 꼴로 (프레임 번호는 애니메이션 안의 순서)
@@ -1142,6 +1294,7 @@ function AnimatorPreview({
       const rt = runtime.current;
       setAnimatorBool(rt, 'moving', walk);
       setAnimatorBool(rt, 'airborne', air);
+      setAnimatorBool(rt, 'falling', air && fall);
       for (const p of graph.parameters) {
         if (p.type === AnimatorParamType.Bool) setAnimatorBool(rt, p.name, on[p.name] ?? false);
       }
@@ -1152,6 +1305,7 @@ function AnimatorPreview({
       if (rt.state !== shownState) {
         shownState = rt.state;
         setShown(rt.state);
+        setLocked(animatorLocksMovement(graph, rt));
         onState(rt.state);
       }
       const state = graph.states.find((s) => s.name === rt.state);
@@ -1160,7 +1314,7 @@ function AnimatorPreview({
       const canvas = ref.current;
       if (canvas && source && source.frames.length > 0) {
         // rAF의 now는 트리거를 당긴 시각(performance.now())보다 이를 수 있다 (음수면 프레임 번호가 -1)
-        const elapsed = Math.max(0, now - rt.since);
+        const elapsed = Math.max(0, now - rt.since) * animatorStateSpeed(state!);
         const step = Math.floor(elapsed / source.frameMs);
         const index =
           state?.loop === false
@@ -1221,15 +1375,15 @@ function AnimatorPreview({
       </div>
       <p className="animator-editor__current">
         지금 상태: <strong>{shown}</strong>
+        {locked && <span className="animator-editor__locked">이동 막힘</span>}
       </p>
       <div className="animator-editor__row">
-        <select value={dir} onChange={(e) => setDir(e.target.value as Dir)} aria-label="보는 방향">
-          {DIRECTIONS.map((d) => (
-            <option key={d.id} value={d.id}>
-              {d.label}
-            </option>
-          ))}
-        </select>
+        <Select
+          value={dir}
+          aria-label="보는 방향"
+          options={DIRECTIONS.map((d) => ({ value: d.id, label: d.label }))}
+          onChange={(v) => onDir(v as Dir)}
+        />
         <button
           type="button"
           className="icon-button"
@@ -1252,16 +1406,43 @@ function AnimatorPreview({
         <input type="checkbox" checked={airborne} onChange={(e) => setAirborne(e.target.checked)} />
         airborne (공중)
       </label>
-      {bools.map((p) => (
-        <label key={p.name} className="pixel-editor__check">
-          <input
-            type="checkbox"
-            checked={flags[p.name] ?? false}
-            onChange={(e) => setFlags((f) => ({ ...f, [p.name]: e.target.checked }))}
-          />
-          {p.name}
-        </label>
-      ))}
+      <label className="pixel-editor__check">
+        <input
+          type="checkbox"
+          checked={falling}
+          disabled={!airborne}
+          onChange={(e) => setFalling(e.target.checked)}
+        />
+        falling (떨어지는 중)
+      </label>
+      {bools.map((p) =>
+        p.hold ? (
+          // 누르는 동안 켜지는 불 값은 광장처럼 누르고 있는 동안만 켠다
+          <button
+            key={p.name}
+            type="button"
+            className="button animator-editor__hold"
+            aria-pressed={flags[p.name] ?? false}
+            onPointerDown={(e) => {
+              e.currentTarget.setPointerCapture(e.pointerId);
+              setFlags((f) => ({ ...f, [p.name]: true }));
+            }}
+            onPointerUp={() => setFlags((f) => ({ ...f, [p.name]: false }))}
+            onPointerCancel={() => setFlags((f) => ({ ...f, [p.name]: false }))}
+          >
+            {p.name} (누르는 동안)
+          </button>
+        ) : (
+          <label key={p.name} className="pixel-editor__check">
+            <input
+              type="checkbox"
+              checked={flags[p.name] ?? false}
+              onChange={(e) => setFlags((f) => ({ ...f, [p.name]: e.target.checked }))}
+            />
+            {p.name}
+          </label>
+        ),
+      )}
       <div className="animator-editor__triggers">
         {triggers.map((p) => (
           <button
@@ -1277,5 +1458,428 @@ function AnimatorPreview({
         ))}
       </div>
     </section>
+  );
+}
+
+/**
+ * 고른 상태의 애니메이션만 되풀이해 보여 준다 (GIF로 만든 상태가 어떤 그림인지 바로 보이게). 보는 방향은
+ * 미리보기와 같고, 상태의 재생 속도·반복 여부를 그대로 따른다.
+ */
+function StateClip({
+  editor,
+  state,
+  dir,
+}: {
+  editor: PixelDocument;
+  state: AnimatorState;
+  dir: Dir;
+}) {
+  const ref = useRef<HTMLCanvasElement>(null);
+  const { doc } = editor;
+  const animations: Record<string, AssetAnimation> = {};
+  const owner = new Map<AssetAnimation, EditorAnimation>();
+  for (const a of doc.animations) {
+    const clip = { frames: a.frames.map((_, i) => i), frameMs: a.frameMs };
+    animations[a.name] = clip;
+    owner.set(clip, a);
+  }
+  const clip = animatorClip({ animations, style: doc.style }, state.animation, dir);
+  const source = clip ? owner.get(clip.animation) : undefined;
+  const flip = clip
+    ? clip.directional
+      ? clip.mirrored
+      : doc.style === PlazaStyle.SideScroll && dir === 'left'
+    : false;
+  const longest = Math.max(doc.width, doc.height);
+  const scale = Math.max(1, Math.floor(CLIP_BOX / longest));
+  const shownSize = CLIP_BOX / longest;
+  const speed = animatorStateSpeed(state);
+  const once = state.loop === false;
+  const sourceName = source?.name;
+
+  // 그리는 루프: 상태·방향·그림이 바뀔 때마다 새로 건다 (한 번 트는 상태는 끝에서 잠깐 머문 뒤 처음부터)
+  useEffect(() => {
+    let raf = 0;
+    let drawn = '';
+    const start = performance.now();
+    const tick = (now: number) => {
+      raf = requestAnimationFrame(tick);
+      const canvas = ref.current;
+      const current = editor.doc.animations.find((a) => a.name === sourceName);
+      if (!canvas || !current || current.frames.length === 0) return;
+      const length = current.frames.length;
+      const step = Math.floor((Math.max(0, now - start) * speed) / current.frameMs);
+      const index = once ? Math.min(step % (length + 4), length - 1) : step % length;
+      const key = `${index}:${editor.version}`;
+      if (key === drawn) return;
+      drawn = key;
+      const { width, height, palette } = editor.doc;
+      const ctx = canvas.getContext('2d')!;
+      ctx.imageSmoothingEnabled = false;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.save();
+      if (flip) {
+        ctx.translate(canvas.width, 0);
+        ctx.scale(-1, 1);
+      }
+      ctx.drawImage(
+        frameCanvas(current.frames[index]!, width, height, palette),
+        0,
+        0,
+        canvas.width,
+        canvas.height,
+      );
+      ctx.restore();
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [editor, sourceName, flip, speed, once]);
+
+  if (!source) {
+    return <p className="form__error">이 상태의 애니메이션({state.animation})이 없습니다.</p>;
+  }
+  const cycle = Math.round((source.frames.length * source.frameMs) / speed);
+  return (
+    <figure className="animator-editor__clip">
+      <div className="animator-editor__stage">
+        <canvas
+          ref={ref}
+          width={doc.width * scale}
+          height={doc.height * scale}
+          style={{ width: doc.width * shownSize, height: doc.height * shownSize }}
+        />
+      </div>
+      <figcaption>
+        {source.name} · {source.frames.length}프레임 · 한 바퀴 {(cycle / 1000).toFixed(2)}초
+      </figcaption>
+    </figure>
+  );
+}
+
+/** 고른 상태의 애니메이션 미리보기 크기 (가장 긴 변, px) */
+const CLIP_BOX = 96;
+
+/**
+ * 애니메이터 안에 뜨는 창 (도움말, 스킬 만들기). Esc는 이 창만 닫는다: 도트 에디터의 키 처리는 에디터
+ * 안에 이 창이 떠 있으면 아무것도 하지 않고, 여기서 막아(preventDefault) 아래의 설정 창도 닫히지 않는다.
+ */
+function EditorDialog({
+  title,
+  onClose,
+  children,
+  wide,
+}: {
+  title: string;
+  onClose(): void;
+  children: ReactNode;
+  wide?: boolean;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || isSelectOpen()) return;
+      e.preventDefault();
+      e.stopPropagation();
+      onClose();
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [onClose]);
+  useEffect(() => {
+    ref.current?.querySelector<HTMLElement>('input, button:not(.dialog__close)')?.focus();
+  }, []);
+  return (
+    <div
+      className="dialog__overlay animator-dialog"
+      onMouseDown={(e) => e.target === e.currentTarget && onClose()}
+    >
+      <div
+        ref={ref}
+        className={wide ? 'dialog dialog--wide' : 'dialog'}
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+      >
+        <header className="dialog__header">
+          <h2>{title}</h2>
+          <button
+            type="button"
+            className="icon-button dialog__close"
+            onClick={onClose}
+            aria-label="닫기"
+            title="닫기 (Esc)"
+          >
+            <X aria-hidden />
+          </button>
+        </header>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+/** 유니티 Animator를 써 보지 않은 사람을 위한 설명 */
+function AnimatorGuide({ onClose }: { onClose(): void }) {
+  return (
+    <EditorDialog title="애니메이터 도움말" onClose={onClose} wide>
+      <div className="animator-guide">
+        <p>
+          애니메이터는 광장에서 <strong>언제 어떤 애니메이션을 틀지</strong> 정하는 그림입니다.
+          상자(상태)를 화살표(전이)로 이어 &ldquo;이런 일이 생기면 저 애니메이션으로
+          넘어가라&rdquo;를 적습니다. 유니티의 Animator와 같은 방식입니다.
+        </p>
+        <h3>상태 (상자)</h3>
+        <ul>
+          <li>상자 하나가 애니메이션 하나를 틉니다. 주황 테두리가 처음 시작하는 상태입니다.</li>
+          <li>
+            <code>walk</code>처럼 방향 없이 고르면 광장에서 보는 방향의 <code>walk-left</code> 등을
+            찾아 씁니다.
+          </li>
+          <li>
+            반복을 끄면 한 번 틀고 마지막 프레임에 머뭅니다. 재생 속도로 빠르게·느리게 틀고, 이동
+            막기를 켜면 그 상태 동안 캐릭터가 제자리에 섭니다 (기술을 쓰는 동안).
+          </li>
+          <li>상태를 누르면 오른쪽에 그 상태의 애니메이션이 움직이며 보입니다.</li>
+        </ul>
+        <h3>전이 (화살표)</h3>
+        <ul>
+          <li>조건을 모두 만족하면 화살표 방향으로 넘어갑니다.</li>
+          <li>
+            &ldquo;끝나면 넘어가기&rdquo;를 켜면 지금 애니메이션이 한 바퀴 돈 뒤에 넘어갑니다.
+            넘어가는 지점을 60%처럼 앞당기면 동작이 끝나기 전에 다음 동작으로 이어집니다 (콤보).
+          </li>
+          <li>
+            한 상태에서 나가는 화살표가 여럿이면 위에서부터 보고 처음 맞는 것으로 갑니다 (설정 칸의
+            먼저/나중에로 순서를 바꿈).
+          </li>
+        </ul>
+        <h3>Any State</h3>
+        <p>
+          여기서 나가는 화살표는 <strong>어느 상태에서든</strong> 조건이 맞으면 넘어갑니다 (첨부를
+          보내면 어디서든 emote 등). 다른 화살표보다 먼저 봅니다. 콤보처럼 중간에 끊기면 안 되는
+          상태는 &ldquo;Any State 전이로 끊기지 않기&rdquo;를 켭니다.
+        </p>
+        <h3>파라미터 (조건에 쓰는 값)</h3>
+        <ul>
+          <li>
+            광장이 정하는 것: <code>moving</code>(걷는 중), <code>airborne</code>(공중),{' '}
+            <code>falling</code>(떨어지는 중), <code>jump</code>·<code>land</code>(뛰어오름·착지
+            순간), <code>emote</code>(첨부를 보낸 순간)
+          </li>
+          <li>
+            <strong>트리거</strong>: 키를 누르면 한 번 당겨지고, 그것을 조건으로 한 전이가 쓰면
+            사라집니다 (기술, 공격).
+          </li>
+          <li>
+            <strong>불 값</strong>: 켜짐/꺼짐. 키를 누를 때마다 바꾸거나, &ldquo;누르는 동안만
+            켜기&rdquo;로 누르고 있는 동안만 켭니다 (모아 쏘기, 막기).
+          </li>
+          <li>
+            키는 숫자 1~0과 글자 Z X C V A S D F Q W E R 중에서 답니다. 광장의 다른 사람 화면에도
+            똑같이 보입니다.
+          </li>
+        </ul>
+        <h3>이렇게 만들어 보세요</h3>
+        <ul>
+          <li>
+            <strong>기술 하나</strong>: 트리거 <code>slash</code>(Z 키) → Any State에서{' '}
+            <code>slash</code> 상태로 (조건 slash), <code>slash</code>에서 시작 상태로 (끝나면).
+          </li>
+          <li>
+            <strong>3단 콤보</strong>: 1타 → 2타 → 3타를 같은 트리거 + &ldquo;끝나면&rdquo;(60%)으로
+            잇고, 각 타에서 시작 상태로 (끝나면)도 잇습니다. 치는 중에 다시 누르면 다음 타로
+            이어집니다.
+          </li>
+          <li>
+            <strong>모아 쏘기</strong>: 누르는 동안만 켜지는 불 값 <code>charge</code> → 켜지면
+            모으기 상태, 꺼지면 쏘기 상태, 쏘기가 끝나면 시작 상태로.
+          </li>
+          <li>
+            <strong>공중 공격</strong>: 조건을 <code>airborne</code>(참) + 트리거로 두 개 달면 뛰어
+            있을 때만 씁니다.
+          </li>
+        </ul>
+        <p className="form__hint">
+          기술 하나·콤보·모아 쏘기는 도구 막대의 &ldquo;스킬 만들기&rdquo;로 한 번에 만들 수
+          있습니다. 오른쪽 미리보기에서 걷는 중·공중을 켜고 트리거를 눌러 바로 시험해 보세요.
+        </p>
+      </div>
+    </EditorDialog>
+  );
+}
+
+const SKILL_KINDS: { id: SkillKind; label: string; hint: string }[] = [
+  { id: 'once', label: '기술 하나', hint: '키를 누르면 한 번 쓰고 돌아옵니다.' },
+  {
+    id: 'combo',
+    label: '콤보',
+    hint: '누를 때마다 1타 → 2타 → 3타. 치는 중에 누르면 이어지고, 안 누르면 끝나고 돌아옵니다.',
+  },
+  {
+    id: 'hold',
+    label: '모아 쏘기',
+    hint: '누르고 있는 동안 모으기를 되풀이하고, 떼면 쏘기를 한 번 튼 뒤 돌아옵니다.',
+  },
+];
+
+/** 스킬 만들기: 종류·키·애니메이션을 고르면 파라미터·상태·전이를 한 번에 만든다 */
+function SkillDialog({
+  animator,
+  choices,
+  usedKeys,
+  onClose,
+  onCreate,
+}: {
+  animator: Animator;
+  choices: string[];
+  usedKeys: ReadonlySet<string>;
+  onClose(): void;
+  onCreate(next: Animator): void;
+}) {
+  const freeKeys = PARAMETER_KEYS.filter((k) => !usedKeys.has(k));
+  const [kind, setKind] = useState<SkillKind>('once');
+  const [name, setName] = useState('skill');
+  const [label, setLabel] = useState('');
+  const [key, setKey] = useState<string>(
+    freeKeys.find((k) => /[a-z]/.test(k)) ?? freeKeys[0] ?? '',
+  );
+  const [animations, setAnimations] = useState<string[]>([choices[0] ?? '', '', '']);
+  const [lockMove, setLockMove] = useState(true);
+  const [comboAt, setComboAt] = useState(60);
+  const [error, setError] = useState<string | null>(null);
+  const slots =
+    kind === 'once'
+      ? [{ label: '기술 애니메이션', optional: false }]
+      : kind === 'combo'
+        ? [
+            { label: '1타', optional: false },
+            { label: '2타', optional: false },
+            { label: '3타', optional: true },
+          ]
+        : [
+            { label: '모으기 (누르는 동안 되풀이)', optional: false },
+            { label: '쏘기 (떼면 한 번)', optional: true },
+          ];
+  const create = () => {
+    if (!ASSET_NAME_PATTERN.test(name)) {
+      setError('이름은 영문 소문자로 시작하고 소문자·숫자·-만 씁니다.');
+      return;
+    }
+    const result = addSkill(animator, {
+      kind,
+      name,
+      key: (key || undefined) as ParameterKey | undefined,
+      label,
+      animations: animations.slice(0, slots.length).filter(Boolean),
+      lockMove,
+      comboAt: comboAt / 100,
+    });
+    if (typeof result === 'string') setError(result);
+    else onCreate(result);
+  };
+  return (
+    <EditorDialog title="스킬 만들기" onClose={onClose}>
+      <div className="animator-skill">
+        <div className="pixel-editor__segmented" role="radiogroup" aria-label="스킬 종류">
+          {SKILL_KINDS.map((k) => (
+            <button
+              key={k.id}
+              type="button"
+              role="radio"
+              aria-checked={kind === k.id}
+              onClick={() => {
+                setKind(k.id);
+                setError(null);
+              }}
+            >
+              {k.label}
+            </button>
+          ))}
+        </div>
+        <p className="form__hint">{SKILL_KINDS.find((k) => k.id === kind)!.hint}</p>
+        <label className="pixel-editor__field">
+          이름 (파라미터·상태 이름, 영문)
+          <input
+            value={name}
+            maxLength={24}
+            aria-invalid={!ASSET_NAME_PATTERN.test(name) || undefined}
+            onChange={(e) => setName(e.target.value.toLowerCase())}
+          />
+        </label>
+        <div className="pixel-editor__row">
+          키
+          <Select
+            value={key}
+            aria-label="광장에서 누를 키"
+            options={[
+              { value: '', label: '키 없음' },
+              ...freeKeys.map((k) => ({ value: k, label: `${keyLabel(k)} 키` })),
+            ]}
+            onChange={setKey}
+          />
+          <input
+            value={label}
+            maxLength={MOTION_LABEL_MAX_LENGTH}
+            placeholder="모션 목록 이름 (예: 베기)"
+            aria-label="모션 목록에 보일 이름"
+            onChange={(e) => setLabel(e.target.value)}
+          />
+        </div>
+        {slots.map((slot, i) => (
+          <div key={`${kind}-${i}`} className="pixel-editor__row">
+            {slot.label}
+            {slot.optional ? ' (없어도 됨)' : ''}
+            <Select
+              value={animations[i] ?? ''}
+              aria-label={slot.label}
+              options={[
+                { value: '', label: slot.optional ? '없음' : '고르세요' },
+                ...choices.map((c) => ({ value: c, label: c })),
+              ]}
+              onChange={(v) => setAnimations((list) => list.map((a, j) => (j === i ? v : a)))}
+            />
+          </div>
+        ))}
+        {kind === 'combo' && (
+          <div className="pixel-editor__row">
+            다음 타로 넘어가는 지점
+            <Select
+              value={String(comboAt)}
+              aria-label="다음 타로 넘어가는 지점"
+              options={EXIT_POINTS.map((v) => ({
+                value: String(v),
+                label: v === 100 ? '끝까지 (100%)' : `${v}%`,
+              }))}
+              onChange={(v) => setComboAt(Number(v))}
+            />
+          </div>
+        )}
+        <label className="pixel-editor__check">
+          <input
+            type="checkbox"
+            checked={lockMove}
+            onChange={(e) => setLockMove(e.target.checked)}
+          />
+          기술을 쓰는 동안 이동 막기
+        </label>
+        <p className="form__hint">
+          쓸 애니메이션이 없으면 먼저 그림 화면에서 애니메이션을 만들거나 &ldquo;GIF로 상태&rdquo;로
+          넣으세요. 만든 뒤에도 그래프에서 고칠 수 있습니다 (되돌리기 가능).
+        </p>
+        {error && (
+          <p className="form__error" role="alert">
+            {error}
+          </p>
+        )}
+        <div className="animator-skill__actions">
+          <button type="button" className="button" onClick={onClose}>
+            취소
+          </button>
+          <button type="button" className="button button--primary" onClick={create}>
+            만들기
+          </button>
+        </div>
+      </div>
+    </EditorDialog>
   );
 }

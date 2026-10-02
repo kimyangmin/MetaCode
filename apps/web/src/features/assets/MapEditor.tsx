@@ -21,7 +21,9 @@ import {
   useRef,
   useState,
 } from 'react';
+import { useUnsavedGuard } from './unsavedGuard';
 import { ApiError, apiFetch } from '../../api/client';
+import { announceAssetsChanged } from './editorWindow';
 import { jsonBody } from '../../api/queries';
 import { AssetPreview } from './AssetPreview';
 import { useCommunityAssets } from './api';
@@ -123,6 +125,7 @@ export function MapEditor({
   }
   return (
     <MapEditorBody
+      communityId={communityId}
       path={path}
       title={`${communityName} 광장`}
       initial={loaded.data}
@@ -138,12 +141,14 @@ export function MapEditor({
 }
 
 function MapEditorBody({
+  communityId,
   path,
   title,
   initial,
   entries,
   onClose,
 }: {
+  communityId: string;
   path: string;
   title: string;
   initial: CommunityMapDto;
@@ -185,10 +190,14 @@ function MapEditorBody({
   const definition = toDefinition(doc);
   const layout = buildCollision(definition, assetOf);
 
+  /** 닫기를 확인받았다 (창을 닫을 때 브라우저가 한 번 더 묻지 않게) */
+  const discarding = useRef(false);
   const requestClose = useCallback(() => {
     if (editor.dirty && !window.confirm('저장하지 않은 변경이 있습니다. 닫을까요?')) return;
+    discarding.current = true;
     onClose();
   }, [editor, onClose]);
+  useUnsavedGuard(editor, discarding);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -395,6 +404,7 @@ function MapEditorBody({
       }
       setCustom(saved.custom);
       setStatus({ kind: 'ok', text: ok });
+      announceAssetsChanged(communityId);
     } catch (err) {
       setStatus({
         kind: 'error',

@@ -4,9 +4,9 @@ import {
   FRAME_MS_MAX,
   FRAME_MS_MIN,
   MOTION_KEYS,
-  PALETTE_MAX_COLORS,
 } from '@metacode/shared';
 import { useEffect, useMemo, useState } from 'react';
+import { Select, isSelectOpen } from '../../ui/Select';
 import { ANIMATION_LIMIT, type PixelDocument } from './editorModel';
 import {
   type Anchor,
@@ -112,7 +112,7 @@ export function GifImportDialog({
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return;
+      if (e.key !== 'Escape' || isSelectOpen()) return;
       // 아래의 도트 에디터까지 닫히지 않게 한다.
       e.preventDefault();
       e.stopPropagation();
@@ -186,7 +186,7 @@ export function GifImportDialog({
         mirror,
       };
     });
-    const mirrorOf = (pixels: Uint8Array) => mirrorPixels(pixels, target.width, target.height);
+    const mirrorOf = (pixels: Uint16Array) => mirrorPixels(pixels, target.width, target.height);
     const size = character ? { width, height } : undefined;
     // 지금 있는 프레임과 합쳐 한도를 넘는지 사본에 해 보고 넘으면 가져오지 않는다
     const total = editor.frameCountIf((probe) =>
@@ -228,26 +228,26 @@ export function GifImportDialog({
                   {p.scale > 1 ? ` (${p.scale}배로 키운 그림을 줄임)` : ''} · {p.frameMs}ms
                 </small>
               </div>
-              <select
-                value={targets[i]}
+              <Select
+                value={targets[i]!}
                 aria-label={`${p.name}을 넣을 애니메이션`}
-                onChange={(e) => {
+                options={[
+                  ...doc.animations.map((a, index) => ({
+                    value: String(index),
+                    label: a.label ?? a.name,
+                  })),
+                  ...(character && freeKeys > 0
+                    ? [{ value: NEW_MOTION, label: '+ 새 모션으로 추가 (숫자 키)' }]
+                    : []),
+                  ...(character
+                    ? [{ value: NEW_ANIMATION, label: '+ 새 애니메이션으로 추가 (애니메이터용)' }]
+                    : []),
+                ]}
+                onChange={(value) => {
                   setError(null);
-                  setTargets((list) => list.map((t, j) => (j === i ? e.target.value : t)));
+                  setTargets((list) => list.map((t, j) => (j === i ? value : t)));
                 }}
-              >
-                {doc.animations.map((a, index) => (
-                  <option key={a.name} value={index}>
-                    {a.label ?? a.name}
-                  </option>
-                ))}
-                {character && freeKeys > 0 && (
-                  <option value={NEW_MOTION}>+ 새 모션으로 추가 (숫자 키)</option>
-                )}
-                {character && (
-                  <option value={NEW_ANIMATION}>+ 새 애니메이션으로 추가 (애니메이터용)</option>
-                )}
-              </select>
+              />
             </li>
           ))}
         </ul>
@@ -272,10 +272,9 @@ export function GifImportDialog({
           </p>
         )}
         <p className="form__hint">
-          색은 지금 팔레트에 더하고, {PALETTE_MAX_COLORS}색이 넘으면 가까운 색으로 줄입니다. 그
-          애니메이션의 프레임은
-          {source} 장면으로 바뀝니다 (되돌리기로 돌아갈 수 있음). 장면마다 시간이 다르면 같은 장면을
-          되풀이해 맞춥니다.
+          색은 줄이지 않고 모두 지금 팔레트에 더합니다. 그 애니메이션의 프레임은 {source} 장면으로
+          바뀝니다 (되돌리기로 돌아갈 수 있음). 장면마다 시간이 다르면 같은 장면을 되풀이해
+          맞춥니다.
         </p>
         {tooBig && (
           <p className="form__error">

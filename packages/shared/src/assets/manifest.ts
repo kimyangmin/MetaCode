@@ -6,15 +6,19 @@ import {
   ASSET_NAME_PATTERN,
   MOTION_KEYS,
   MOTION_LABEL_MAX_LENGTH,
-  type MotionKey,
+  PARAMETER_KEYS,
+  type ParameterKey,
 } from './keys.js';
-import { decodePixels, isBlank } from './pixels.js';
+import { type FramePixels, decodeFrame, isBlank } from './pixels.js';
 
 export {
   ASSET_NAME_PATTERN,
   MOTION_KEYS,
   MOTION_LABEL_MAX_LENGTH,
   type MotionKey,
+  PARAMETER_KEYS,
+  type ParameterKey,
+  SKILL_KEYS,
 } from './keys.js';
 
 /**
@@ -99,8 +103,11 @@ export function isCharacterPlazaHeight(value: number): boolean {
 }
 /** 오브젝트는 가로·세로 1~4타일 */
 export const OBJECT_MAX_TILES = 4;
-/** 픽셀 값을 한 바이트에 담으므로(0 = 투명) 255색까지 */
-export const PALETTE_MAX_COLORS = 255;
+/**
+ * 팔레트 색 수의 상한. 프레임의 칸마다 16비트(0 = 투명)라서 65535색까지 담을 수 있다 (사실상 제한 없음).
+ * 255색 이하면 프레임을 예전처럼 한 바이트로 담는다 (encodeFrame).
+ */
+export const PALETTE_MAX_COLORS = 65535;
 export const ASSET_NAME_MAX_LENGTH = 32;
 export const FRAME_LIMIT: Record<AssetKind, number> = { tile: 16, object: 8, character: 500 };
 /**
@@ -218,7 +225,7 @@ function blankAnimationNames(manifest: CharacterAnimationSource): ReadonlySet<st
   if (cached) return cached;
   const size = width * height;
   const blankFrames = frames.map((frame) => {
-    const pixels = decodePixels(frame, size);
+    const pixels = decodeFrame(frame, size);
     return !pixels || isBlank(pixels);
   });
   const names = new Set(
@@ -333,23 +340,26 @@ const manifestShape = z.object({
 export type AssetManifest = z.infer<typeof manifestShape>;
 
 /** 프레임을 푼다. 그림 크기보다 크게 풀리는 것(압축 폭탄)은 null */
-export function decodeFrames(manifest: AssetManifest): (Uint8Array | null)[] {
+export function decodeFrames(manifest: AssetManifest): (FramePixels | null)[] {
   const size = manifest.width * manifest.height;
-  return manifest.frames.map((frame) => decodePixels(frame, size));
+  return manifest.frames.map((frame) => decodeFrame(frame, size));
 }
 
 export interface CharacterMotion {
   /** 애니메이션 이름 (애니메이터 파라미터면 파라미터 이름) */
   name: string;
-  key: MotionKey;
+  /** 숫자 키(모션, 파라미터) 또는 글자 키(파라미터만) */
+  key: ParameterKey;
   label: string;
   /** 반복 모션, 애니메이터의 불 값 파라미터면 켜고 끄기 */
   loop: boolean;
   /** 애니메이터 파라미터면 그 종류 (트리거를 당기거나 불 값을 뒤집는다). 없으면 애니메이션을 바로 튼다 */
   parameter?: AnimatorParamType;
+  /** 불 값 파라미터: 키를 누르는 동안만 켠다 (떼면 끔). 아니면 누를 때마다 뒤집는다 */
+  hold?: boolean;
 }
 
-/** 캐릭터의 모션 (키 순서: 1, 2, …, 9, 0). 숫자 키가 달린 애니메이션과 애니메이터 파라미터 */
+/** 캐릭터의 모션 (키 순서: 1, 2, …, 9, 0, 그다음 글자 키). 키가 달린 애니메이션과 애니메이터 파라미터 */
 export function characterMotions(
   manifest: Pick<AssetManifest, 'animations'> & { animator?: Animator },
 ): CharacterMotion[] {
@@ -369,9 +379,10 @@ export function characterMotions(
       label: p.label ?? p.name,
       loop: p.type === AnimatorParamType.Bool,
       parameter: p.type,
+      ...(p.type === AnimatorParamType.Bool && p.hold ? { hold: true } : {}),
     }));
   return [...animations, ...parameters].sort(
-    (a, b) => MOTION_KEYS.indexOf(a.key) - MOTION_KEYS.indexOf(b.key),
+    (a, b) => PARAMETER_KEYS.indexOf(a.key) - PARAMETER_KEYS.indexOf(b.key),
   );
 }
 

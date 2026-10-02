@@ -4,6 +4,7 @@ import {
   type Animator,
   TRIGGER_HOLD_MS,
   animatorAnimationChoices,
+  animatorLocksMovement,
   animatorProblems,
   animatorSchema,
   defaultAnimator,
@@ -188,5 +189,85 @@ describe('애니메이터 재생', () => {
       true,
     );
     expect(animatorSchema.safeParse(animator).success).toBe(true);
+  });
+});
+
+describe('스킬처럼 쓰는 옵션', () => {
+  /** 대기 → (attack) 1타 → (attack, 끝나면) 2타, 1타·2타는 끝나면 대기. 콤보 상태는 끊기지 않는다 */
+  const combo: Animator = {
+    entry: 'idle',
+    states: [
+      { name: 'idle', animation: 'idle', x: 0, y: 0 },
+      {
+        name: 'hit-1',
+        animation: 'dance',
+        loop: false,
+        lockMove: true,
+        noInterrupt: true,
+        x: 0,
+        y: 0,
+      },
+      { name: 'hit-2', animation: 'dance', loop: false, speed: 2, noInterrupt: true, x: 0, y: 0 },
+    ],
+    parameters: [{ name: 'attack', type: 'trigger', key: 'z' }],
+    transitions: [
+      { from: ANY_STATE, to: 'hit-1', conditions: [{ param: 'attack' }] },
+      {
+        from: 'hit-1',
+        to: 'hit-2',
+        conditions: [{ param: 'attack' }],
+        exitTime: true,
+        exitAt: 0.5,
+      },
+      { from: 'hit-1', to: 'idle', conditions: [], exitTime: true },
+      { from: 'hit-2', to: 'idle', conditions: [], exitTime: true },
+    ],
+  };
+
+  it('글자 키와 옵션을 받아들이고 문제가 없다', () => {
+    expect(animatorSchema.safeParse(combo).success).toBe(true);
+    expect(animatorProblems(combo, names)).toEqual([]);
+    expect(
+      animatorSchema.safeParse({ ...combo, parameters: [{ name: 'a', type: 'trigger', key: 'p' }] })
+        .success,
+    ).toBe(false);
+  });
+
+  it('누르는 동안 켜기는 불 값에만 쓴다', () => {
+    const wrong: Animator = {
+      ...combo,
+      parameters: [{ name: 'attack', type: 'trigger', hold: true }],
+    };
+    expect(animatorProblems(wrong, names).join()).toContain('불 값에만');
+  });
+
+  it('콤보: 다시 눌러도 1타를 처음부터 틀지 않고, 절반 지점에서 2타로 넘어가며, 2타는 두 배 빠르다', () => {
+    const rt = startAnimator(combo, 0);
+    fireTrigger(rt, 'attack', 0);
+    stepAnimator(combo, rt, 0, cycle);
+    expect(rt.state).toBe('hit-1');
+    expect(animatorLocksMovement(combo, rt)).toBe(true);
+    // 1타 중에 다시 누름: Any State가 1타로 되돌리지 않고, 1타의 절반(150ms)까지 기다린다
+    fireTrigger(rt, 'attack', 50);
+    stepAnimator(combo, rt, 100, cycle);
+    expect([rt.state, rt.since]).toEqual(['hit-1', 0]);
+    stepAnimator(combo, rt, 150, cycle);
+    expect(rt.state).toBe('hit-2');
+    expect(animatorLocksMovement(combo, rt)).toBe(false);
+    // 2타는 2배속이라 150ms 만에 끝난다
+    stepAnimator(combo, rt, 290, cycle);
+    expect(rt.state).toBe('hit-2');
+    stepAnimator(combo, rt, 300, cycle);
+    expect(rt.state).toBe('idle');
+  });
+
+  it('1타 중에 누르지 않으면 끝나고 대기로 돌아간다', () => {
+    const rt = startAnimator(combo, 0);
+    fireTrigger(rt, 'attack', 0);
+    stepAnimator(combo, rt, 0, cycle);
+    stepAnimator(combo, rt, 299, cycle);
+    expect(rt.state).toBe('hit-1');
+    stepAnimator(combo, rt, 300, cycle);
+    expect(rt.state).toBe('idle');
   });
 });
