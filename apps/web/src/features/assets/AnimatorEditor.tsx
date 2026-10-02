@@ -1418,35 +1418,29 @@ function AnimatorPreview({
           </code>
         ))}
       </p>
-      {bools.map((p) =>
-        p.hold ? (
-          // 누르는 동안 켜지는 불 값은 광장처럼 누르고 있는 동안만 켠다
+      <div className="animator-editor__triggers">
+        {/* 불 값도 트리거처럼 버튼: 누르는 동안 켜기는 누르고 있는 동안만, 아니면 누를 때마다 켜고 끈다 */}
+        {bools.map((p) => (
           <button
             key={p.name}
             type="button"
-            className="button animator-editor__hold"
+            className="button animator-editor__flag"
             aria-pressed={flags[p.name] ?? false}
-            onPointerDown={(e) => {
-              e.currentTarget.setPointerCapture(e.pointerId);
-              setFlags((f) => ({ ...f, [p.name]: true }));
-            }}
-            onPointerUp={() => setFlags((f) => ({ ...f, [p.name]: false }))}
-            onPointerCancel={() => setFlags((f) => ({ ...f, [p.name]: false }))}
+            title={p.hold ? '누르는 동안 켜짐' : '누를 때마다 켜고 끔'}
+            {...(p.hold
+              ? {
+                  onPointerDown: (e: ReactPointerEvent<HTMLButtonElement>) => {
+                    e.currentTarget.setPointerCapture(e.pointerId);
+                    setFlags((f) => ({ ...f, [p.name]: true }));
+                  },
+                  onPointerUp: () => setFlags((f) => ({ ...f, [p.name]: false })),
+                  onPointerCancel: () => setFlags((f) => ({ ...f, [p.name]: false })),
+                }
+              : { onClick: () => setFlags((f) => ({ ...f, [p.name]: !f[p.name] })) })}
           >
             {p.name}
           </button>
-        ) : (
-          <label key={p.name} className="pixel-editor__check">
-            <input
-              type="checkbox"
-              checked={flags[p.name] ?? false}
-              onChange={(e) => setFlags((f) => ({ ...f, [p.name]: e.target.checked }))}
-            />
-            {p.name}
-          </label>
-        ),
-      )}
-      <div className="animator-editor__triggers">
+        ))}
         {triggers.map((p) => (
           <button
             key={p.name}
