@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  flipWithin,
   copyClip,
   emptyRowsBelow,
   lassoMask,
@@ -97,5 +98,17 @@ describe('선택 영역', () => {
     expect(emptyRowsBelow(pixels, W, 4)).toBe(4);
     pixels[1 * W + 3] = 1;
     expect(emptyRowsBelow(pixels, W, 4)).toBe(2);
+  });
+});
+
+describe('고른 곳 뒤집기', () => {
+  it('감싸는 사각형 안만 좌우·상하로 뒤집고 밖은 그대로 둔다', () => {
+    // 3×3: 사각형 (0,0)~(1,1) 안만 뒤집는다
+    const pixels = Uint16Array.from([1, 2, 9, 3, 4, 9, 9, 9, 9]);
+    const rect = { x: 0, y: 0, w: 2, h: 2 };
+    expect(Array.from(flipWithin(pixels, rect, 3, 'x'))).toEqual([2, 1, 9, 4, 3, 9, 9, 9, 9]);
+    expect(Array.from(flipWithin(pixels, rect, 3, 'y'))).toEqual([3, 4, 9, 1, 2, 9, 9, 9, 9]);
+    const mask = Uint8Array.from([1, 0, 0, 1, 1, 0, 0, 0, 0]);
+    expect(Array.from(flipWithin(mask, rect, 3, 'x'))).toEqual([0, 1, 0, 1, 1, 0, 0, 0, 0]);
   });
 });

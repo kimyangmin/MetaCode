@@ -61,8 +61,10 @@ import {
   type Rect,
   clearMasked,
   copyClip,
+  flipWithin,
   isEmptyMask,
   lassoMask,
+  maskBounds,
   maskOutline,
   maskedValues,
   placeClip,
@@ -92,6 +94,7 @@ import {
   ChevronRight,
   Eraser,
   FlipHorizontal2,
+  FlipVertical2,
   Ghost,
   Lasso,
   Maximize2,
@@ -372,6 +375,24 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
     floatTo({ mask: active.mask, ...lift(active) }, dx, dy);
   };
 
+  /** 고른 곳을 그 자리(감싸는 사각형 안)에서 좌우(x)·상하(y)로 뒤집는다. 뒤집은 채로 떠 있어 옮길 수 있다 */
+  const flipSelection = (axis: 'x' | 'y') => {
+    if (!active) return;
+    const rect = maskBounds(active.mask, doc.width);
+    if (!rect) return;
+    editor.begin();
+    const from = lift(active);
+    const mask = flipWithin(active.mask, rect, doc.width, axis);
+    const values = flipWithin(from.values, rect, doc.width, axis);
+    editor.setFrame(ref, stamp(from.base, values, mask));
+    setSelection({
+      key: frameKey,
+      version: editor.version,
+      mask,
+      lifted: { base: from.base, values },
+    });
+  };
+
   const deleteSelection = () => {
     if (!active) return;
     editor.begin();
@@ -508,7 +529,9 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
         paste();
       } else if (!mod) {
         const found = TOOLS.find((t) => t.key === key);
-        if (found) setTool(found.id);
+        // 고른 곳이 있으면 H는 좌우, Shift+H는 상하로 뒤집는다
+        if (active && e.code === 'KeyH') flipSelection(e.shiftKey ? 'y' : 'x');
+        else if (found) setTool(found.id);
         else if (key === 'm') setMirror((v) => !v);
         else if (key === 'o') setOnion((v) => !v);
         else if (e.code === 'BracketLeft') stepBrush(-1);
@@ -1341,6 +1364,24 @@ export function PixelEditor({ target, onClose }: { target: EditorTarget; onClose
                     title="Ctrl+V: 복사한 자리에 붙입니다"
                   >
                     붙여넣기
+                  </button>
+                  <button
+                    type="button"
+                    className="button"
+                    disabled={!active}
+                    onClick={() => flipSelection('x')}
+                    title="H"
+                  >
+                    <FlipHorizontal2 aria-hidden /> 좌우 반전
+                  </button>
+                  <button
+                    type="button"
+                    className="button"
+                    disabled={!active}
+                    onClick={() => flipSelection('y')}
+                    title="Shift+H"
+                  >
+                    <FlipVertical2 aria-hidden /> 상하 반전
                   </button>
                   <button
                     type="button"

@@ -108,6 +108,27 @@ export function shiftPixels<T extends Uint8Array | Uint16Array>(
   return next;
 }
 
+/**
+ * 사각형 안을 좌우(x) 또는 상하(y)로 뒤집는다 (밖은 그대로). 고른 영역을 그 자리에서 뒤집을 때, 픽셀 값과
+ * 마스크에 같은 사각형(마스크를 감싸는 범위)으로 쓴다.
+ */
+export function flipWithin<T extends Uint8Array | Uint16Array>(
+  pixels: T,
+  rect: Rect,
+  width: number,
+  axis: 'x' | 'y',
+): T {
+  const next = pixels.slice() as T;
+  for (let y = rect.y; y < rect.y + rect.h; y++) {
+    for (let x = rect.x; x < rect.x + rect.w; x++) {
+      const sx = axis === 'x' ? rect.x + rect.w - 1 - (x - rect.x) : x;
+      const sy = axis === 'y' ? rect.y + rect.h - 1 - (y - rect.y) : y;
+      next[y * width + x] = pixels[sy * width + sx]!;
+    }
+  }
+  return next;
+}
+
 /** 마스크 안만 남긴 값 (밖은 0) */
 export function maskedValues(pixels: Uint16Array, mask: Uint8Array): Uint16Array {
   return pixels.map((v, i) => (mask[i] ? v : 0));

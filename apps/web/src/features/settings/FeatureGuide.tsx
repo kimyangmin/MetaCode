@@ -87,6 +87,7 @@ const SHORTCUTS: { title: string; items: Shortcut[] }[] = [
       { keys: 'Ctrl+A', what: '모두 고르기' },
       { keys: 'Ctrl+C / Ctrl+X / Ctrl+V', what: '복사 · 잘라내기 · 붙여넣기 (같은 자리에)' },
       { keys: 'Delete', what: '고른 곳 지우기' },
+      { keys: 'H / Shift+H', what: '고른 곳 좌우 반전 · 상하 반전 (그 자리에서)' },
       { keys: 'Enter', what: '자르기 적용' },
       { keys: '오른쪽 버튼', what: '지우개' },
       { keys: '[ / ]', what: '붓 가늘게 · 굵게' },
