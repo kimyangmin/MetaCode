@@ -134,7 +134,7 @@ export interface WorldActor {
 }
 
 /** 누른 곳 표시 (탑다운은 길 끝, 횡스크롤은 그 아래 땅) */
-export interface WorldMarker extends Position {}
+export type WorldMarker = Position;
 
 export class PlazaWorld {
   private readonly options: PlazaWorldOptions;
