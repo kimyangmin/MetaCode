@@ -40,9 +40,11 @@ import {
   OutputVolumeSlider,
 } from '../voice/devices';
 import { AppearanceSettings } from './AppearanceSettings';
+import { NotificationSettings } from './NotificationSettings';
 import { FeatureGuide } from './FeatureGuide';
 import { useIsPhone } from '../../ui/useMediaQuery';
 import {
+  Bell,
   ChevronLeft,
   ChevronRight,
   CircleUserRound,
@@ -72,6 +74,7 @@ const SECTIONS: {
     group: '앱 설정',
     items: [
       { id: 'appearance', label: '화면', icon: <SunMoon aria-hidden /> },
+      { id: 'notifications', label: '알림', icon: <Bell aria-hidden /> },
       { id: 'voice', label: '음성', icon: <Mic aria-hidden /> },
     ],
   },
@@ -85,6 +88,7 @@ const TITLE: Record<SettingsSection, string> = {
   character: '캐릭터',
   assets: '에셋',
   appearance: '화면',
+  notifications: '알림',
   voice: '음성',
   features: '기능',
 };
@@ -246,6 +250,7 @@ function SettingsWindow({ section, closing }: { section: SettingsSection; closin
               </Suspense>
             )}
             {section === 'appearance' && <AppearanceSettings />}
+            {section === 'notifications' && <NotificationSettings />}
             {section === 'voice' && <VoiceSettings />}
             {section === 'features' && <FeatureGuide />}
           </div>

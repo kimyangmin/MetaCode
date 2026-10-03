@@ -1,4 +1,4 @@
-import { MESSAGE_MAX_LENGTH, type MessageDto } from '@metacode/shared';
+import { MESSAGE_MAX_LENGTH, type MessageDto, type UserProfile } from '@metacode/shared';
 import { displayName } from '@metacode/client';
 import {
   type ClipboardEvent,
@@ -32,6 +32,43 @@ interface ComposerProps {
   /** 답장하는 중이면 원래 메시지 (입력창 위에 표시) */
   replyTo: MessageDto | null;
   onCancelReply(): void;
+  /** @로 부를 수 있는 사람들 (이 채널의 사람들) */
+  people: UserProfile[];
+  meId: string;
+}
+
+/** 멘션 고르기 목록에 보일 사람 수 */
+const MENTION_LIST_MAX = 8;
+
+/** 커서 바로 앞의 @입력 (멘션을 쓰는 중이면 그 시작 자리와 쓴 글자) */
+function mentionAt(text: string, caret: number): { start: number; query: string } | null {
+  const match = /(^|[\s(])@([A-Za-z0-9-]{0,39})$/.exec(text.slice(0, caret));
+  if (!match) return null;
+  return { start: caret - match[2]!.length - 1, query: match[2]! };
+}
+
+/** @뒤에 쓴 글자로 사람 찾기: 아이디가 그 글자로 시작하거나 닉네임에 그 글자가 있으면 */
+export function mentionCandidates(
+  people: readonly UserProfile[],
+  query: string,
+  meId: string,
+): UserProfile[] {
+  const q = query.toLowerCase();
+  const seen = new Set<string>();
+  return people
+    .filter((p) => {
+      if (p.id === meId || seen.has(p.id)) return false;
+      seen.add(p.id);
+      return (
+        p.username.toLowerCase().startsWith(q) || (p.displayName ?? '').toLowerCase().includes(q)
+      );
+    })
+    .sort(
+      (a, b) =>
+        Number(!a.username.toLowerCase().startsWith(q)) -
+        Number(!b.username.toLowerCase().startsWith(q)),
+    )
+    .slice(0, MENTION_LIST_MAX);
 }
 
 /**
@@ -44,6 +81,34 @@ export function Composer(props: ComposerProps) {
     props;
   const [value, setValue] = useState('');
   const ref = useRef<HTMLTextAreaElement>(null);
+  /** 쓰는 중인 멘션 (@ 뒤의 글자)과 목록에서 고른 줄 */
+  const [mention, setMention] = useState<{ start: number; query: string } | null>(null);
+  const [mentionIndex, setMentionIndex] = useState(0);
+  const candidates = mention ? mentionCandidates(props.people, mention.query, props.meId) : [];
+  const picking = candidates.length > 0;
+  const activeIndex = Math.min(mentionIndex, Math.max(0, candidates.length - 1));
+
+  const trackMention = (el: HTMLTextAreaElement) => {
+    const next = mentionAt(el.value, el.selectionStart);
+    setMention(next);
+    if (next?.query !== mention?.query) setMentionIndex(0);
+  };
+
+  /** 고른 사람으로 @글자를 바꾼다 (@아이디 + 띄어쓰기) */
+  const insertMention = (user: UserProfile) => {
+    const el = ref.current;
+    if (!el || !mention) return;
+    const end = mention.start + 1 + mention.query.length;
+    const inserted = `@${user.username} `;
+    const next = value.slice(0, mention.start) + inserted + value.slice(end);
+    setValue(next);
+    setMention(null);
+    const caret = mention.start + inserted.length;
+    requestAnimationFrame(() => {
+      el.focus();
+      el.setSelectionRange(caret, caret);
+    });
+  };
   const fileInput = useRef<HTMLInputElement>(null);
 
   // 내용에 맞춰 높이를 늘리되 너무 커지지 않게 한다.
@@ -84,6 +149,26 @@ export function Composer(props: ComposerProps) {
   };
 
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    // 멘션 목록이 떠 있으면 ↑↓로 고르고 Enter·Tab으로 넣고 Esc로 닫는다
+    if (picking && !e.nativeEvent.isComposing) {
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        const step = e.key === 'ArrowDown' ? 1 : -1;
+        setMentionIndex((activeIndex + step + candidates.length) % candidates.length);
+        return;
+      }
+      if (e.key === 'Enter' || e.key === 'Tab') {
+        e.preventDefault();
+        insertMention(candidates[activeIndex]!);
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        setMention(null);
+        return;
+      }
+    }
     if (e.key === 'Escape' && props.replyTo) {
       props.onCancelReply();
       return;
@@ -146,6 +231,25 @@ export function Composer(props: ComposerProps) {
           </button>
         </div>
       )}
+      {picking && (
+        <ul className="mention-picker" role="listbox" aria-label="부를 사람">
+          {candidates.map((user, i) => (
+            <li
+              key={user.id}
+              role="option"
+              aria-selected={i === activeIndex}
+              // 입력창의 포커스를 지킨다
+              onMouseDown={(e) => e.preventDefault()}
+              onMouseEnter={() => setMentionIndex(i)}
+              onClick={() => insertMention(user)}
+            >
+              <img src={user.avatarUrl} alt="" />
+              <strong>{displayName(user)}</strong>
+              <span>@{user.username}</span>
+            </li>
+          ))}
+        </ul>
+      )}
       {props.notice && (
         <p className="composer__notice" role="alert">
           {props.notice}
@@ -180,12 +284,19 @@ export function Composer(props: ComposerProps) {
           maxLength={MESSAGE_MAX_LENGTH}
           onChange={(e) => {
             setValue(e.target.value);
+            trackMention(e.target);
             if (e.target.value.trim()) onTyping();
           }}
+          onSelect={(e) => trackMention(e.currentTarget)}
           onKeyDown={onKeyDown}
           onPaste={onPaste}
-          // 다른 곳으로 포커스가 나가면 "보내면 광장으로" 약속을 지운다.
-          onBlur={(e) => e.currentTarget.removeAttribute(RETURN_FOCUS_ATTR)}
+          // 다른 곳으로 포커스가 나가면 "보내면 광장으로" 약속을 지우고 멘션 목록을 닫는다.
+          onBlur={(e) => {
+            e.currentTarget.removeAttribute(RETURN_FOCUS_ATTR);
+            setMention(null);
+          }}
+          aria-autocomplete="list"
+          aria-expanded={picking}
           aria-label={placeholder}
         />
         <button

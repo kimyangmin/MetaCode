@@ -11,6 +11,7 @@ import { UpdateNotice } from './features/desktop/UpdateNotice';
 import { loginErrorMessage, meQueryKey, takeLoginError, useMe } from './features/auth/auth';
 import { rememberPendingInvite } from './pages';
 import { AssetEditors } from './features/assets/AssetEditors';
+import { listenAssetsChanged } from './features/assets/editorWindow';
 import { SettingsDialog } from './features/settings/SettingsDialog';
 import { ScreenViewer } from './features/voice/ScreenViewer';
 import { VoiceProvider } from './features/voice/VoiceProvider';
@@ -18,9 +19,12 @@ import { RealtimeProvider } from './realtime/RealtimeProvider';
 import { createAppRouter } from './router';
 import { useColorSchemeSync } from './stores/colorScheme';
 import { useUiStore } from './stores/ui';
+import { loadNotificationSound } from './features/notifications/sound';
 
 export function App() {
   useColorSchemeSync();
+  // 직접 고른 알림음 (이 기기의 IndexedDB)
+  useEffect(() => void loadNotificationSound(), []);
   return (
     <>
       <Screen />
@@ -36,6 +40,9 @@ function Screen() {
   const [openInApp, setOpenInApp] = useState(inviteToOpenInApp);
   const queryClient = useQueryClient();
   const me = useMe();
+
+  // 다른 창(새 창으로 띄운 에디터 등)에서 에셋·맵을 저장하면 이 창의 목록도 다시 받는다.
+  useEffect(() => listenAssetsChanged(queryClient), [queryClient]);
   const loggedIn = !!me.data;
   const loggedInRef = useRef(loggedIn);
   useEffect(() => {

@@ -1,3 +1,4 @@
+import { setViewingChannel } from '../notifications/notify';
 import {
   type MessageDto,
   SocketEvent,
@@ -32,7 +33,7 @@ interface ChatViewProps {
   prefix: string;
   me: UserProfile;
   lastReadMessageId: string | null;
-  /** 입력 중인 사람 이름을 찾을 때 쓴다 */
+  /** 이 채널의 사람들 (입력 중 표시, 멘션 고르기·표시) */
   people: UserProfile[];
   /** 머리글 오른쪽 (보기 전환 버튼) */
   actions?: ReactNode;
@@ -62,6 +63,12 @@ export function ChatView({
   const [dragging, setDragging] = useState(false);
   const [replyTo, setReplyTo] = useState<MessageDto | null>(null);
   const [forwarding, setForwarding] = useState<MessageDto[] | null>(null);
+
+  // 이 채널을 보고 있는 동안은 이 채널의 새 메시지를 알리지 않는다 (notify.ts)
+  useEffect(() => {
+    setViewingChannel(channelId);
+    return () => setViewingChannel(null);
+  }, [channelId]);
 
   const history = useInfiniteQuery({
     queryKey: queryKeys.messages(channelId),
@@ -197,6 +204,7 @@ export function ChatView({
           messages={messages}
           pending={pending}
           me={me}
+          people={people}
           hasMore={history.hasNextPage}
           loadingMore={history.isFetchingNextPage || history.isPending}
           onLoadMore={loadMore}
@@ -221,6 +229,8 @@ export function ChatView({
         onRetryDraft={drafts.retry}
         replyTo={replyTo}
         onCancelReply={() => setReplyTo(null)}
+        people={people}
+        meId={me.id}
       />
       {forwarding && forwarding.length > 0 && (
         <ForwardDialog messages={forwarding} onClose={() => setForwarding(null)} />

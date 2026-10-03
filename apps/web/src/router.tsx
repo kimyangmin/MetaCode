@@ -1,4 +1,4 @@
-import { type MouseEvent, useEffect, useRef } from 'react';
+import { type MouseEvent, type ReactNode, Suspense, lazy, useEffect, useRef } from 'react';
 import {
   Navigate,
   Outlet,
@@ -16,6 +16,7 @@ import { useDrawerSwipe } from './layout/drawerSwipe';
 import { CommunityPage, DmPage, HomeRedirect, InvitePage, takePendingInvite } from './pages';
 import { isDesktop } from './platform';
 import { useUiStore } from './stores/ui';
+import { setNotificationNavigator } from './features/notifications/notify';
 
 /** 로그인 후 화면의 뼈대: 왼쪽 커뮤니티 막대 + 선택한 화면 */
 function AppLayout() {
@@ -45,6 +46,12 @@ function AppLayout() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [communities, location.pathname, navigate]);
+
+  // 알림 창을 누르면 그 채널로 옮긴다.
+  useEffect(() => {
+    setNotificationNavigator((path) => void navigate(path));
+    return () => setNotificationNavigator(null);
+  }, [navigate]);
 
   // 좁은 화면의 서랍. 멤버 목록은 다른 화면으로 옮기면 닫는다. 커뮤니티·채널 목록은 커뮤니티나 DM을
   // 오가는 동안 열어 두고, 목록에서 채널·대화를 고르면 닫는다 (onNavClick).
@@ -78,10 +85,23 @@ function AppLayout() {
   );
 }
 
+// 에디터만 띄운 창은 내장 에셋을 쓰므로 열 때 따로 불러온다.
+const PopoutAssetEditor = lazy(() =>
+  import('./features/assets/PopoutEditor').then((m) => ({ default: m.PopoutAssetEditor })),
+);
+const PopoutMapEditor = lazy(() =>
+  import('./features/assets/PopoutEditor').then((m) => ({ default: m.PopoutMapEditor })),
+);
+const lazyPage = (page: ReactNode) => <Suspense fallback={null}>{page}</Suspense>;
+
 const routes = [
   // 분리한 창 (채팅이나 광장 하나만)
   { path: '/popout/chat/:channelId', element: <PopoutChat /> },
   { path: '/popout/plaza/:plazaId', element: <PopoutPlaza /> },
+  // 에디터만 띄운 창 (메인 창과 따로 그리면서 채팅·광장을 볼 수 있게)
+  { path: '/popout/editor/asset/:assetId', element: lazyPage(<PopoutAssetEditor />) },
+  { path: '/popout/editor/new/:kind', element: lazyPage(<PopoutAssetEditor />) },
+  { path: '/popout/map/:communityId', element: lazyPage(<PopoutMapEditor />) },
   {
     path: '/',
     element: <AppLayout />,
