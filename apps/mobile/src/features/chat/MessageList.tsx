@@ -48,6 +48,7 @@ export function MessageList({
   onRetry,
   onReply,
   onMenu,
+  menuMessageId,
   emptyText,
 }: {
   /** 최신 메시지부터 */
@@ -61,6 +62,8 @@ export function MessageList({
   onRetry(clientId: string): void;
   onReply(message: MessageDto): void;
   onMenu(message: MessageDto): void;
+  /** 메뉴가 떠 있는 메시지 (그 줄을 눌린 색으로 둔다) */
+  menuMessageId: string | null;
   emptyText: string;
 }) {
   const theme = useTheme();
@@ -124,6 +127,7 @@ export function MessageList({
         inverted
         data={rows}
         keyExtractor={(row) => row.key}
+        extraData={menuMessageId}
         onScroll={onScroll}
         scrollEventThrottle={64}
         onEndReached={() => hasMore && !loadingMore && onLoadMore()}
@@ -170,6 +174,7 @@ export function MessageList({
               message={row.message}
               grouped={row.grouped}
               mentioned={row.mentioned}
+              menuOpen={row.message.id === menuMessageId}
               onReply={onReply}
               onMenu={onMenu}
             />

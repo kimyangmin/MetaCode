@@ -1,5 +1,11 @@
-import { displayName, markdownToPlain } from '@metacode/client';
-import { MESSAGE_MAX_LENGTH, type MessageDto } from '@metacode/shared';
+import {
+  displayName,
+  insertMention,
+  markdownToPlain,
+  mentionAt,
+  mentionCandidates,
+} from '@metacode/client';
+import { MESSAGE_MAX_LENGTH, type MessageDto, type UserProfile } from '@metacode/shared';
 import { Image } from 'expo-image';
 import {
   File as FileIcon,
@@ -11,9 +17,10 @@ import {
   SendHorizontal,
   X,
 } from 'lucide-react-native';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Avatar } from '../../ui/Avatar';
 import { Sheet } from '../../ui/Sheet';
 import { useTheme } from '../../ui/theme';
 import { type AttachmentDraft, pickFiles, pickImages, useAttachmentDrafts } from './uploads';
@@ -21,6 +28,7 @@ import { type AttachmentDraft, pickFiles, pickImages, useAttachmentDrafts } from
 /**
  * 입력창 (웹 Composer의 휴대폰판): 답장·고치기 표시, 첨부 미리보기(올리는 진행률), 첨부 버튼, 글, 보내기.
  * 화면 자판의 Enter는 줄 바꾸기이고 보내기 버튼으로 보낸다 (웹 휴대폰과 같음).
+ * `@`를 쓰면 입력창 위에 부를 사람 목록이 뜨고, 누르면 `@아이디 `로 바꾼다 (웹과 같은 규칙).
  */
 export function Composer({
   placeholder,
@@ -32,6 +40,8 @@ export function Composer({
   onCancelReply,
   onSend,
   onTyping,
+  people,
+  meId,
 }: {
   placeholder: string;
   /** 고치기를 시작하면 그 메시지의 글로 채운다 (부모가 key로 새로 만든다) */
@@ -43,11 +53,34 @@ export function Composer({
   onCancelReply(): void;
   onSend(content: string): void;
   onTyping(): void;
+  /** @로 부를 수 있는 사람들 (이 채널의 사람들) */
+  people: UserProfile[];
+  meId: string;
 }) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const [text, setText] = useState(initialText);
   const [attachMenu, setAttachMenu] = useState(false);
+  const input = useRef<TextInput>(null);
+  /**
+   * 글과 커서는 ref로도 들고 있다: 안드로이드는 글 바뀜과 커서 옮김을 따로 알리고 순서도 일정하지 않아,
+   * 둘 중 나중에 온 쪽에서 최신 값끼리 맞춰 본다.
+   */
+  const latest = useRef({ text: initialText, caret: initialText.length });
+  const [mention, setMention] = useState<{ start: number; query: string } | null>(null);
+  const candidates = mention ? mentionCandidates(people, mention.query, meId) : [];
+
+  const trackMention = () => setMention(mentionAt(latest.current.text, latest.current.caret));
+
+  const pickMention = (user: UserProfile) => {
+    if (!mention) return;
+    const next = insertMention(text, mention, user.username);
+    latest.current = { text: next.text, caret: next.caret };
+    setText(next.text);
+    setMention(null);
+    // 글을 바꾼 뒤에 커서를 옮겨야 끝으로 가지 않는다
+    requestAnimationFrame(() => input.current?.setSelection(next.caret, next.caret));
+  };
 
   const content = text.trim();
   const hasAttachments = !editing && drafts.readyAttachments.length > 0;
@@ -60,6 +93,8 @@ export function Composer({
     if (!canSend) return;
     onSend(content);
     setText('');
+    latest.current = { text: '', caret: 0 };
+    setMention(null);
   };
 
   const attach = async (pick: () => Promise<Parameters<typeof drafts.add>[0]>) => {
@@ -135,6 +170,33 @@ export function Composer({
         <Text style={[styles.notice, { color: theme.warn }]}>{drafts.notice}</Text>
       )}
 
+      {candidates.length > 0 && (
+        <ScrollView
+          style={[styles.picker, { backgroundColor: theme.bgSidebar, borderColor: theme.border }]}
+          keyboardShouldPersistTaps="always"
+          accessibilityLabel="부를 사람"
+        >
+          {candidates.map((user) => (
+            <Pressable
+              key={user.id}
+              onPress={() => pickMention(user)}
+              style={({ pressed }) => [
+                styles.candidate,
+                pressed && { backgroundColor: theme.bgHover },
+              ]}
+            >
+              <Avatar user={user} size={28} />
+              <Text style={[styles.candidateName, { color: theme.fg }]} numberOfLines={1}>
+                {displayName(user)}
+              </Text>
+              <Text style={{ color: theme.muted, fontSize: 13, flexShrink: 1 }} numberOfLines={1}>
+                @{user.username}
+              </Text>
+            </Pressable>
+          ))}
+        </ScrollView>
+      )}
+
       <View style={styles.inputRow}>
         {!editing && (
           <Pressable
@@ -147,10 +209,17 @@ export function Composer({
           </Pressable>
         )}
         <TextInput
+          ref={input}
           value={text}
           onChangeText={(value) => {
             setText(value);
+            latest.current.text = value;
+            trackMention();
             if (value) onTyping();
+          }}
+          onSelectionChange={(e) => {
+            latest.current.caret = e.nativeEvent.selection.end;
+            trackMention();
           }}
           placeholder={placeholder}
           placeholderTextColor={theme.muted}
@@ -296,6 +365,21 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.6)',
   },
   notice: { fontSize: 12, marginHorizontal: 12 },
+  // 자판이 올라와 있어도 입력창이 가려지지 않게 네 줄 반까지만
+  picker: {
+    maxHeight: 44 * 4.5,
+    marginHorizontal: 10,
+    borderRadius: 8,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  candidate: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    height: 44,
+    paddingHorizontal: 10,
+  },
+  candidateName: { fontSize: 15, fontWeight: '600', flexShrink: 1 },
   inputRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 8, paddingHorizontal: 10 },
   round: {
     width: 40,

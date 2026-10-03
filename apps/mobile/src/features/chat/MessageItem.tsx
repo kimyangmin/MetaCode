@@ -30,6 +30,7 @@ export const MessageItem = memo(function MessageItem({
   message,
   grouped,
   mentioned,
+  menuOpen,
   onReply,
   onMenu,
 }: {
@@ -37,6 +38,8 @@ export const MessageItem = memo(function MessageItem({
   grouped: boolean;
   /** 나를 부른 메시지 (@내아이디, 내 메시지에 단 답장) */
   mentioned: boolean;
+  /** 이 메시지의 메뉴가 떠 있음 (웹 data-menu-open: 무엇을 눌렀는지 보이게) */
+  menuOpen: boolean;
   onReply(message: MessageDto): void;
   onMenu(message: MessageDto): void;
 }) {
@@ -98,7 +101,7 @@ export const MessageItem = memo(function MessageItem({
               styles.row,
               !grouped && styles.first,
               mentioned && { backgroundColor: 'rgba(253,190,83,0.10)' },
-              pressed && { backgroundColor: theme.bgHover },
+              (pressed || menuOpen) && { backgroundColor: theme.bgHover },
             ]}
           >
             {mentioned && <View style={[styles.mentionBar, { backgroundColor: mc.ember }]} />}

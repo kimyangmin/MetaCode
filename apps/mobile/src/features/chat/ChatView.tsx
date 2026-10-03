@@ -174,6 +174,7 @@ export function ChatView({
             onRetry={retry}
             onReply={setReplyTo}
             onMenu={setMenu}
+            menuMessageId={menu?.id ?? null}
             emptyText={`${title}의 첫 메시지를 남겨 보세요.`}
           />
         )}
@@ -189,6 +190,8 @@ export function ChatView({
           onCancelReply={() => setReplyTo(null)}
           onSend={send}
           onTyping={onTyping}
+          people={people}
+          meId={me.id}
         />
         <MessageActions
           message={menu}

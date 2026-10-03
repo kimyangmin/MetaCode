@@ -1,5 +1,10 @@
 import { MESSAGE_MAX_LENGTH, type MessageDto, type UserProfile } from '@metacode/shared';
-import { displayName } from '@metacode/client';
+import {
+  displayName,
+  insertMention as withMention,
+  mentionAt,
+  mentionCandidates,
+} from '@metacode/client';
 import {
   type ClipboardEvent,
   type KeyboardEvent,
@@ -37,40 +42,6 @@ interface ComposerProps {
   meId: string;
 }
 
-/** 멘션 고르기 목록에 보일 사람 수 */
-const MENTION_LIST_MAX = 8;
-
-/** 커서 바로 앞의 @입력 (멘션을 쓰는 중이면 그 시작 자리와 쓴 글자) */
-function mentionAt(text: string, caret: number): { start: number; query: string } | null {
-  const match = /(^|[\s(])@([A-Za-z0-9-]{0,39})$/.exec(text.slice(0, caret));
-  if (!match) return null;
-  return { start: caret - match[2]!.length - 1, query: match[2]! };
-}
-
-/** @뒤에 쓴 글자로 사람 찾기: 아이디가 그 글자로 시작하거나 닉네임에 그 글자가 있으면 */
-export function mentionCandidates(
-  people: readonly UserProfile[],
-  query: string,
-  meId: string,
-): UserProfile[] {
-  const q = query.toLowerCase();
-  const seen = new Set<string>();
-  return people
-    .filter((p) => {
-      if (p.id === meId || seen.has(p.id)) return false;
-      seen.add(p.id);
-      return (
-        p.username.toLowerCase().startsWith(q) || (p.displayName ?? '').toLowerCase().includes(q)
-      );
-    })
-    .sort(
-      (a, b) =>
-        Number(!a.username.toLowerCase().startsWith(q)) -
-        Number(!b.username.toLowerCase().startsWith(q)),
-    )
-    .slice(0, MENTION_LIST_MAX);
-}
-
 /**
  * 메시지 입력창. Enter로 보내고 Shift+Enter로 줄을 바꾼다 (손가락으로 쓰는 기기는 Enter가 줄 바꾸기).
  * 한글 입력 중(IME 조합 중)의 Enter는 글자 확정이므로 보내지 않는다.
@@ -98,12 +69,9 @@ export function Composer(props: ComposerProps) {
   const insertMention = (user: UserProfile) => {
     const el = ref.current;
     if (!el || !mention) return;
-    const end = mention.start + 1 + mention.query.length;
-    const inserted = `@${user.username} `;
-    const next = value.slice(0, mention.start) + inserted + value.slice(end);
+    const { text: next, caret } = withMention(value, mention, user.username);
     setValue(next);
     setMention(null);
-    const caret = mention.start + inserted.length;
     requestAnimationFrame(() => {
       el.focus();
       el.setSelectionRange(caret, caret);
