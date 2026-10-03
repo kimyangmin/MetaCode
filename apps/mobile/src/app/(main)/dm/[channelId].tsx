@@ -21,6 +21,8 @@ export default function DmChannel() {
       people={dm.participants}
       showMembers={false}
       canDeleteOthers={false}
+      plazaId={`dm:${dm.id}`}
+      plazaChannels={new Map([[dm.id, null]])}
     />
   );
 }

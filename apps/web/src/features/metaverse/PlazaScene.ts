@@ -65,7 +65,7 @@ import {
   createSideBody,
   stepSide,
 } from '@metacode/client';
-import type { VoiceLabel } from './plazaVoice';
+import type { ActorVoice } from './plazaVoice';
 import {
   type CharacterLook,
   type PlayingMotion,
@@ -97,14 +97,7 @@ export interface MoveState extends Position {
   moving: boolean;
 }
 
-/** 통화 중인 캐릭터에 보일 것: 참여 중인 음성 채널, 말하는 중, 음소거 */
-export interface ActorVoice {
-  label: VoiceLabel;
-  /** 화면을 공유 중 */
-  sharing: boolean;
-  speaking: boolean;
-  muted: boolean;
-}
+export type { ActorVoice } from '@metacode/client';
 
 /**
  * 캐릭터 위 DOM 층(이름표, 통화 표시, 첨부 표시)에 넣을 아이콘. React 밖이라 lucide 기본판으로 만든다.
