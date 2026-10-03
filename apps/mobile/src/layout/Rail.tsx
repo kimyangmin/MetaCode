@@ -25,7 +25,8 @@ export function Rail({ activeCommunityId }: { activeCommunityId: string | null }
 
   return (
     <ScrollView
-      style={{ width: RAIL_WIDTH, backgroundColor: theme.bgRail }}
+      // ScrollView는 기본이 flexGrow: 1이라, 가로로 놓으면 목록과 남는 폭을 나눠 가져 넓어진다
+      style={{ width: RAIL_WIDTH, flexGrow: 0, backgroundColor: theme.bgRail }}
       contentContainerStyle={[styles.list, { paddingTop: insets.top + 12, paddingBottom: 12 }]}
       showsVerticalScrollIndicator={false}
     >
