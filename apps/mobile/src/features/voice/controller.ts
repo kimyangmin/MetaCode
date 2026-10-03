@@ -10,6 +10,7 @@ import {
   type VoiceProximityChanged,
 } from '@metacode/shared';
 import { PermissionsAndroid, Platform } from 'react-native';
+import { startCallService, stopCallService } from '../../../modules/call-service';
 import type { AppSocket } from '../../realtime/RealtimeProvider';
 import type { VoiceConnection } from './connection';
 import { useVoiceStore } from './store';
@@ -306,6 +307,8 @@ export class VoiceController {
       const micOk = await conn.connect(url, token, wantMic && allowed);
       if (this.connection !== conn) return;
       store().setSession({ channelId, status: 'connected', listenOnly: !micOk || !allowed });
+      // 앱을 내리거나 화면을 꺼도 통화가 이어지게 (마이크 권한이 있어야 켤 수 있다)
+      if (allowed) startCallService('MetaCode 통화 중', '눌러서 앱으로 돌아가기');
       this.applyVolumes();
       this.sendState();
     } catch {
@@ -321,6 +324,7 @@ export class VoiceController {
     const current = this.connection;
     this.connection = null;
     this.speaking = false;
+    stopCallService();
     if (!keepWatch) store().patch({ watching: null });
     await current?.disconnect();
   }
