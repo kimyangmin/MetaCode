@@ -1,4 +1,5 @@
 import {
+  type ActorVoice,
   EMOTE_DURATION_MS,
   NO_CONTROL,
   type PlazaControl,
@@ -90,6 +91,11 @@ export class PlazaEngine {
 
   setChannelLabels(labels: ReadonlyMap<string, string | null>): void {
     this.channelLabels = labels;
+  }
+
+  /** 통화 상태 (참여 중인 음성 채널, 말하는 중) */
+  setVoice(states: ReadonlyMap<string, ActorVoice>): void {
+    this.world.setVoice(states);
   }
 
   resize(width: number, height: number): void {

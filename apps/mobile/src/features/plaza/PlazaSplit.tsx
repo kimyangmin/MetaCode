@@ -1,3 +1,4 @@
+import type { VoiceLabel } from '@metacode/client';
 import type { PlazaId, UserProfile } from '@metacode/shared';
 import { type ReactNode, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
@@ -17,6 +18,7 @@ export interface PlazaTarget {
   plazaId: PlazaId;
   me: UserProfile;
   channelLabels: ReadonlyMap<string, string | null>;
+  voiceLabels: ReadonlyMap<string, VoiceLabel>;
 }
 
 /**
@@ -55,6 +57,7 @@ export function PlazaSplit({
               plazaId={plaza.plazaId}
               me={plaza.me}
               channelLabels={plaza.channelLabels}
+              voiceLabels={plaza.voiceLabels}
             />
           </View>
           <GestureDetector gesture={drag}>

@@ -1,0 +1,15 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'me.kimyangmin.metacode'
+version = '1.0.0'
+
+android {
+  namespace "me.kimyangmin.metacode.callservice"
+  defaultConfig {
+    versionCode 1
+    versionName '1.0.0'
+  }
+}

@@ -32,6 +32,13 @@ export default function CommunityChannel() {
       showMembers
       canDeleteOthers={community.myRole !== CommunityRole.Member}
       plazaId={`community:${community.id}`}
+      plazaVoice={
+        new Map(
+          community.channels
+            .filter((c) => c.type === 'VOICE')
+            .map((c) => [c.id, { kind: 'channel' as const, name: c.name ?? '' }] as const),
+        )
+      }
       plazaChannels={
         new Map(
           community.channels
