@@ -117,7 +117,7 @@ export function decodePixels(encoded: string, maxLength?: number): Uint8Array | 
   return plain && maxLength !== undefined && plain.length > maxLength ? null : plain;
 }
 
-export function isBlank(pixels: Uint8Array): boolean {
+export function isBlank(pixels: Uint8Array | Uint16Array): boolean {
   return pixels.every((value) => value === 0);
 }
 
@@ -144,4 +144,108 @@ export function colorRamp(hex: string): [string, string, string] {
     ]);
   // 그림자는 약간 차가운 쪽으로, 외곽선은 Kenney 외곽선 색(#3f2631) 쪽으로 어둡게 한다.
   return [hex.toLowerCase(), shade(0.72, [40, 30, 70]), shade(0.35, [63, 38, 49])];
+}
+
+// ── 에셋 프레임 (팔레트 인덱스, 16비트) ──
+//
+// 맵의 칸 격자는 한 바이트(encodePixels)지만, 에셋 프레임은 색이 255개를 넘을 수 있어 칸마다 16비트로 둔다.
+// 255색 이하인 프레임은 예전과 똑같은 문자열(한 바이트 형식)로 담고, 넘는 값이 있을 때만 넓은 형식을 쓴다.
+
+/** 에셋 프레임 한 장의 픽셀 (팔레트 인덱스, 0 = 투명) */
+export type FramePixels = Uint16Array;
+
+/** 넓은(16비트) 프레임의 머리표. base64 글자도 RLE_PREFIX도 아니다 */
+export const WIDE_PREFIX = '^';
+
+/**
+ * 16비트 값의 RLE: 머리 바이트 h가 0~127이면 뒤에 오는 h+1개 값(값마다 2바이트, 작은 쪽 먼저)을 그대로,
+ * 128~255면 뒤의 값 하나를 h-126번(2~129) 되풀이한다.
+ */
+function wideRleEncode(values: Uint16Array): Uint8Array {
+  const out = new Uint8Array(values.length * 2 + Math.ceil(values.length / 128) + 4);
+  let o = 0;
+  const put = (v: number) => {
+    out[o++] = v & 0xff;
+    out[o++] = v >> 8;
+  };
+  let literalStart = -1;
+  const flushLiteral = (end: number) => {
+    if (literalStart === -1) return;
+    for (let start = literalStart; start < end; start += 128) {
+      const count = Math.min(128, end - start);
+      out[o++] = count - 1;
+      for (let k = start; k < start + count; k++) put(values[k]!);
+    }
+    literalStart = -1;
+  };
+  let i = 0;
+  while (i < values.length) {
+    let run = 1;
+    while (i + run < values.length && run < 129 && values[i + run] === values[i]) run++;
+    if (run >= 2) {
+      flushLiteral(i);
+      out[o++] = run + 126;
+      put(values[i]!);
+      i += run;
+    } else {
+      if (literalStart === -1) literalStart = i;
+      i += run;
+    }
+  }
+  flushLiteral(values.length);
+  return out.slice(0, o);
+}
+
+function wideRleDecode(encoded: Uint8Array, maxLength: number): Uint16Array | null {
+  const chunks: Uint16Array[] = [];
+  let length = 0;
+  let i = 0;
+  const read = () => encoded[i++]! | (encoded[i++]! << 8);
+  while (i < encoded.length) {
+    const head = encoded[i++]!;
+    if (head < 128) {
+      const count = head + 1;
+      if (i + count * 2 > encoded.length) return null;
+      const chunk = new Uint16Array(count);
+      for (let k = 0; k < count; k++) chunk[k] = read();
+      chunks.push(chunk);
+      length += count;
+    } else {
+      if (i + 2 > encoded.length) return null;
+      const count = head - 126;
+      chunks.push(new Uint16Array(count).fill(read()));
+      length += count;
+    }
+    if (length > maxLength) return null;
+  }
+  const out = new Uint16Array(length);
+  let o = 0;
+  for (const chunk of chunks) {
+    out.set(chunk, o);
+    o += chunk.length;
+  }
+  return out;
+}
+
+/** 프레임 → 문자열. 255 이하 값만 있으면 encodePixels와 같은 문자열이다 */
+export function encodeFrame(pixels: Uint16Array): string {
+  let wide = false;
+  for (let i = 0; i < pixels.length; i++) {
+    if (pixels[i]! > 255) {
+      wide = true;
+      break;
+    }
+  }
+  if (!wide) return encodePixels(Uint8Array.from(pixels));
+  return WIDE_PREFIX + toBase64(wideRleEncode(pixels));
+}
+
+/** encodeFrame의 반대 (예전의 한 바이트 형식도 읽는다). 형식이 틀리거나 maxLength보다 길면 null */
+export function decodeFrame(encoded: string, maxLength = Infinity): FramePixels | null {
+  if (encoded.startsWith(WIDE_PREFIX)) {
+    const packed = fromBase64(encoded.slice(WIDE_PREFIX.length));
+    return packed && wideRleDecode(packed, maxLength);
+  }
+  const bytes = decodePixels(encoded, maxLength === Infinity ? undefined : maxLength);
+  return bytes && Uint16Array.from(bytes);
 }

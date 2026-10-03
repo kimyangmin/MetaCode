@@ -27,6 +27,7 @@ import {
   isGrounded,
   isWalkable,
   mapStyle,
+  animatorLocksMovement,
 } from '@metacode/shared';
 import { builtinAsset } from '@metacode/shared/builtin-assets';
 import {
@@ -83,6 +84,8 @@ import { MapView, SIDE_ACTOR_DEPTH } from './mapView';
 
 /** 이만큼 움직이지 않아야 걷기를 멈춘다 (받은 위치 사이에서 걷기 모션이 끊겼다 이어지지 않게) */
 const WALK_HOLD_MS = 120;
+/** 서버가 받아 주는 모션 요청 간격 (이보다 잦으면 버린다) + 여유 */
+const MOTION_SEND_GAP_MS = 170;
 /** 횡스크롤 점프 키 */
 const JUMP_KEYS = ['ArrowUp', ' '];
 /** 횡스크롤 클릭 이동: 막혀서 이만큼 못 가면 그만둔다 */
@@ -148,6 +151,8 @@ interface Actor {
   airborne: boolean;
   /** 공중에 뜬 시각 (점프 애니메이션의 시작) */
   airborneSince: number;
+  /** 지난 프레임의 발밑 y (공중에서 떨어지는 중인지 본다) */
+  lastY: number;
   lastMovedAt: number;
   bubbles: Bubble[];
   renderedBubbles: string;
@@ -156,7 +161,7 @@ interface Actor {
   emoteUntil: number;
   /** 첨부 모션이 없는 캐릭터가 첨부 메시지를 보내 제자리에서 뛰는 것이 끝나는 시각 */
   hopUntil: number;
-  /** 틀고 있는 캐릭터 모션 (숫자 키). 움직이면 멈춘다 */
+  /** 틀고 있는 캐릭터 모션 (키). 움직이면 멈춘다 */
   motion: (PlayingMotion & { start: number }) | null;
   /** 캐릭터에 애니메이터가 있으면 그 상태 (없으면 정해진 규칙대로 튼다) */
   animator: AnimatorRuntime | null;
@@ -210,6 +215,8 @@ export class PlazaScene extends Phaser.Scene {
   private readonly held = new Set<string>();
   /** 지난 프레임 이후 눌린 키. 프레임 사이에 눌렀다 뗀 짧은 입력도 한 걸음은 움직이게 한다 */
   private readonly tapped = new Set<string>();
+  /** 누르는 동안 켜 둔 모션 (키 → 파라미터 이름과 누른 시각) */
+  private readonly heldMotions = new Map<string, { name: string; at: number }>();
 
   constructor(options: PlazaSceneOptions) {
     super('plaza');
@@ -307,6 +314,7 @@ export class PlazaScene extends Phaser.Scene {
       walking: false,
       airborne: false,
       airborneSince: 0,
+      lastY: position.y,
       lastMovedAt: 0,
       bubbles: [],
       renderedBubbles: '',
@@ -365,7 +373,7 @@ export class PlazaScene extends Phaser.Scene {
     if (event.moving) actor.motion = null;
   }
 
-  // ── 캐릭터 모션 (숫자 키) ──
+  // ── 캐릭터 모션 (키) ──
 
   /** 내 캐릭터의 모션 (키 순서). 직접 그린 캐릭터에 추가한 것만 있다 */
   myMotions() {
@@ -374,7 +382,7 @@ export class PlazaScene extends Phaser.Scene {
   }
 
   /**
-   * 숫자 키: 내 캐릭터의 그 키 모션을 튼다. 반복 모션을 다시 누르면 멈춘다. 그 키의 모션이 없으면 false
+   * 모션 키: 내 캐릭터의 그 키 모션을 튼다. 반복 모션을 다시 누르면 멈춘다. 그 키의 모션이 없으면 false
    * (PlazaView가 키를 브라우저에 그대로 넘긴다).
    */
   playMotion(key: string): boolean {
@@ -383,8 +391,16 @@ export class PlazaScene extends Phaser.Scene {
     const motion = characterMotions(me.look.manifest).find((m) => m.key === key);
     if (!motion) return false;
     const now = performance.now();
-    // 애니메이터 파라미터: 트리거를 당기거나 불 값을 뒤집는다 (다른 사람에게도 같은 이름으로 알린다)
+    // 애니메이터 파라미터: 트리거를 당기거나 불 값을 뒤집는다 (다른 사람에게도 같은 이름으로 알린다).
+    // 누르는 동안 켜는 불 값은 켜 두고, 키를 떼면(releaseMotion) 끈다.
     if (motion.parameter && me.animator) {
+      if (motion.hold) {
+        if (this.heldMotions.has(key)) return true;
+        this.heldMotions.set(key, { name: motion.name, at: now });
+        this.applyMotion(me, motion.name, true, now);
+        this.options.onMotion(motion.name, true);
+        return true;
+      }
       const on = motion.parameter === AnimatorParamType.Bool && !me.animator.bools.get(motion.name);
       this.applyMotion(me, motion.name, on, now);
       this.options.onMotion(motion.name, on);
@@ -398,6 +414,21 @@ export class PlazaScene extends Phaser.Scene {
     this.startMotion(me, motion.name, motion.loop, now);
     this.options.onMotion(motion.name, motion.loop);
     return true;
+  }
+
+  /**
+   * 키를 뗐다: 누르는 동안 켜 둔 모션이면 끈다. 서버는 150ms보다 잦은 모션 요청을 버리므로, 누르자마자 떼면
+   * 다른 사람에게는 조금 늦게 알린다 (버려지면 다른 사람 화면에서 계속 켜져 있다).
+   */
+  releaseMotion(key: string): void {
+    const held = this.heldMotions.get(key);
+    if (!held) return;
+    this.heldMotions.delete(key);
+    const me = this.actors.get(this.options.meId);
+    if (me) this.applyMotion(me, held.name, false, performance.now());
+    const wait = MOTION_SEND_GAP_MS - (performance.now() - held.at);
+    if (wait <= 0) this.options.onMotion(held.name, false);
+    else this.time.delayedCall(wait, () => this.options.onMotion(held.name, false));
   }
 
   /** 다른 사람이 모션을 틀거나(이름) 멈췄다(null) */
@@ -519,6 +550,20 @@ export class PlazaScene extends Phaser.Scene {
 
   releaseAll(): void {
     this.held.clear();
+    // 누르는 동안 켜 둔 모션(불 값)도 끈다 (창이 포커스를 잃으면 keyup이 오지 않는다)
+    for (const key of [...this.heldMotions.keys()]) this.releaseMotion(key);
+  }
+
+  /**
+   * 내 캐릭터의 지금 애니메이터 상태가 이동을 막는지 (기술을 쓰는 동안). 이번 프레임에 당긴 트리거로 기술
+   * 상태에 들어가는 것까지 보도록 그래프를 먼저 한 걸음 옮긴다 (그리기에서 다시 옮겨도 같은 시각이면 그대로).
+   */
+  private movementLocked(me: Actor, now: number): boolean {
+    const { manifest } = me.look;
+    const animator = manifest.animator;
+    if (!animator || !me.animator) return false;
+    stepAnimator(animator, me.animator, now, (state) => animatorCycleMs(manifest, state, me.dir));
+    return animatorLocksMovement(animator, me.animator);
   }
 
   // ── 프레임마다 ──
@@ -550,12 +595,16 @@ export class PlazaScene extends Phaser.Scene {
     }
     const layout = this.layout!;
     const down = (key: string) => (this.held.has(key) || this.tapped.has(key) ? 1 : 0);
-    const dx = down('ArrowRight') - down('ArrowLeft');
-    const dy = down('ArrowDown') - down('ArrowUp');
+    // 이동을 막는 상태(기술 중)면 방향키도 클릭 이동도 멈춘다 (클릭 이동은 끝나면 이어 간다)
+    const locked = this.movementLocked(me, now);
+    const dx = locked ? 0 : down('ArrowRight') - down('ArrowLeft');
+    const dy = locked ? 0 : down('ArrowDown') - down('ArrowUp');
     this.tapped.clear();
     const before = me.position;
 
-    if (dx !== 0 || dy !== 0) {
+    if (locked) {
+      // 그대로 서 있는다
+    } else if (dx !== 0 || dy !== 0) {
       // 방향키를 누르면 클릭 이동은 취소한다.
       this.path = [];
       this.marker?.setVisible(false);
@@ -589,18 +638,22 @@ export class PlazaScene extends Phaser.Scene {
    */
   private moveMeSide(me: Actor, delta: number, now: number): void {
     const layout = this.layout!;
-    const down = (key: string) => this.held.has(key) || this.tapped.has(key);
+    // 이동을 막는 상태(기술 중)면 걷기·점프·내려가기를 받지 않는다 (떨어지는 것은 그대로)
+    const locked = this.movementLocked(me, now);
+    const down = (key: string) => !locked && (this.held.has(key) || this.tapped.has(key));
     let dx = (down('ArrowRight') ? 1 : 0) - (down('ArrowLeft') ? 1 : 0);
-    const jump = JUMP_KEYS.some((key) => this.tapped.has(key));
-    const jumpHeld = JUMP_KEYS.some((key) => this.held.has(key));
-    const drop = this.tapped.has('ArrowDown');
+    const jump = !locked && JUMP_KEYS.some((key) => this.tapped.has(key));
+    const jumpHeld = !locked && JUMP_KEYS.some((key) => this.held.has(key));
+    const drop = !locked && this.tapped.has('ArrowDown');
     this.tapped.clear();
     if (dx !== 0 || jump || drop) this.stopSideTarget();
 
     const before = this.body ?? createSideBody(layout, me.position);
     let autoJump = false;
     const target = this.sideTarget;
-    if (target && dx === 0) {
+    // 기술 중에는 클릭 이동을 잠깐 멈춘다 (멈춘 동안을 못 간 것으로 세지 않는다)
+    if (target && locked) target.progressAt = now;
+    if (target && dx === 0 && !locked) {
       const gap = target.x - before.x;
       if (now - target.progressAt > SIDE_STUCK_MS) {
         this.stopSideTarget();
@@ -624,7 +677,7 @@ export class PlazaScene extends Phaser.Scene {
     const body = stepSide(
       layout,
       before,
-      { dx, jump: jump || autoJump, jumpHeld: jumpHeld || !!this.sideTarget, drop },
+      { dx, jump: jump || autoJump, jumpHeld: jumpHeld || (!!this.sideTarget && !locked), drop },
       delta,
     );
     if (this.sideTarget) {
@@ -718,6 +771,10 @@ export class PlazaScene extends Phaser.Scene {
       fireTrigger(actor.animator, airborne ? 'jump' : 'land', now);
     }
     actor.airborne = airborne;
+    // 공중에서 아래로 가는 중 (y는 아래로 커진다). 꼭대기에서 잠깐 멈춘 것은 떨어지는 것으로 보지 않는다
+    if (actor.animator)
+      setAnimatorBool(actor.animator, 'falling', airborne && y > actor.lastY + 0.01);
+    actor.lastY = y;
     if (actor.motion && actor.motion.until <= now) actor.motion = null;
     if (actor.animator && actor.look.manifest.animator) {
       this.renderAnimatorPose(actor, now);
@@ -732,7 +789,7 @@ export class PlazaScene extends Phaser.Scene {
 
   /**
    * 애니메이터가 있는 캐릭터: 걷는 중·공중을 파라미터로 넣고 그래프를 한 걸음 옮긴 뒤 그 상태의 모습.
-   * 숫자 키 모션(키가 달린 애니메이션)을 틀고 있으면 그것이 먼저다.
+   * 키 모션(키가 달린 애니메이션)을 틀고 있으면 그것이 먼저다.
    */
   private renderAnimatorPose(actor: Actor, now: number): void {
     const runtime = actor.animator!;

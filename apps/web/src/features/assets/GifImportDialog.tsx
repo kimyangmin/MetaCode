@@ -1,12 +1,7 @@
-import {
-  CHARACTER_MAX_SIZE,
-  FRAME_LIMIT,
-  FRAME_MS_MAX,
-  FRAME_MS_MIN,
-  MOTION_KEYS,
-  PALETTE_MAX_COLORS,
-} from '@metacode/shared';
+import { CHARACTER_MAX_SIZE, FRAME_LIMIT, FRAME_MS_MAX, FRAME_MS_MIN } from '@metacode/shared';
 import { useEffect, useMemo, useState } from 'react';
+import { isKeyboardClaimed } from '../../ui/keyboardClaim';
+import { Select } from '../../ui/Select';
 import { ANIMATION_LIMIT, type PixelDocument } from './editorModel';
 import {
   type Anchor,
@@ -27,7 +22,7 @@ export interface GifFile {
 
 /** 새 모션으로 넣기 (select의 값) */
 const NEW_MOTION = 'new-motion';
-/** 숫자 키 없는 새 애니메이션으로 넣기 (애니메이터의 상태가 틀 것, select의 값) */
+/** 키 없는 새 애니메이션으로 넣기 (애니메이터의 상태가 틀 것, select의 값) */
 const NEW_ANIMATION = 'new-animation';
 
 /** 파일 이름에서 확장자를 뺀 것 (walk-left.gif → walk-left) */
@@ -112,7 +107,7 @@ export function GifImportDialog({
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return;
+      if (e.key !== 'Escape' || isKeyboardClaimed()) return;
       // 아래의 도트 에디터까지 닫히지 않게 한다.
       e.preventDefault();
       e.stopPropagation();
@@ -186,7 +181,7 @@ export function GifImportDialog({
         mirror,
       };
     });
-    const mirrorOf = (pixels: Uint8Array) => mirrorPixels(pixels, target.width, target.height);
+    const mirrorOf = (pixels: Uint16Array) => mirrorPixels(pixels, target.width, target.height);
     const size = character ? { width, height } : undefined;
     // 지금 있는 프레임과 합쳐 한도를 넘는지 사본에 해 보고 넘으면 가져오지 않는다
     const total = editor.frameCountIf((probe) =>
@@ -228,26 +223,22 @@ export function GifImportDialog({
                   {p.scale > 1 ? ` (${p.scale}배로 키운 그림을 줄임)` : ''} · {p.frameMs}ms
                 </small>
               </div>
-              <select
-                value={targets[i]}
+              <Select
+                value={targets[i]!}
                 aria-label={`${p.name}을 넣을 애니메이션`}
-                onChange={(e) => {
+                options={[
+                  ...doc.animations.map((a, index) => ({
+                    value: String(index),
+                    label: a.label ?? a.name,
+                  })),
+                  ...(character && freeKeys > 0 ? [{ value: NEW_MOTION, label: '+ 새 모션' }] : []),
+                  ...(character ? [{ value: NEW_ANIMATION, label: '+ 새 애니메이션' }] : []),
+                ]}
+                onChange={(value) => {
                   setError(null);
-                  setTargets((list) => list.map((t, j) => (j === i ? e.target.value : t)));
+                  setTargets((list) => list.map((t, j) => (j === i ? value : t)));
                 }}
-              >
-                {doc.animations.map((a, index) => (
-                  <option key={a.name} value={index}>
-                    {a.label ?? a.name}
-                  </option>
-                ))}
-                {character && freeKeys > 0 && (
-                  <option value={NEW_MOTION}>+ 새 모션으로 추가 (숫자 키)</option>
-                )}
-                {character && (
-                  <option value={NEW_ANIMATION}>+ 새 애니메이션으로 추가 (애니메이터용)</option>
-                )}
-              </select>
+              />
             </li>
           ))}
         </ul>
@@ -267,16 +258,9 @@ export function GifImportDialog({
         )}
         {character && (width !== doc.width || height !== doc.height) && (
           <p className="form__hint">
-            그림이 들어가도록 해상도를 {doc.width}×{doc.height}에서 {width}×{height}로 넓힙니다
-            (그린 그림은 발밑 가운데에 그대로 남습니다).
+            해상도가 {doc.width}×{doc.height}에서 {width}×{height}로 바뀝니다.
           </p>
         )}
-        <p className="form__hint">
-          색은 지금 팔레트에 더하고, {PALETTE_MAX_COLORS}색이 넘으면 가까운 색으로 줄입니다. 그
-          애니메이션의 프레임은
-          {source} 장면으로 바뀝니다 (되돌리기로 돌아갈 수 있음). 장면마다 시간이 다르면 같은 장면을
-          되풀이해 맞춥니다.
-        </p>
         {tooBig && (
           <p className="form__error">
             {source} 그림이 이 에셋({doc.width}×{doc.height})보다 큽니다. 오브젝트는 크기를 먼저
@@ -285,8 +269,8 @@ export function GifImportDialog({
         )}
         {tooManyMotions && (
           <p className="form__error">
-            숫자 키가 {freeKeys}개 남아 있어 새 모션을 {newMotions}개 만들 수 없습니다 (모션은
-            {` ${MOTION_KEYS.length}`}개까지).
+            처음 붙여 줄 키가 {freeKeys}개 남아 있어 새 모션을 {newMotions}개 만들 수 없습니다.
+            일부는 &quot;+ 새 애니메이션으로 추가&quot;로 넣은 뒤 키를 직접 다세요.
           </p>
         )}
         {tooManyAnimations && (

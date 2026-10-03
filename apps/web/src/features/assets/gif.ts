@@ -143,10 +143,12 @@ function rgb(hex: string): [number, number, number] {
 
 /**
  * 팔레트 픽셀 프레임들(0 = 투명)을 움직이는 GIF로. scale배로 키우고(도트 그대로), 계속 되풀이한다.
- * GIF 팔레트의 0번은 투명이고 1번부터가 에셋 팔레트다.
+ * GIF 팔레트의 0번은 투명이다. 에셋 팔레트가 255색 이하면 전체 팔레트 하나(1번부터가 에셋 팔레트)를 쓰고,
+ * 넘으면(GIF는 장면 하나에 256색까지) 장면마다 쓴 색만으로 팔레트를 따로 만든다. 장면 하나가 255색을 넘게
+ * 쓰면 그 장면은 가까운 색으로 줄인다.
  */
 export function encodeGif(
-  frames: Uint8Array[],
+  frames: Uint16Array[],
   width: number,
   height: number,
   palette: readonly string[],
@@ -155,28 +157,92 @@ export function encodeGif(
 ): Uint8Array<ArrayBuffer> {
   const w = width * scale;
   const h = height * scale;
-  // GIF 팔레트 크기는 2의 거듭제곱이어야 한다.
-  let size = 2;
-  while (size < palette.length + 1) size *= 2;
-  const colors = Array.from({ length: size }, (_, i) => {
-    if (i === 0 || i > palette.length) return 0;
-    const [r, g, b] = rgb(palette[i - 1]!);
+  const colorOf = (hex: string) => {
+    const [r, g, b] = rgb(hex);
     return (r << 16) | (g << 8) | b;
-  });
+  };
+  const shared = palette.length <= 255;
   const buffer = new Uint8Array(w * h * frames.length * 2 + frames.length * 2048 + 4096);
-  const writer = new GifWriter(buffer, w, h, { palette: colors, loop: 0 });
+  const writer = new GifWriter(buffer, w, h, {
+    ...(shared ? { palette: gifPalette(palette.map(colorOf)) } : {}),
+    loop: 0,
+  });
   const delay = Math.max(2, Math.round(frameMs / 10));
   for (const pixels of frames) {
+    // 장면에서 쓰는 픽셀 값 → GIF 색 번호
+    let map: (v: number) => number = (v) => v;
+    let local: number[] | undefined;
+    if (!shared) {
+      const used = [...new Set(pixels)].filter((v) => v > 0 && v <= palette.length);
+      const colors = used.map((v) => colorOf(palette[v - 1]!));
+      const reduced = reduceColors(colors, 255);
+      const index = new Map(used.map((v, i) => [v, reduced.index[i]! + 1]));
+      map = (v) => index.get(v) ?? 0;
+      local = gifPalette(reduced.colors);
+    }
     const indexed = new Array<number>(w * h);
     for (let y = 0; y < h; y++) {
       for (let x = 0; x < w; x++) {
-        indexed[y * w + x] = pixels[Math.floor(y / scale) * width + Math.floor(x / scale)] ?? 0;
+        indexed[y * w + x] = map(
+          pixels[Math.floor(y / scale) * width + Math.floor(x / scale)] ?? 0,
+        );
       }
     }
     // 장면이 끝나면 지워서(disposal 2) 투명한 곳에 앞 장면이 남지 않게 한다.
-    writer.addFrame(0, 0, w, h, indexed, { delay, transparent: 0, disposal: 2 });
+    writer.addFrame(0, 0, w, h, indexed, {
+      delay,
+      transparent: 0,
+      disposal: 2,
+      ...(local ? { palette: local } : {}),
+    });
   }
   return buffer.slice(0, writer.end());
+}
+
+/** GIF 팔레트: 0번은 투명 자리, 1번부터 색. 크기는 2의 거듭제곱(2~256)이어야 한다 */
+function gifPalette(colors: readonly number[]): number[] {
+  let size = 2;
+  while (size < colors.length + 1) size *= 2;
+  return Array.from({ length: size }, (_, i) => (i === 0 ? 0 : (colors[i - 1] ?? 0)));
+}
+
+/**
+ * 색(0xRRGGBB)들을 max개 이하로: 넘치면 가장 많이 겹치는 위쪽 비트로 묶어 줄여 가며 고른다.
+ * index[i] = colors[i]가 쓸 결과 색 번호.
+ */
+export function reduceColors(
+  colors: readonly number[],
+  max: number,
+): { colors: number[]; index: number[] } {
+  if (colors.length <= max) return { colors: [...colors], index: colors.map((_, i) => i) };
+  // 채널마다 아래 비트를 하나씩 버려 가며 서로 다른 색이 max개 이하가 될 때까지 묶는다.
+  for (let drop = 1; drop <= 7; drop++) {
+    const mask = (0xff << drop) & 0xff;
+    const keyOf = (c: number) => (((c >> 16) & mask) << 16) | (((c >> 8) & mask) << 8) | (c & mask);
+    const groups = new Map<number, number[]>();
+    colors.forEach((c, i) => {
+      const key = keyOf(c);
+      const list = groups.get(key);
+      if (list) list.push(i);
+      else groups.set(key, [i]);
+    });
+    if (groups.size > max) continue;
+    const out: number[] = [];
+    const index = new Array<number>(colors.length);
+    for (const members of groups.values()) {
+      // 묶음의 평균색
+      const avg = [16, 8, 0].map((shift) =>
+        Math.round(
+          members.reduce((sum, i) => sum + ((colors[i]! >> shift) & 0xff), 0) / members.length,
+        ),
+      );
+      for (const i of members) index[i] = out.length;
+      out.push((avg[0]! << 16) | (avg[1]! << 8) | avg[2]!);
+    }
+    return { colors: out, index };
+  }
+  // 채널마다 1비트만 남겨도 넘치는 일은 없다 (8색). 그래도 안전하게 첫 색으로.
+  return { colors: [colors[0]!], index: colors.map(() => 0) };
 }
 
 /** 파일을 내려받게 한다 */
@@ -198,14 +264,14 @@ export type Anchor = 'bottom-center' | 'bottom-left' | 'top-left';
 
 /** width×height 픽셀 프레임을 docWidth×docHeight 프레임의 기준 자리에 놓는다 (넘치는 곳은 잘린다) */
 export function placePixels(
-  pixels: Uint8Array,
+  pixels: Uint16Array,
   width: number,
   height: number,
   docWidth: number,
   docHeight: number,
   anchor: Anchor,
-): Uint8Array {
-  const out = new Uint8Array(docWidth * docHeight);
+): Uint16Array {
+  const out = new Uint16Array(docWidth * docHeight);
   const dx = anchor === 'bottom-center' ? Math.floor((docWidth - width) / 2) : 0;
   const dy = anchor === 'top-left' ? 0 : docHeight - height;
   for (let y = 0; y < height; y++) {
@@ -221,8 +287,8 @@ export function placePixels(
 }
 
 /** 좌우 반전 (왼쪽 걷기로 오른쪽 걷기를 만들 때) */
-export function mirrorPixels(pixels: Uint8Array, width: number, height: number): Uint8Array {
-  const out = new Uint8Array(pixels.length);
+export function mirrorPixels(pixels: Uint16Array, width: number, height: number): Uint16Array {
+  const out = new Uint16Array(pixels.length);
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) out[y * width + (width - 1 - x)] = pixels[y * width + x]!;
   }

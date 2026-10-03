@@ -2,6 +2,7 @@ import type { AssetDto, AssetManifest } from '@metacode/shared';
 import { type QueryClient, useQuery } from '@tanstack/react-query';
 import { apiFetch } from '../../api/client';
 import { jsonBody } from '../../api/queries';
+import { announceAssetsChanged } from './editorWindow';
 
 export const assetKeys = {
   mine: ['assets', 'mine'] as const,
@@ -37,6 +38,8 @@ export async function saveAsset(
       });
   queryClient.setQueryData(assetKeys.one(asset.id), asset);
   await invalidateLists(queryClient, asset);
+  // 에디터를 새 창으로 띄웠으면 메인 창의 목록도 다시 받게 한다
+  announceAssetsChanged(asset.communityId);
   return asset;
 }
 
@@ -44,6 +47,7 @@ export async function deleteAsset(queryClient: QueryClient, asset: AssetDto): Pr
   await apiFetch(`/assets/${asset.id}`, { method: 'DELETE' });
   queryClient.removeQueries({ queryKey: assetKeys.one(asset.id) });
   await invalidateLists(queryClient, asset);
+  announceAssetsChanged(asset.communityId);
 }
 
 function invalidateLists(queryClient: QueryClient, asset: AssetDto) {

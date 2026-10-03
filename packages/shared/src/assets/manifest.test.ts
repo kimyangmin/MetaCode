@@ -15,7 +15,14 @@ import {
   missingAnimations,
 } from './manifest.js';
 import { defaultAnimator } from './animator.js';
-import { colorRamp, decodePixels, encodePixels } from './pixels.js';
+import {
+  WIDE_PREFIX,
+  colorRamp,
+  decodeFrame,
+  decodePixels,
+  encodeFrame,
+  encodePixels,
+} from './pixels.js';
 
 const tile = (overrides: Partial<AssetManifest> = {}): AssetManifest => ({
   kind: 'tile',
@@ -85,13 +92,29 @@ describe('매니페스트 검증', () => {
     );
   });
 
-  it('팔레트는 255색까지 (픽셀 값 255 = 마지막 색)', () => {
+  it('팔레트는 255색을 넘을 수 있다 (프레임은 16비트로 담는다)', () => {
     const palette = (n: number) =>
       Array.from({ length: n }, (_, i) => `#${i.toString(16).padStart(6, '0')}`);
-    const last = [encodePixels(new Uint8Array(256).fill(PALETTE_MAX_COLORS))];
-    expect(PALETTE_MAX_COLORS).toBe(255);
-    expect(problemsOf(tile({ palette: palette(255), frames: last }))).toEqual([]);
-    expect(problemsOf(tile({ palette: palette(256), frames: last }))).not.toEqual([]);
+    expect(PALETTE_MAX_COLORS).toBe(65535);
+    const wide = [encodeFrame(new Uint16Array(256).fill(1000))];
+    expect(wide[0]!.startsWith(WIDE_PREFIX)).toBe(true);
+    expect(problemsOf(tile({ palette: palette(1000), frames: wide }))).toEqual([]);
+    expect(problemsOf(tile({ palette: palette(999), frames: wide }))).toContain(
+      '1번 프레임에 팔레트에 없는 색이 있습니다.',
+    );
+    // 예전 형식(한 바이트) 프레임도 그대로 읽는다
+    const narrow = [encodePixels(new Uint8Array(256).fill(255))];
+    expect(problemsOf(tile({ palette: palette(255), frames: narrow }))).toEqual([]);
+  });
+
+  it('255 이하 값만 있는 프레임은 예전과 같은 문자열이고, 넓은 프레임도 되돌아온다', () => {
+    const small = Uint16Array.from({ length: 300 }, (_, i) => i % 7);
+    expect(encodeFrame(small)).toBe(encodePixels(Uint8Array.from(small)));
+    expect(decodeFrame(encodeFrame(small))).toEqual(small);
+    const big = Uint16Array.from({ length: 1000 }, (_, i) => (i < 400 ? 0 : 256 + (i % 900)));
+    expect(decodeFrame(encodeFrame(big))).toEqual(big);
+    expect(decodeFrame(encodeFrame(big), 999)).toBeNull();
+    expect(decodeFrame(`${WIDE_PREFIX}gA==`)).toBeNull();
   });
 
   it('없는 프레임을 가리키는 애니메이션을 거절한다', () => {

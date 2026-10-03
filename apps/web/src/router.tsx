@@ -1,4 +1,4 @@
-import { type MouseEvent, useEffect, useRef } from 'react';
+import { type MouseEvent, type ReactNode, Suspense, lazy, useEffect, useRef } from 'react';
 import {
   Navigate,
   Outlet,
@@ -78,10 +78,23 @@ function AppLayout() {
   );
 }
 
+// 에디터만 띄운 창은 내장 에셋을 쓰므로 열 때 따로 불러온다.
+const PopoutAssetEditor = lazy(() =>
+  import('./features/assets/PopoutEditor').then((m) => ({ default: m.PopoutAssetEditor })),
+);
+const PopoutMapEditor = lazy(() =>
+  import('./features/assets/PopoutEditor').then((m) => ({ default: m.PopoutMapEditor })),
+);
+const lazyPage = (page: ReactNode) => <Suspense fallback={null}>{page}</Suspense>;
+
 const routes = [
   // 분리한 창 (채팅이나 광장 하나만)
   { path: '/popout/chat/:channelId', element: <PopoutChat /> },
   { path: '/popout/plaza/:plazaId', element: <PopoutPlaza /> },
+  // 에디터만 띄운 창 (메인 창과 따로 그리면서 채팅·광장을 볼 수 있게)
+  { path: '/popout/editor/asset/:assetId', element: lazyPage(<PopoutAssetEditor />) },
+  { path: '/popout/editor/new/:kind', element: lazyPage(<PopoutAssetEditor />) },
+  { path: '/popout/map/:communityId', element: lazyPage(<PopoutMapEditor />) },
   {
     path: '/',
     element: <AppLayout />,

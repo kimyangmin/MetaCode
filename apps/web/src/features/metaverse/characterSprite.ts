@@ -6,6 +6,7 @@ import {
   type ProfileCharacter,
   PlazaStyle,
   animatorClip,
+  animatorStateSpeed,
   characterAnimation,
   characterKey,
   characterPalette,
@@ -83,7 +84,7 @@ export function emoteDurationMs(manifest: AssetManifest): number {
   return emote ? emote.frames.length * emote.frameMs : 0;
 }
 
-/** 틀고 있는 캐릭터 모션 (숫자 키). 한 번 트는 모션은 until이 끝나는 시각, 반복은 Infinity */
+/** 틀고 있는 캐릭터 모션 (키). 한 번 트는 모션은 until이 끝나는 시각, 반복은 Infinity */
 export interface PlayingMotion {
   name: string;
   loop: boolean;
@@ -168,7 +169,9 @@ export function animatorPose(
   const clip = animatorClip(manifest, state.animation, dir);
   if (!clip) return characterPose(manifest, `idle-${dir}`, dir, 0);
   const once = state.loop === false;
-  const frame = once ? frameOnce(clip.animation, elapsedMs) : frameAt(clip.animation, elapsedMs);
+  // 상태의 재생 속도 (stepAnimator도 같은 속도로 "끝나면"을 잰다)
+  const played = elapsedMs * animatorStateSpeed(state);
+  const frame = once ? frameOnce(clip.animation, played) : frameAt(clip.animation, played);
   return { frame, flip: clip.directional ? clip.mirrored : facesLeft(manifest, dir) };
 }
 
