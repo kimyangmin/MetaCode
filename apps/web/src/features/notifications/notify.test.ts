@@ -1,7 +1,6 @@
 import type { UserProfile } from '@metacode/shared';
 import type { CommunitySummary, MessageDto } from '@metacode/shared';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { mentionCandidates } from '../chat/Composer';
 import { mentionsMe, notifyMessage, setViewingChannel, shouldNotify } from './notify';
 import { useNotificationSettings } from './settings';
 
@@ -53,15 +52,6 @@ describe('알릴지', () => {
     expect(
       shouldNotify({ ...base, level: 'all', message: { ...message('안녕'), author: me } }),
     ).toBe(false);
-  });
-});
-
-describe('멘션 고르기', () => {
-  const people = [me, bob, user('c', 'carol', '캐롤'), user('d', 'bobby')];
-  it('아이디가 그 글자로 시작하거나 닉네임에 있으면 고르고, 나는 빼며, 아이디로 맞는 사람이 먼저', () => {
-    expect(mentionCandidates(people, 'bo', me.id).map((p) => p.username)).toEqual(['bobby']);
-    expect(mentionCandidates(people, '밥', me.id).map((p) => p.username)).toEqual(['dev-bob']);
-    expect(mentionCandidates(people, '', me.id)).toHaveLength(3);
   });
 });
 

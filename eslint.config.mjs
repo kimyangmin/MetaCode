@@ -48,6 +48,12 @@ export default tseslint.config(
     },
   },
   {
+    // Metro 설정은 CommonJS (Expo가 require로 읽음)
+    files: ['apps/mobile/metro.config.js'],
+    languageOptions: { sourceType: 'commonjs', globals: globals.node },
+    rules: { '@typescript-eslint/no-require-imports': 'off' },
+  },
+  {
     files: ['apps/mobile/src/**/*.{ts,tsx}'],
     plugins: {
       'react-hooks': reactHooks,

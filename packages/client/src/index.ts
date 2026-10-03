@@ -14,3 +14,4 @@ export * from './stores/typing.js';
 export * from './roles.js';
 export * from './invite.js';
 export * from './plaza/sideMotion.js';
+export * from './mentions.js';
