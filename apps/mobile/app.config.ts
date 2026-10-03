@@ -43,6 +43,8 @@ const config: ExpoConfig = {
       { image: './assets/splash-icon.png', imageWidth: 96, backgroundColor: NIGHT },
     ],
     ['expo-build-properties', { android: { minSdkVersion: 24 } }],
+    // 채팅 첨부: 사진만 고른다 (카메라·마이크 권한은 받지 않음, 웹·데스크톱도 카메라를 쓰지 않음)
+    ['expo-image-picker', { cameraPermission: false, microphonePermission: false }],
   ],
   experiments: {
     typedRoutes: true,
