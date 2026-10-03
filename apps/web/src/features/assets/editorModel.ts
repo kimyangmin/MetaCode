@@ -10,16 +10,17 @@ import {
   EMOTE_ANIMATION,
   FRAME_LIMIT,
   JUMP_ANIMATIONS,
-  MOTION_KEYS,
   type MotionKey,
+  SUGGESTED_KEYS,
+  isAssignableKey,
   PALETTE_MAX_COLORS,
   PlazaStyle,
   REQUIRED_CHARACTER_ANIMATIONS,
   type RequiredAnimation,
   TILE_SIZE,
   characterStyle,
-  decodePixels,
-  encodePixels,
+  decodeFrame,
+  encodeFrame,
   isBlank,
 } from '@metacode/shared';
 import { type Rect, emptyRowsBelow, shiftPixels } from './selection';
@@ -30,9 +31,9 @@ import { type Rect, emptyRowsBelow, shiftPixels } from './selection';
  */
 export interface EditorAnimation {
   name: string;
-  frames: Uint8Array[];
+  frames: Uint16Array[];
   frameMs: number;
-  /** 캐릭터 모션(광장에서 숫자 키로 트는 것)이면 키, 이름, 반복 */
+  /** 캐릭터 모션(광장에서 키로 트는 것)이면 키, 이름, 반복 */
   key?: MotionKey;
   label?: string;
   loop?: boolean;
@@ -103,7 +104,7 @@ export const STARTER_PALETTE = [
   '#fcbc8f',
 ];
 
-const blank = (width: number, height: number) => new Uint8Array(width * height);
+const blank = (width: number, height: number) => new Uint16Array(width * height);
 
 /**
  * 파일 이름 등에서 애니메이션 이름(영문 소문자로 시작, 소문자·숫자·-, 32자까지)을 만든다.
@@ -125,7 +126,7 @@ export function animationNameFrom(text: string): string {
  * 새 모션·첨부 모션을 시작할 그림: 그 광장 방식의 대기 첫 프레임 (탑다운은 아래, 횡스크롤은 오른쪽).
  * 예전엔 횡스크롤 캐릭터도 아래 대기를 먼저 찾아서, 탑다운에서 바꾸며 남은 빈 아래 대기를 복사했다.
  */
-function idleFrame(doc: Pick<EditorDoc, 'animations' | 'style'>): Uint8Array | undefined {
+function idleFrame(doc: Pick<EditorDoc, 'animations' | 'style'>): Uint16Array | undefined {
   const preferred = doc.style === PlazaStyle.SideScroll ? 'idle-right' : 'idle-down';
   const idle =
     doc.animations.find((a) => a.name === preferred && !a.frames.every(isBlank)) ??
@@ -143,6 +144,26 @@ function canResizeCharacter(doc: EditorDoc, width: number, height: number): bool
     ok(height) &&
     (width !== doc.width || height !== doc.height)
   );
+}
+
+/** 그림이 있는 칸을 감싸는 범위 (빈 프레임이면 null) */
+function drawnBox(
+  pixels: Uint16Array,
+  width: number,
+  height: number,
+): { top: number; left: number; right: number } | null {
+  let top = -1;
+  let left = width;
+  let right = -1;
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      if (!pixels[y * width + x]) continue;
+      if (top === -1) top = y;
+      if (x < left) left = x;
+      if (x > right) right = x;
+    }
+  }
+  return top === -1 ? null : { top, left, right };
 }
 
 /** 캐릭터 해상도를 그 자리에서 바꾼다 (edit() 안에서 부른다). 그림은 발밑 가운데를 기준으로 남긴다 */
@@ -169,9 +190,9 @@ function resizeCharacterDoc(doc: EditorDoc, width: number, height: number): void
   doc.height = height;
 }
 
-/** 모션(애니메이션)과 애니메이터 파라미터가 쓰고 있는 숫자 키 */
-function usedMotionKeys(doc: Pick<EditorDoc, 'animations' | 'animator'>): Set<MotionKey> {
-  const used = new Set<MotionKey>();
+/** 모션(애니메이션)과 애니메이터 파라미터가 쓰고 있는 키 (숫자, 파라미터의 글자 키) */
+export function usedMotionKeys(doc: Pick<EditorDoc, 'animations' | 'animator'>): Set<string> {
+  const used = new Set<string>();
   for (const a of doc.animations) if (a.key) used.add(a.key);
   for (const p of doc.animator?.parameters ?? []) if (p.key) used.add(p.key);
   return used;
@@ -247,7 +268,7 @@ export function newDoc(
 
 export function fromManifest(manifest: AssetManifest): EditorDoc {
   const frames = manifest.frames.map(
-    (f) => decodePixels(f) ?? blank(manifest.width, manifest.height),
+    (f) => decodeFrame(f) ?? blank(manifest.width, manifest.height),
   );
   const style = characterStyle(manifest);
   const required = REQUIRED_CHARACTER_ANIMATIONS[style];
@@ -266,7 +287,7 @@ export function fromManifest(manifest: AssetManifest): EditorDoc {
       name,
       frames: animation
         ? animation.frames.map((i) =>
-            Uint8Array.from(frames[i] ?? blank(manifest.width, manifest.height)),
+            Uint16Array.from(frames[i] ?? blank(manifest.width, manifest.height)),
           )
         : [blank(manifest.width, manifest.height)],
       frameMs: animation?.frameMs ?? 120,
@@ -309,7 +330,7 @@ export function toManifest(doc: EditorDoc): AssetManifest {
           }
         : {}),
       frames: animation.frames.map((pixels) => {
-        const encoded = encodePixels(pixels);
+        const encoded = encodeFrame(pixels);
         let index = indexOf.get(encoded);
         if (index === undefined) {
           index = frames.push(encoded) - 1;
@@ -344,7 +365,7 @@ export function toManifest(doc: EditorDoc): AssetManifest {
 }
 
 /**
- * 되돌리기용 사본. 프레임 픽셀(Uint8Array)은 복사하지 않고 함께 쓴다: 큰 캐릭터(512×512)는 프레임 한 장이
+ * 되돌리기용 사본. 프레임 픽셀(Uint16Array)은 복사하지 않고 함께 쓴다: 큰 캐릭터(512×512)는 프레임 한 장이
  * 256KB라, 붓질마다 문서 전체를 복사하면 되돌리기 기록만으로 수백 MB가 됐다. 대신 프레임을 그 자리에서
  * 고치기 전에 PixelDocument.writable()이 그 프레임만 복사한다 (copy-on-write).
  */
@@ -358,7 +379,7 @@ function snapshot(doc: EditorDoc): EditorDoc {
 }
 
 /** 프레임 픽셀의 지문 (같은 그림 찾기). 같으면 바이트까지 비교한다 */
-function fingerprint(pixels: Uint8Array): number {
+function fingerprint(pixels: Uint16Array): number {
   let h = 2166136261;
   for (let i = 0; i < pixels.length; i++) {
     h ^= pixels[i]!;
@@ -367,7 +388,7 @@ function fingerprint(pixels: Uint8Array): number {
   return h >>> 0;
 }
 
-function samePixels(a: Uint8Array, b: Uint8Array): boolean {
+function samePixels(a: Uint16Array, b: Uint16Array): boolean {
   if (a.length !== b.length) return false;
   for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
   return true;
@@ -395,7 +416,7 @@ export class PixelDocument {
   /** beginStroke() 뒤 아직 아무것도 칠하지 않았다: 처음 실제로 바꿀 때 begin()한다 */
   private strokePending = false;
   /** 마지막 begin() 뒤에 복사해서 이 문서만 가진 프레임. 이것만 그 자리에서 고쳐도 된다 */
-  private owned = new WeakSet<Uint8Array>();
+  private owned = new WeakSet<Uint16Array>();
   /** 프레임 수 세기는 문서가 바뀔 때만 다시 한다 (화면이 그릴 때마다 부른다) */
   private counted: { version: number; count: number } | null = null;
 
@@ -476,12 +497,12 @@ export class PixelDocument {
   }
 
   /** 그 자리에서 고칠 프레임. 되돌리기 기록과 함께 쓰는 프레임이면 먼저 복사해서 바꿔 끼운다 */
-  private writable(ref: FrameRef): Uint8Array | undefined {
+  private writable(ref: FrameRef): Uint16Array | undefined {
     const frames = this.doc.animations[ref.animation]?.frames;
     const pixels = frames?.[ref.frame];
     if (!frames || !pixels) return undefined;
     if (this.owned.has(pixels)) return pixels;
-    const copy = Uint8Array.from(pixels);
+    const copy = Uint16Array.from(pixels);
     frames[ref.frame] = copy;
     this.owned.add(copy);
     return copy;
@@ -502,12 +523,12 @@ export class PixelDocument {
     this.changed();
   }
 
-  frame(ref: FrameRef): Uint8Array | undefined {
+  frame(ref: FrameRef): Uint16Array | undefined {
     return this.doc.animations[ref.animation]?.frames[ref.frame];
   }
 
   /** 프레임 한 장을 통째로 바꾼다 (begin() 다음에 부른다. 선택 영역 옮기기처럼 매번 처음부터 다시 만들 때) */
-  setFrame(ref: FrameRef, pixels: Uint8Array): void {
+  setFrame(ref: FrameRef, pixels: Uint16Array): void {
     const frames = this.doc.animations[ref.animation]?.frames;
     if (!frames || ref.frame >= frames.length) return;
     frames[ref.frame] = pixels;
@@ -601,7 +622,7 @@ export class PixelDocument {
     if (!animation || this.frameCount() >= FRAME_LIMIT[this.doc.kind]) return null;
     const source = animation.frames[ref.frame];
     this.edit((doc) => {
-      const pixels = copy && source ? Uint8Array.from(source) : blank(doc.width, doc.height);
+      const pixels = copy && source ? Uint16Array.from(source) : blank(doc.width, doc.height);
       doc.animations[ref.animation]!.frames.splice(ref.frame + 1, 0, pixels);
     });
     return ref.frame + 1;
@@ -623,16 +644,22 @@ export class PixelDocument {
     });
   }
 
-  // ── 캐릭터 모션 (숫자 키), 점프 ──
+  // ── 캐릭터 모션 (키), 점프 ──
 
   /**
-   * 아직 쓰지 않은 모션 키 (1, 2, …, 9, 0 순서). 애니메이터의 직접 만든 파라미터에 단 키도 쓴 것으로 본다
-   * (예전엔 빠져 있어서 모션을 더하면 파라미터와 같은 키가 붙어 "모션 키가 겹칩니다"로 저장이 막혔다).
+   * 새 모션에 처음 붙여 줄 수 있는 키 (`SUGGESTED_KEYS` 순서, 1·2·…·0·Z·X…). 애니메이터의 직접 만든 파라미터에
+   * 단 키도 쓴 것으로 본다 (예전엔 빠져 있어서 모션을 더하면 파라미터와 같은 키가 붙어 저장이 막혔다).
+   * 키는 에디터에서 아무 키나 눌러 바꿀 수 있다 (`keyTaken`).
    */
   freeMotionKeys(except?: MotionKey): MotionKey[] {
     const used = usedMotionKeys(this.doc);
     if (except) used.delete(except);
-    return MOTION_KEYS.filter((key) => !used.has(key));
+    return SUGGESTED_KEYS.filter((key) => !used.has(key));
+  }
+
+  /** 그 키를 이미 모션이나 애니메이터 파라미터가 쓰는지 (except는 빼고 센다) */
+  keyTaken(key: string, except?: string): boolean {
+    return key !== except && usedMotionKeys(this.doc).has(key);
   }
 
   canAddAnimation(): boolean {
@@ -653,7 +680,7 @@ export class PixelDocument {
     this.edit((doc) => {
       doc.animations.push({
         name: `motion-${n}`,
-        frames: [idle ? Uint8Array.from(idle) : blank(doc.width, doc.height)],
+        frames: [idle ? Uint16Array.from(idle) : blank(doc.width, doc.height)],
         frameMs: 150,
         key,
         label: `모션 ${n}`,
@@ -667,7 +694,9 @@ export class PixelDocument {
   updateMotion(index: number, change: { label?: string; key?: MotionKey; loop?: boolean }): void {
     const animation = this.doc.animations[index];
     if (!animation || !isMotion(animation)) return;
-    if (change.key && !this.freeMotionKeys(animation.key).includes(change.key)) return;
+    if (change.key && (!isAssignableKey(change.key) || this.keyTaken(change.key, animation.key))) {
+      return;
+    }
     this.edit(
       (doc) => Object.assign(doc.animations[index]!, change),
       change.label !== undefined ? `motion-label:${index}` : undefined,
@@ -697,7 +726,7 @@ export class PixelDocument {
       const source = idleFrame(doc);
       doc.animations.push({
         name: EMOTE_ANIMATION.name,
-        frames: [source ? Uint8Array.from(source) : blank(doc.width, doc.height)],
+        frames: [source ? Uint16Array.from(source) : blank(doc.width, doc.height)],
         frameMs: 150,
       });
     });
@@ -725,7 +754,7 @@ export class PixelDocument {
         const source = walk?.frames[Math.min(1, walk.frames.length - 1)];
         doc.animations.push({
           name,
-          frames: [source ? Uint8Array.from(source) : blank(doc.width, doc.height)],
+          frames: [source ? Uint16Array.from(source) : blank(doc.width, doc.height)],
           frameMs: 150,
         });
       }
@@ -735,7 +764,7 @@ export class PixelDocument {
 
   /**
    * 가져온 그림(GIF)들로 애니메이션을 한 번에 채운다 (되돌리기 한 단계). target이 번호면 그 애니메이션의
-   * 프레임을 바꾸고, motion이면 남은 숫자 키로 새 모션을 만들고, animation이면 숫자 키 없는 새 애니메이션을
+   * 프레임을 바꾸고, motion이면 남은 키로 새 모션을 만들고, animation이면 키 없는 새 애니메이션을
    * 만든다 (애니메이터의 상태가 틀 것: 이름은 파일 이름에서, 겹치면 -2, -3 …). mirror면 왼쪽·오른쪽
    * 애니메이션의 반대쪽도 좌우 반전한 그림으로 채운다. 채운 첫 애니메이션의 번호를 돌려준다 (없으면 null).
    * size를 주면(캐릭터에 그림이 들어가게 해상도를 넓힐 때) 같은 되돌리기 단계에서 먼저 해상도를 바꾼다
@@ -744,12 +773,12 @@ export class PixelDocument {
   importAnimations(
     entries: {
       target: number | { motion: string } | { animation: string };
-      frames: Uint8Array[];
+      frames: Uint16Array[];
       frameMs: number;
       mirror: boolean;
     }[],
     palette: string[],
-    mirrorOf: (pixels: Uint8Array) => Uint8Array,
+    mirrorOf: (pixels: Uint16Array) => Uint16Array,
     size?: { width: number; height: number },
   ): number | null {
     let first: number | null = null;
@@ -776,7 +805,7 @@ export class PixelDocument {
             }) - 1;
         } else {
           const used = usedMotionKeys(doc);
-          const key = MOTION_KEYS.find((k) => !used.has(k));
+          const key = SUGGESTED_KEYS.find((k) => !used.has(k));
           if (!key || doc.kind !== 'character' || doc.animations.length >= ANIMATION_LIMIT) {
             continue;
           }
@@ -833,7 +862,7 @@ export class PixelDocument {
    */
   frameCount(): number {
     if (this.counted?.version === this.version) return this.counted.count;
-    const groups = new Map<number, Uint8Array[]>();
+    const groups = new Map<number, Uint16Array[]>();
     let count = 0;
     for (const a of this.doc.animations) {
       for (const f of a.frames) {
@@ -919,7 +948,7 @@ export class PixelDocument {
         if (r.name.startsWith('jump-')) {
           const walk = byName.get(r.name.replace('jump-', 'walk-'));
           const source = walk?.frames[Math.min(1, walk.frames.length - 1)];
-          if (source) added.frames = [Uint8Array.from(source)];
+          if (source) added.frames = [Uint16Array.from(source)];
         }
         return added;
       });
@@ -1060,6 +1089,39 @@ export class PixelDocument {
   }
 
   /**
+   * 캐릭터의 머리 위·양옆 빈 곳 정리: 모든 프레임에서 함께 비어 있는 위 줄과 양옆 열을 잘라 해상도를 줄인다.
+   * 광장은 발밑 가운데를 기준으로 세우므로 양옆은 덜 빈 쪽만큼만 똑같이 자르고(가운데가 그대로),
+   * 해상도 최소(16px) 아래로는 줄이지 않는다. 발 아래는 trimBelowFeet가 맡는다. 빈 프레임은 세지 않는다.
+   * 광장에서는 세로가 광장 크기만큼 그려지므로, 위가 비어 있던 캐릭터는 정리하면 그만큼 커 보인다.
+   * 잘라 낸 위 줄 수와 한쪽 열 수를 돌려준다.
+   */
+  trimMargins(): { top: number; sides: number } {
+    const { kind, width, height } = this.doc;
+    const none = { top: 0, sides: 0 };
+    if (kind !== 'character') return none;
+    let top = height;
+    let left = width;
+    let right = width;
+    for (const animation of this.doc.animations) {
+      for (const pixels of animation.frames) {
+        const box = drawnBox(pixels, width, height);
+        if (!box) continue;
+        top = Math.min(top, box.top);
+        left = Math.min(left, box.left);
+        right = Math.min(right, width - 1 - box.right);
+      }
+    }
+    if (top === height) return none;
+    const cut = {
+      top: Math.max(0, Math.min(top, height - CHARACTER_MIN_SIZE)),
+      sides: Math.max(0, Math.min(left, right, Math.floor((width - CHARACTER_MIN_SIZE) / 2))),
+    };
+    if (cut.top === 0 && cut.sides === 0) return none;
+    this.edit((doc) => resizeCharacterDoc(doc, width - cut.sides * 2, height - cut.top));
+    return cut;
+  }
+
+  /**
    * 사각형만 남기고 나머지를 지운다. frame을 주면 그 프레임만, 없으면 모든 프레임.
    * fit이면(모든 프레임일 때만) 그림 크기도 사각형에 맞춘다: 캐릭터는 가로 = max(사각형 가로, 세로/2)로
    * 발밑 가운데에, 오브젝트는 16px 단위로 올려 왼쪽 아래에 놓는다 (맵에 놓는 기준과 같게).
@@ -1081,7 +1143,7 @@ export class PixelDocument {
         at = { x: 0, y: height - rect.h };
       }
     }
-    const cut = (pixels: Uint8Array) => {
+    const cut = (pixels: Uint16Array) => {
       const next = blank(width, height);
       for (let y = 0; y < rect.h; y++) {
         for (let x = 0; x < rect.w; x++) {
@@ -1108,7 +1170,7 @@ export class PixelDocument {
   }
 
   /** 가져온 프레임들로 지금 프레임부터 덮어쓴다 (모자라면 프레임을 더한다) */
-  importFrames(ref: FrameRef, frames: Uint8Array[], palette: string[]): void {
+  importFrames(ref: FrameRef, frames: Uint16Array[], palette: string[]): void {
     this.edit((doc) => {
       doc.palette = palette;
       const list = doc.animations[ref.animation]!.frames;

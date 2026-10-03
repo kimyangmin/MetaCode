@@ -1,10 +1,5 @@
-import { type AssetAnimation, type AssetManifest, decodePixels } from '@metacode/shared';
-
-/** '#rrggbb' → [r, g, b] */
-function rgb(hex: string): [number, number, number] {
-  const v = parseInt(hex.slice(1), 16);
-  return [(v >> 16) & 0xff, (v >> 8) & 0xff, v & 0xff];
-}
+import { type AssetAnimation, type AssetManifest, decodeFrame } from '@metacode/shared';
+import { paletteColors } from './pixelCanvas';
 
 /** 팔레트 픽셀 한 장을 RGBA로. palette를 주면 매니페스트 팔레트 대신 쓴다 (캐릭터 색 바꾸기) */
 export function framePixels(
@@ -14,12 +9,11 @@ export function framePixels(
 ): Uint8ClampedArray<ArrayBuffer> {
   const { width, height } = manifest;
   const out = new Uint8ClampedArray(width * height * 4);
-  const pixels = decodePixels(manifest.frames[frame] ?? '');
+  const pixels = decodeFrame(manifest.frames[frame] ?? '');
   if (!pixels) return out;
-  const colors = palette.map(rgb);
+  const colorOf = paletteColors(palette);
   for (let i = 0; i < Math.min(pixels.length, width * height); i++) {
-    const v = pixels[i]!;
-    const color = v > 0 ? colors[v - 1] : undefined;
+    const color = colorOf(pixels[i]!);
     if (!color) continue;
     out[i * 4] = color[0];
     out[i * 4 + 1] = color[1];

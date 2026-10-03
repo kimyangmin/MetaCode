@@ -1,4 +1,5 @@
 import {
+  SUGGESTED_KEYS,
   FRAME_LIMIT,
   PALETTE_MAX_COLORS,
   PlazaStyle,
@@ -163,7 +164,7 @@ describe('PNG 가져오기', () => {
     ]);
     const result = indexImage(rgba, 4, 1, 2, 1, ['#ff0000']);
     expect(result).toEqual({
-      frames: [Uint8Array.from([1, 0]), Uint8Array.from([2, 1])],
+      frames: [Uint16Array.from([1, 0]), Uint16Array.from([2, 1])],
       palette: ['#ff0000', '#00ff00'],
     });
   });
@@ -172,10 +173,10 @@ describe('PNG 가져오기', () => {
     expect(indexImage(new Uint8ClampedArray(12), 3, 1, 2, 1, [])).toHaveProperty('error');
     const full = Array.from(
       { length: PALETTE_MAX_COLORS },
-      (_, i) => `#${i.toString(16).padStart(2, '0')}0000`,
+      (_, i) => `#${i.toString(16).padStart(6, '0')}`,
     );
-    const result = indexImage(Uint8ClampedArray.from(pixel(9, 1, 1)), 1, 1, 1, 1, full);
-    expect('frames' in result && result.frames[0]![0]).toBe(10); // #090000
+    const result = indexImage(Uint8ClampedArray.from(pixel(1, 0, 9)), 1, 1, 1, 1, full);
+    expect('frames' in result && result.frames[0]![0]).toBe(10); // #000009
   });
 });
 
@@ -189,6 +190,38 @@ describe('색 바꾸기', () => {
     doc.undo();
     expect(doc.doc.palette[0]).toBe(first);
     expect(doc.canUndo).toBe(false);
+  });
+});
+
+describe('머리 위·양옆 빈 곳 정리', () => {
+  it('모든 프레임에서 함께 빈 위 줄과 양옆을 잘라 해상도를 줄이고, 가운데·발밑은 그대로 둔다', () => {
+    const doc = new PixelDocument(newDoc('character', '캐릭터'));
+    doc.resizeCharacter(40, 48);
+    const idle = { animation: 0, frame: 0 };
+    const walk = { animation: 4, frame: 0 };
+    doc.begin();
+    // 대기: 가운데 기둥 (x 15~24, y 20~47). 걷기: 더 왼쪽(x 12)과 더 위(y 10)까지
+    for (let y = 20; y < 48; y++) for (let x = 15; x < 25; x++) doc.paint(idle, x, y, 1);
+    doc.paint(walk, 12, 10, 2);
+    doc.paint(walk, 20, 47, 2);
+    // 위는 10줄, 양옆은 덜 빈 왼쪽(12칸)만큼 똑같이 (오른쪽은 15칸 비어 있음)
+    expect(doc.trimMargins()).toEqual({ top: 10, sides: 12 });
+    expect([doc.doc.width, doc.doc.height]).toEqual([16, 38]);
+    expect(doc.pick(walk, 0, 0)).toBe(2);
+    expect(doc.pick(walk, 8, 37)).toBe(2);
+    expect(doc.pick(idle, 3, 37)).toBe(1);
+    expect(doc.trimMargins()).toEqual({ top: 0, sides: 0 });
+    doc.undo();
+    expect([doc.doc.width, doc.doc.height]).toEqual([40, 48]);
+  });
+
+  it('16px 아래로는 줄이지 않고, 그림이 없으면 하지 않는다', () => {
+    const doc = new PixelDocument(newDoc('character', '캐릭터'));
+    expect(doc.trimMargins()).toEqual({ top: 0, sides: 0 });
+    doc.begin();
+    doc.paint({ animation: 0, frame: 0 }, 8, 31, 1);
+    expect(doc.trimMargins()).toEqual({ top: 16, sides: 0 });
+    expect([doc.doc.width, doc.doc.height]).toEqual([16, 16]);
   });
 });
 
@@ -301,15 +334,29 @@ describe('캐릭터 모션과 점프', () => {
     });
   });
 
-  it('키 열 개를 다 쓰면 더 더할 수 없고, 필수 애니메이션은 지울 수 없다', () => {
+  it('처음 붙여 줄 키를 다 쓰면 더 더할 수 없고, 필수 애니메이션은 지울 수 없다', () => {
     const doc = character();
-    for (let i = 0; i < 10; i++) expect(doc.addMotion()).not.toBeNull();
+    for (let i = 0; i < SUGGESTED_KEYS.length; i++) expect(doc.addMotion()).not.toBeNull();
     expect(doc.addMotion()).toBeNull();
     const count = doc.doc.animations.length;
     doc.removeAnimation(0); // idle-down
     expect(doc.doc.animations).toHaveLength(count);
     doc.removeAnimation(count - 1);
     expect(doc.doc.animations).toHaveLength(count - 1);
+  });
+
+  it('키는 아무 키나 직접 달 수 있지만, 광장이 쓰는 키나 겹치는 키는 받지 않는다', () => {
+    const doc = character();
+    const first = doc.addMotion()!;
+    const second = doc.addMotion()!;
+    doc.updateMotion(first, { key: 'F2' });
+    expect(doc.doc.animations[first]!.key).toBe('F2');
+    doc.updateMotion(second, { key: 'F2' });
+    doc.updateMotion(second, { key: 'Space' });
+    expect(doc.doc.animations[second]!.key).toBe('2');
+    expect(doc.keyTaken('F2')).toBe(true);
+    expect(doc.keyTaken('F2', 'F2')).toBe(false);
+    expect(assetManifestSchema.safeParse(toManifest(doc.doc)).success).toBe(true);
   });
 
   it('점프는 걷기의 두 번째 프레임으로 시작하고, 둘 다 있으면 더하지 않는다', () => {
@@ -418,7 +465,7 @@ describe('GIF로 애니메이션 채우기', () => {
     const doc = new PixelDocument(fromManifest(builtinAsset('builtin:char-short')!));
     const { width, height, palette } = doc.doc;
     const left = doc.doc.animations.findIndex((a) => a.name === 'walk-left');
-    const frame = new Uint8Array(width * height);
+    const frame = new Uint16Array(width * height);
     frame[0] = 1;
     const first = doc.importAnimations(
       [
@@ -426,7 +473,7 @@ describe('GIF로 애니메이션 채우기', () => {
         { target: { motion: 'dance' }, frames: [frame], frameMs: 200, mirror: true },
       ],
       palette,
-      (p) => Uint8Array.from(p).reverse(),
+      (p) => Uint16Array.from(p).reverse(),
     );
     expect(first).toBe(left);
     const right = doc.doc.animations.find((a) => a.name === 'walk-right')!;
@@ -440,7 +487,7 @@ describe('GIF로 애니메이션 채우기', () => {
   it('숫자 키 없는 새 애니메이션으로도 넣는다 (애니메이터용, 이름은 파일 이름에서, 겹치면 -2)', () => {
     const doc = new PixelDocument(fromManifest(builtinAsset('builtin:char-short')!));
     const { width, height, palette } = doc.doc;
-    const frame = new Uint8Array(width * height);
+    const frame = new Uint16Array(width * height);
     frame[0] = 1;
     const count = doc.doc.animations.length;
     const keys = doc.freeMotionKeys().length;
@@ -625,7 +672,7 @@ describe('모션 키', () => {
     doc.setStyle(PlazaStyle.SideScroll);
     const down = doc.doc.animations.findIndex((a) => a.name === 'idle-down');
     doc.edit((d) => {
-      d.animations[down]!.frames = [new Uint8Array(d.width * d.height)];
+      d.animations[down]!.frames = [new Uint16Array(d.width * d.height)];
     });
     const motion = doc.doc.animations[doc.addMotion()!]!;
     expect(motion.frames[0]).toEqual(idleRight);
@@ -635,7 +682,7 @@ describe('모션 키', () => {
 describe('가져오기와 프레임 한도', () => {
   it('해상도를 넓히며 가져오면 되돌리기 한 번에 해상도와 그림이 함께 돌아간다', () => {
     const doc = new PixelDocument(newDoc('character', '새'));
-    const frame = new Uint8Array(32 * 40);
+    const frame = new Uint16Array(32 * 40);
     frame[32 * 40 - 1] = 1;
     const at = doc.importAnimations(
       [{ target: 0, frames: [frame], frameMs: 100, mirror: false }],
@@ -654,7 +701,7 @@ describe('가져오기와 프레임 한도', () => {
   it('가져오기 전에 사본으로 프레임 수를 세어 보고, 문서는 바꾸지 않는다', () => {
     const doc = new PixelDocument(newDoc('tile', '타일'));
     const frames = Array.from({ length: 20 }, (_, i) => {
-      const f = new Uint8Array(256);
+      const f = new Uint16Array(256);
       f[i] = 1;
       return f;
     });

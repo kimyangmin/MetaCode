@@ -15,8 +15,7 @@ import { useEffect, useState } from 'react';
 import { ApiError } from '../../api/client';
 import { AssetPreview } from './AssetPreview';
 import { deleteAsset, useCommunityAssets, useMyAssets } from './api';
-import { fromManifest, newDoc } from './editorModel';
-import { useAssetEditorStore, useMapEditorStore } from './editorStore';
+import { newEditorDoc, openAssetEditor, openMapEditor } from './editorWindow';
 import { Map as MapIcon, X } from 'lucide-react';
 
 /**
@@ -28,10 +27,7 @@ export function AssetSettings() {
   return (
     <div className="settings-form asset-settings">
       <MyCharacters onPick={() => setPicking(true)} />
-      <p className="form__hint">
-        커뮤니티 광장에 쓸 타일·오브젝트와 광장 맵은 커뮤니티 이름 옆 메뉴의 커뮤니티 설정 →
-        광장에서 만듭니다 (소유자·관리자).
-      </p>
+      <p className="form__hint">타일·오브젝트와 광장 맵은 커뮤니티 설정 → 광장에서 만듭니다.</p>
       {picking && (
         <BuiltinPicker
           kinds={['character']}
@@ -68,24 +64,36 @@ export function CommunityPlazaAssets({ community }: { community: CommunitySummar
 
 /** 내장 에셋을 복제해서 도트 에디터로 연다 */
 function openCopy(manifest: AssetManifest, communityId: string | null) {
-  useAssetEditorStore.getState().open({
+  const from = Object.entries(BUILTIN_ASSETS).find(([, m]) => m === manifest)?.[0];
+  openAssetEditor({ kind: 'new', assetKind: manifest.kind, communityId, from }, () => ({
     mode: 'create',
     communityId,
-    doc: { ...fromManifest(manifest), name: `${manifest.name} 복사`.slice(0, 32) },
-  });
+    doc: newEditorDoc(manifest.kind, manifest),
+  }));
+}
+
+/** 새로 그리기 */
+function openNew(kind: AssetKind, communityId: string | null) {
+  openAssetEditor({ kind: 'new', assetKind: kind, communityId }, () => ({
+    mode: 'create',
+    communityId,
+    doc: newEditorDoc(kind),
+  }));
+}
+
+/** 저장된 에셋 고치기 */
+function openEdit(asset: AssetDto) {
+  openAssetEditor({ kind: 'edit', assetId: asset.id }, () => ({ mode: 'edit', asset }));
 }
 
 function MyCharacters({ onPick }: { onPick(): void }) {
   const assets = useMyAssets().data ?? [];
-  const open = useAssetEditorStore((s) => s.open);
   const full = assets.length >= CHARACTER_ASSET_LIMIT;
   return (
     <section className="asset-section">
       <h3 className="settings-form__title">내 캐릭터</h3>
       <p className="form__hint">
-        광장에서 쓸 캐릭터를 직접 그립니다 ({assets.length}/{CHARACTER_ASSET_LIMIT}). 에디터의 광장
-        방식에서 탑다운용(대기·걷기 4방향)과 횡스크롤용(오른쪽을 보는 대기·걷기·점프, 왼쪽은 좌우
-        반전)을 고르고, 첨부 모션과 함께 모두 그려야 저장할 수 있습니다.
+        광장에서 쓸 캐릭터를 직접 그립니다 ({assets.length}/{CHARACTER_ASSET_LIMIT}).
       </p>
       <AssetGrid assets={assets} />
       <div className="asset-section__actions">
@@ -93,9 +101,7 @@ function MyCharacters({ onPick }: { onPick(): void }) {
           type="button"
           className="button button--primary"
           disabled={full}
-          onClick={() =>
-            open({ mode: 'create', communityId: null, doc: newDoc('character', '새 캐릭터') })
-          }
+          onClick={() => openNew('character', null)}
         >
           새 캐릭터
         </button>
@@ -109,14 +115,8 @@ function MyCharacters({ onPick }: { onPick(): void }) {
 
 function CommunityAssets({ community, onPick }: { community: CommunitySummary; onPick(): void }) {
   const assets = useCommunityAssets(community.id).data ?? [];
-  const open = useAssetEditorStore((s) => s.open);
   const full = assets.length >= COMMUNITY_ASSET_LIMIT;
-  const create = (kind: 'tile' | 'object') =>
-    open({
-      mode: 'create',
-      communityId: community.id,
-      doc: newDoc(kind, kind === 'tile' ? '새 타일' : '새 오브젝트', { w: 1, h: 2 }),
-    });
+  const create = (kind: 'tile' | 'object') => openNew(kind, community.id);
   return (
     <section className="asset-section">
       <h3 className="settings-form__title">타일과 오브젝트</h3>
@@ -143,7 +143,7 @@ function CommunityAssets({ community, onPick }: { community: CommunitySummary; o
         <button
           type="button"
           className="button"
-          onClick={() => useMapEditorStore.getState().open(community.id, community.name)}
+          onClick={() => openMapEditor(community.id, community.name)}
         >
           <MapIcon aria-hidden /> 광장 맵 편집
         </button>
@@ -154,7 +154,6 @@ function CommunityAssets({ community, onPick }: { community: CommunitySummary; o
 
 function AssetGrid({ assets }: { assets: AssetDto[] }) {
   const queryClient = useQueryClient();
-  const open = useAssetEditorStore((s) => s.open);
   const [error, setError] = useState<string | null>(null);
   if (assets.length === 0) return null;
   const remove = async (asset: AssetDto) => {
@@ -180,11 +179,7 @@ function AssetGrid({ assets }: { assets: AssetDto[] }) {
                 <span className="asset-card__badge">횡스크롤</span>
               )}
             <div className="asset-card__actions">
-              <button
-                type="button"
-                className="button"
-                onClick={() => open({ mode: 'edit', asset })}
-              >
+              <button type="button" className="button" onClick={() => openEdit(asset)}>
                 편집
               </button>
               <button

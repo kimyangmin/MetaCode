@@ -23,12 +23,12 @@ function nearest(palette: string[], r: number, g: number, b: number): number {
   return best;
 }
 
-export type ImportResult = { frames: Uint8Array[]; palette: string[] } | { error: string };
+export type ImportResult = { frames: Uint16Array[]; palette: string[] } | { error: string };
 
 /**
  * 가져온 그림(RGBA)을 팔레트 픽셀 프레임으로. 프레임 크기 그대로이거나, 같은 높이의 프레임을
  * 가로로 이어 붙인 시트여야 한다. 반투명(알파 128 미만)은 투명으로 본다.
- * 팔레트에 없는 색은 자리가 있으면 더하고, 255색이 넘으면 가장 가까운 색으로 바꾼다.
+ * 팔레트에 없는 색은 더한다 (팔레트 한도를 넘으면 가장 가까운 색으로 바꾼다).
  */
 export function indexImage(
   rgba: Uint8ClampedArray,
@@ -46,7 +46,7 @@ export function indexImage(
   const next = [...palette];
   const lookup = new Map(next.map((color, i) => [color, i + 1]));
   const count = imageWidth / frameWidth;
-  const frames = Array.from({ length: count }, () => new Uint8Array(frameWidth * frameHeight));
+  const frames = Array.from({ length: count }, () => new Uint16Array(frameWidth * frameHeight));
   for (let y = 0; y < imageHeight; y++) {
     for (let x = 0; x < imageWidth; x++) {
       const o = (y * imageWidth + x) * 4;
@@ -104,10 +104,13 @@ type Rgb = [number, number, number];
 
 /**
  * 중간값 자르기(median cut): 색들을 count개 상자로 나누고 상자마다 (많이 쓴 만큼 무게를 둔) 평균색을 고른다.
- * GIF처럼 색이 많은 그림을 팔레트(255색) 안으로 줄일 때 쓴다.
+ * 색이 팔레트 한도보다 많은 그림을 한도 안으로 줄일 때 쓴다.
  */
 function medianCut(colors: { rgb: Rgb; weight: number }[], count: number): Rgb[] {
   if (colors.length <= count) return colors.map((c) => c.rgb);
+  // 남은 자리가 없으면 새 색을 하나도 더하지 않는다. 예전엔 상자 하나(평균색 한 개)를 돌려줘서, 팔레트가
+  // 255색으로 차 있을 때 GIF를 가져오면 256색이 되어 저장이 막혔다.
+  if (count <= 0) return [];
   let boxes = [colors];
   while (boxes.length < count) {
     // 색 범위가 가장 넓은 상자를 가장 넓은 채널에서 반으로 자른다.
@@ -150,8 +153,8 @@ function medianCut(colors: { rgb: Rgb; weight: number }[], count: number): Rgb[]
 }
 
 /**
- * 여러 장의 RGBA 그림을 같은 팔레트의 픽셀 프레임으로. 지금 팔레트의 색은 그대로 두고, 남은 자리(255색까지)에
- * 새 색을 더한다. 새 색이 남은 자리보다 많으면 중간값 자르기로 줄이고, 모든 픽셀은 가장 가까운 색이 된다.
+ * 여러 장의 RGBA 그림을 같은 팔레트의 픽셀 프레임으로. 지금 팔레트의 색은 그대로 두고 새 색을 모두 더한다.
+ * 팔레트 한도(PALETTE_MAX_COLORS)를 넘을 만큼 많을 때만 중간값 자르기로 줄이고, 그 픽셀은 가장 가까운 색이 된다.
  * 반투명(알파 128 미만)은 투명이다.
  */
 export function quantizeFrames(
@@ -159,7 +162,7 @@ export function quantizeFrames(
   width: number,
   height: number,
   palette: readonly string[],
-): { frames: Uint8Array[]; palette: string[] } {
+): { frames: Uint16Array[]; palette: string[] } {
   const known = new Set(palette.map((c) => c.toLowerCase()));
   const counts = new Map<number, number>();
   for (const rgba of images) {
@@ -177,7 +180,12 @@ export function quantizeFrames(
     }));
   const slots = Math.max(0, PALETTE_MAX_COLORS - palette.length);
   const next = [...palette, ...medianCut(fresh, slots).map(([r, g, b]) => hex(r, g, b))];
+  // 팔레트에 똑같이 있는 색은 바로 찾는다 (색이 많을 때 가까운 색을 모두 견주면 느리다)
   const lookup = new Map<number, number>();
+  next.forEach((color, i) => {
+    const key = parseInt(color.slice(1), 16);
+    if (!lookup.has(key)) lookup.set(key, i + 1);
+  });
   const valueOf = (key: number) => {
     let value = lookup.get(key);
     if (value === undefined) {
@@ -187,7 +195,7 @@ export function quantizeFrames(
     return value;
   };
   const frames = images.map((rgba) => {
-    const pixels = new Uint8Array(width * height);
+    const pixels = new Uint16Array(width * height);
     for (let i = 0; i < width * height; i++) {
       const o = i * 4;
       if (rgba[o + 3]! < 128) continue;
