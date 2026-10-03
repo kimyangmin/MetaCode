@@ -96,7 +96,7 @@ describe('광장 월드', () => {
     const bob = plaza.actors.get('bob')!;
     const from = { ...bob.position };
     plaza.moved({
-      plazaId: 'p',
+      plazaId: 'dm:c1',
       userId: 'bob',
       x: from.x + 10,
       y: from.y,

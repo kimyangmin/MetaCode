@@ -31,6 +31,14 @@ export default function CommunityChannel() {
       people={members.data?.map((m) => m.user) ?? []}
       showMembers
       canDeleteOthers={community.myRole !== CommunityRole.Member}
+      plazaId={`community:${community.id}`}
+      plazaChannels={
+        new Map(
+          community.channels
+            .filter((c) => c.type === 'TEXT')
+            .map((c) => [c.id, `#${c.name ?? ''}`] as const),
+        )
+      }
     />
   );
 }

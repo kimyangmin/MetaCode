@@ -1,14 +1,18 @@
-import type { ChannelSummary, UserProfile } from '@metacode/shared';
+import type { ChannelSummary, PlazaId, UserProfile } from '@metacode/shared';
+import { Map as MapIcon } from 'lucide-react-native';
 import type { ReactNode } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { useMe } from '../../api/queries';
 import { ScreenHeader } from '../../layout/ScreenHeader';
 import { useOtherUnread } from '../../layout/useOtherUnread';
+import { useUiStore } from '../../stores/ui';
 import { useTheme } from '../../ui/theme';
+import { PlazaSplit } from '../plaza/PlazaSplit';
 import { ChatView } from './ChatView';
 
 /**
- * 채널 화면(텍스트 채널, DM): 머리글 + 채팅. 광장은 다음 단계에서 위에 나눠 넣는다 (웹 휴대폰 화면처럼).
+ * 채널 화면(텍스트 채널, DM): 머리글 + 광장(위) + 채팅(아래). 웹 휴대폰 화면처럼 위아래로만 나누고,
+ * 머리글의 지도 버튼으로 광장을 켜고 끈다.
  */
 export function ChannelScreen({
   channel,
@@ -18,6 +22,8 @@ export function ChannelScreen({
   people,
   showMembers,
   canDeleteOthers,
+  plazaId,
+  plazaChannels,
 }: {
   channel: ChannelSummary;
   icon?: ReactNode;
@@ -27,22 +33,46 @@ export function ChannelScreen({
   people: UserProfile[];
   showMembers: boolean;
   canDeleteOthers: boolean;
+  /** 이 채널이 속한 광장 (커뮤니티 분수 광장, DM 모닥불 캠프) */
+  plazaId: PlazaId;
+  /** 광장에 말풍선을 띄울 채널과 그 이름표 */
+  plazaChannels: ReadonlyMap<string, string | null>;
 }) {
   const theme = useTheme();
   const me = useMe().data;
   const otherUnread = useOtherUnread(channel.id);
+  const plazaOpen = useUiStore((s) => s.plazaOpen);
   return (
     <View style={[styles.root, { backgroundColor: theme.bg }]}>
-      <ScreenHeader icon={icon} title={title} otherUnread={otherUnread} showMembers={showMembers} />
+      <ScreenHeader
+        icon={icon}
+        title={title}
+        otherUnread={otherUnread}
+        showMembers={showMembers}
+        actions={
+          <Pressable
+            onPress={() => useUiStore.getState().setPlazaOpen(!plazaOpen)}
+            hitSlop={8}
+            style={styles.button}
+            accessibilityRole="button"
+            accessibilityLabel={plazaOpen ? '광장 닫기' : '광장 열기'}
+            accessibilityState={{ selected: plazaOpen }}
+          >
+            <MapIcon color={plazaOpen ? theme.accent : theme.muted} size={22} />
+          </Pressable>
+        }
+      />
       {me && (
-        <ChatView
-          channelId={channel.id}
-          title={inputTitle}
-          me={me}
-          lastReadMessageId={channel.lastReadMessageId}
-          people={people}
-          canDeleteOthers={canDeleteOthers}
-        />
+        <PlazaSplit plaza={plazaOpen ? { plazaId, me, channelLabels: plazaChannels } : null}>
+          <ChatView
+            channelId={channel.id}
+            title={inputTitle}
+            me={me}
+            lastReadMessageId={channel.lastReadMessageId}
+            people={people}
+            canDeleteOthers={canDeleteOthers}
+          />
+        </PlazaSplit>
       )}
     </View>
   );
@@ -50,4 +80,5 @@ export function ChannelScreen({
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
+  button: { width: 44, height: 48, alignItems: 'center', justifyContent: 'center' },
 });

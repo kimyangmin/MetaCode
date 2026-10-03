@@ -13,12 +13,15 @@ export function ScreenHeader({
   title,
   otherUnread,
   showMembers,
+  actions,
 }: {
   icon?: ReactNode;
   title: string;
   /** 지금 보는 곳 밖에 안 읽은 메시지가 있음 */
   otherUnread: boolean;
   showMembers: boolean;
+  /** 멤버 버튼 앞에 둘 버튼 (광장 켜고 끄기 등) */
+  actions?: ReactNode;
 }) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
@@ -47,6 +50,7 @@ export function ScreenHeader({
           {title}
         </Text>
       </View>
+      {actions}
       {showMembers && (
         <Pressable
           onPress={() => useUiStore.getState().setMembersOpen(true)}
