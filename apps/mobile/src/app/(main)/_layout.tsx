@@ -1,6 +1,6 @@
 import type { UserDetail } from '@metacode/shared';
 import { Slot, useGlobalSearchParams, usePathname } from 'expo-router';
-import { useEffect } from 'react';
+import { Suspense, lazy, useEffect } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useCommunities, useMe } from '@/api/queries';
 import { MemberList } from '@/features/communities/MemberList';
@@ -9,9 +9,15 @@ import { DmSidebar } from '@/features/dms/DmSidebar';
 import { AppShell } from '@/layout/AppShell';
 import { Rail } from '@/layout/Rail';
 import { UserPanel } from '@/layout/UserPanel';
+import { useVoiceStore } from '@/features/voice/store';
+import { VoicePanel } from '@/features/voice/VoicePanel';
+import { VoiceProvider } from '@/features/voice/VoiceProvider';
 import { RealtimeProvider } from '@/realtime/RealtimeProvider';
 import { useUiStore } from '@/stores/ui';
 import { useTheme } from '@/ui/theme';
+
+// 화면 공유 보기는 WebRTC 네이티브 모듈을 쓰므로 볼 때 불러온다.
+const ScreenViewer = lazy(() => import('@/features/voice/ScreenViewer'));
 
 /** 로그인 후 화면: 내 정보를 받고, 실시간 연결을 열고, 서랍 틀 안에 화면을 그린다 */
 export default function MainLayout() {
@@ -36,7 +42,9 @@ export default function MainLayout() {
   }
   return (
     <RealtimeProvider meId={me.data.id}>
-      <Shell me={me.data} />
+      <VoiceProvider meId={me.data.id}>
+        <Shell me={me.data} />
+      </VoiceProvider>
     </RealtimeProvider>
   );
 }
@@ -50,6 +58,7 @@ function Shell({ me }: { me: UserDetail }) {
   }>();
   const inCommunity = pathname.startsWith('/c/');
   const community = useCommunities().data?.find((c) => c.id === communityId);
+  const watching = useVoiceStore((s) => s.watching !== null);
 
   // 다른 화면으로 옮기면 멤버 서랍은 닫는다 (목록 서랍은 커뮤니티를 오가는 동안 열어 둔다)
   useEffect(() => useUiStore.getState().setMembersOpen(false), [pathname]);
@@ -67,6 +76,7 @@ function Shell({ me }: { me: UserDetail }) {
         ) : (
           <DmSidebar meId={me.id} activeId={channelId ?? null} />
         )}
+        <VoicePanel meId={me.id} />
         <UserPanel me={me} />
       </View>
     </View>
@@ -75,6 +85,11 @@ function Shell({ me }: { me: UserDetail }) {
   return (
     <AppShell nav={nav} members={community ? <MemberList communityId={community.id} /> : null}>
       <Slot />
+      {watching && (
+        <Suspense fallback={null}>
+          <ScreenViewer />
+        </Suspense>
+      )}
     </AppShell>
   );
 }

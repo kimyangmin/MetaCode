@@ -23,6 +23,8 @@ export default function DmChannel() {
       canDeleteOthers={false}
       plazaId={`dm:${dm.id}`}
       plazaChannels={new Map([[dm.id, null]])}
+      plazaVoice={new Map([[dm.id, { kind: 'call' as const, name: '통화 중' }]])}
+      callable
     />
   );
 }

@@ -1,3 +1,4 @@
+import type { VoiceLabel } from '@metacode/client';
 import type { ChannelSummary, PlazaId, UserProfile } from '@metacode/shared';
 import { Map as MapIcon } from 'lucide-react-native';
 import type { ReactNode } from 'react';
@@ -8,6 +9,7 @@ import { useOtherUnread } from '../../layout/useOtherUnread';
 import { useUiStore } from '../../stores/ui';
 import { useTheme } from '../../ui/theme';
 import { PlazaSplit } from '../plaza/PlazaSplit';
+import { CallBar, CallButton } from '../voice/CallBar';
 import { ChatView } from './ChatView';
 
 /**
@@ -24,6 +26,8 @@ export function ChannelScreen({
   canDeleteOthers,
   plazaId,
   plazaChannels,
+  plazaVoice,
+  callable = false,
 }: {
   channel: ChannelSummary;
   icon?: ReactNode;
@@ -37,6 +41,10 @@ export function ChannelScreen({
   plazaId: PlazaId;
   /** 광장에 말풍선을 띄울 채널과 그 이름표 */
   plazaChannels: ReadonlyMap<string, string | null>;
+  /** 광장 캐릭터 위에 보일 통화 이름 (커뮤니티의 음성 채널들, DM은 그 DM) */
+  plazaVoice: ReadonlyMap<string, VoiceLabel>;
+  /** DM: 이 채널에서 바로 통화한다 (머리글 통화 버튼, 통화 중 표시) */
+  callable?: boolean;
 }) {
   const theme = useTheme();
   const me = useMe().data;
@@ -50,20 +58,30 @@ export function ChannelScreen({
         otherUnread={otherUnread}
         showMembers={showMembers}
         actions={
-          <Pressable
-            onPress={() => useUiStore.getState().setPlazaOpen(!plazaOpen)}
-            hitSlop={8}
-            style={styles.button}
-            accessibilityRole="button"
-            accessibilityLabel={plazaOpen ? '광장 닫기' : '광장 열기'}
-            accessibilityState={{ selected: plazaOpen }}
-          >
-            <MapIcon color={plazaOpen ? theme.accent : theme.muted} size={22} />
-          </Pressable>
+          <>
+            {callable && <CallButton channelId={channel.id} />}
+            <Pressable
+              onPress={() => useUiStore.getState().setPlazaOpen(!plazaOpen)}
+              hitSlop={8}
+              style={styles.button}
+              accessibilityRole="button"
+              accessibilityLabel={plazaOpen ? '광장 닫기' : '광장 열기'}
+              accessibilityState={{ selected: plazaOpen }}
+            >
+              <MapIcon color={plazaOpen ? theme.accent : theme.muted} size={22} />
+            </Pressable>
+          </>
         }
       />
+      {callable && <CallBar channelId={channel.id} />}
       {me && (
-        <PlazaSplit plaza={plazaOpen ? { plazaId, me, channelLabels: plazaChannels } : null}>
+        <PlazaSplit
+          plaza={
+            plazaOpen
+              ? { plazaId, me, channelLabels: plazaChannels, voiceLabels: plazaVoice }
+              : null
+          }
+        >
           <ChatView
             channelId={channel.id}
             title={inputTitle}

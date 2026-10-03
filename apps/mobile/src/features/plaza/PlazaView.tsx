@@ -1,4 +1,4 @@
-import type { PlazaWorld } from '@metacode/client';
+import { type PlazaWorld, type VoiceLabel, plazaVoiceStates } from '@metacode/client';
 import { type PlazaId, type UserProfile, inputKeyLabel } from '@metacode/shared';
 import { Canvas, Picture, type SkPicture } from '@shopify/react-native-skia';
 import { useQueryClient } from '@tanstack/react-query';
@@ -9,6 +9,7 @@ import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useSharedValue } from 'react-native-reanimated';
 import { useRealtime } from '../../realtime/RealtimeProvider';
 import { useTheme } from '../../ui/theme';
+import { useVoiceStore } from '../voice/store';
 import { PlazaControls } from './Controls';
 import { PlazaEngine, emptyPicture } from './engine';
 import { type ActorLabel, ActorOverlay, type Heads } from './Overlay';
@@ -24,6 +25,7 @@ export function PlazaView({
   plazaId,
   me,
   channelLabels,
+  voiceLabels,
 }: {
   plazaId: PlazaId;
   me: UserProfile;
@@ -32,6 +34,8 @@ export function PlazaView({
    * 모닥불 캠프는 그 DM 하나(이름표 없음).
    */
   channelLabels: ReadonlyMap<string, string | null>;
+  /** 이 광장에 속한 통화 채널과 캐릭터에 보일 이름 (음성 채널 'lounge', DM '통화 중') */
+  voiceLabels: ReadonlyMap<string, VoiceLabel>;
 }) {
   const theme = useTheme();
   const { socket } = useRealtime();
@@ -51,6 +55,14 @@ export function PlazaView({
   useEffect(() => {
     engine.setChannelLabels(channelLabels);
   }, [engine, channelLabels]);
+
+  // 통화 상태 → 캐릭터 위 음성 채널 표시와 말하는 중 고리 (말하는 중은 내가 그 통화에 있을 때만)
+  const calls = useVoiceStore((s) => s.calls);
+  const myCallId = useVoiceStore((s) => s.session?.channelId ?? null);
+  const voiceKey = JSON.stringify([...voiceLabels]);
+  useEffect(() => {
+    engine.setVoice(plazaVoiceStates(calls, new Map(JSON.parse(voiceKey)), myCallId));
+  }, [engine, calls, voiceKey, myCallId]);
 
   useEffect(
     () =>

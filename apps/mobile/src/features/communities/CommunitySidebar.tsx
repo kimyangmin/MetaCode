@@ -5,6 +5,9 @@ import { Hash, Lock, Volume2 } from 'lucide-react-native';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useUiStore } from '../../stores/ui';
+import { useVoiceStore } from '../voice/store';
+import { VoiceMembers } from '../voice/VoiceMembers';
+import { useVoice } from '../voice/VoiceProvider';
 import { useTheme } from '../../ui/theme';
 
 /**
@@ -20,6 +23,9 @@ export function CommunitySidebar({
 }) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
+  const voice = useVoice();
+  const calls = useVoiceStore((s) => s.calls);
+  const callChannelId = useVoiceStore((s) => s.session?.channelId ?? null);
   const textChannels = community.channels.filter((c) => c.type === 'TEXT');
   const voiceChannels = community.channels.filter((c) => c.type === 'VOICE');
 
@@ -61,8 +67,16 @@ export function CommunitySidebar({
         {voiceChannels.length > 0 && (
           <Text style={[styles.section, { color: theme.muted }]}>음성 채널</Text>
         )}
+        {/* 음성 채널을 누르면 통화에 들어간다 (보던 채팅은 그대로). 참여자는 채널 아래에 */}
         {voiceChannels.map((channel) => (
-          <ChannelRow key={channel.id} channel={channel} active={false} onPress={() => {}} />
+          <View key={channel.id}>
+            <ChannelRow
+              channel={channel}
+              active={channel.id === callChannelId}
+              onPress={() => void voice.join(channel.id)}
+            />
+            <VoiceMembers channelId={channel.id} members={calls[channel.id]?.members ?? []} />
+          </View>
         ))}
       </ScrollView>
     </View>
