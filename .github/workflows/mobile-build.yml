@@ -13,6 +13,17 @@ on:
   #     - 'pnpm-lock.yaml'
   #     - '.github/workflows/mobile-build.yml'
   workflow_dispatch:
+    inputs:
+      variant:
+        description: '만들 APK (dev = 개발 빌드만, release = JS를 넣은 빌드만, both = 둘 다)'
+        type: choice
+        options: [dev, release, both]
+        default: dev
+      abis:
+        description: 'CPU 종류 (요즘 휴대폰은 arm64-v8a 하나면 됨)'
+        type: choice
+        options: [arm64-v8a, 'arm64-v8a,armeabi-v7a']
+        default: arm64-v8a
 
 concurrency:
   group: mobile-build-${{ github.ref }}
@@ -46,18 +57,29 @@ jobs:
       # 네이티브 프로젝트는 커밋하지 않고 app.config.ts로 만든다
       - run: pnpm --filter @metacode/mobile exec expo prebuild --platform android --no-install
 
-      # 서명 키가 아직 없어 둘 다 디버그 키로 서명한다 (설치 확인용).
+      # 서명 키가 아직 없어 디버그 키로 서명한다 (설치 확인용).
       # - MetaCode-mobile-<커밋>.apk: 앱 안에 JS를 넣은 빌드 (그대로 써 보기)
       # - MetaCode-mobile-<커밋>-dev.apk: 개발 빌드(dev client). PC의 Metro에 붙어 JS를 바로 바꿔 끼운다 (docs/mobile.md)
+      # 개발할 때는 개발 빌드 + arm64 하나만 만들어 시간을 줄인다 (기본값). 둘 다 만들면 20분 넘게 걸린다.
       - name: Build APK
         working-directory: apps/mobile/android
+        env:
+          VARIANT: ${{ inputs.variant || 'both' }}
+          ABIS: ${{ inputs.abis || 'arm64-v8a,armeabi-v7a' }}
         run: |
           chmod +x gradlew
-          ./gradlew --no-daemon assembleRelease assembleDebug -PreactNativeArchitectures=arm64-v8a,armeabi-v7a
+          tasks=""
+          [ "$VARIANT" != "dev" ] && tasks="$tasks assembleRelease"
+          [ "$VARIANT" != "release" ] && tasks="$tasks assembleDebug"
+          ./gradlew --no-daemon $tasks -PreactNativeArchitectures="$ABIS"
           mkdir -p ../upload
           short=${GITHUB_SHA::7}
-          cp app/build/outputs/apk/release/app-release.apk ../upload/MetaCode-mobile-$short.apk
-          cp app/build/outputs/apk/debug/app-debug.apk ../upload/MetaCode-mobile-$short-dev.apk
+          if [ "$VARIANT" != "dev" ]; then
+            cp app/build/outputs/apk/release/app-release.apk ../upload/MetaCode-mobile-$short.apk
+          fi
+          if [ "$VARIANT" != "release" ]; then
+            cp app/build/outputs/apk/debug/app-debug.apk ../upload/MetaCode-mobile-$short-dev.apk
+          fi
 
       - uses: actions/upload-artifact@v4
         with:

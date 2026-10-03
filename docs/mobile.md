@@ -44,7 +44,7 @@ cd apps/mobile/android
 ./gradlew assembleRelease   # 서명 설정 전에는 디버그 키로 서명됨
 ```
 
-`Mobile Build` 워크플로가 같은 방법으로 APK를 만들어 아티팩트로 남깁니다. 빌드가 10분 넘게 걸려서 지금은 PR마다 돌리지 않고, 필요할 때 GitHub Actions → Mobile Build → Run workflow(브랜치 고르기)로 실행합니다.
+`Mobile Build` 워크플로가 같은 방법으로 APK를 만들어 아티팩트로 남깁니다. 빌드가 10분 넘게 걸려서 지금은 PR마다 돌리지 않고, 필요할 때 GitHub Actions → Mobile Build → Run workflow(브랜치 고르기)로 실행합니다. 실행할 때 만들 APK(`dev` 개발 빌드만 / `release` JS를 넣은 빌드만 / `both`)와 CPU 종류(기본 arm64-v8a 하나)를 고릅니다. 개발 빌드 + arm64 하나가 가장 빠르고, 둘 다 두 CPU용으로 만들면 20분 넘게 걸립니다. 명령줄: `gh workflow run "Mobile Build" --ref <브랜치> -f variant=dev`.
 
 ## 인증
 
