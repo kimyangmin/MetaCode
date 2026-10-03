@@ -37,7 +37,15 @@ let viewingChannel: string | null = null;
 /** 채팅 화면이 지금 보여 주는 채널 (ChatView가 정한다) */
 export function setViewingChannel(channelId: string | null): void {
   viewingChannel = channelId;
+  // 그 채널을 열면 그 채널의 알림은 알림 센터에서 걷는다 (이미 읽었으므로)
+  if (channelId) {
+    for (const shown of shownByChannel.get(channelId) ?? []) shown.close();
+    shownByChannel.delete(channelId);
+  }
 }
+
+/** 띄운 시스템 알림 (채널 → 알림들) */
+const shownByChannel = new Map<string, Notification[]>();
 
 function isViewing(channelId: string): boolean {
   return (
@@ -120,13 +128,23 @@ export function notifyMessage(input: {
     : `${displayName(message.author)} (#${channel?.name ?? ''}, ${community!.name})`;
   const path = dm ? `/dm/${dm.id}` : `/c/${community!.id}/${message.channelId}`;
   try {
+    // 태그는 메시지마다 따로 준다: 같은 태그(예전엔 채널 ID)의 알림이 알림 센터에 남아 있으면 브라우저가
+    // 새 알림을 띄우지 않고 그 알림의 내용만 조용히 바꿔서, 같은 채널의 두 번째 알림부터 보이지 않았다.
     const shown = new Notification(title, {
       body: bodyOf(message),
       icon: message.author.avatarUrl,
-      tag: message.channelId,
+      tag: message.id,
       // 소리는 앱이 틀므로 시스템 소리는 끈다
       silent: true,
     });
+    const list = shownByChannel.get(message.channelId) ?? [];
+    list.push(shown);
+    shownByChannel.set(message.channelId, list);
+    shown.onclose = () => {
+      const left = (shownByChannel.get(message.channelId) ?? []).filter((n) => n !== shown);
+      if (left.length) shownByChannel.set(message.channelId, left);
+      else shownByChannel.delete(message.channelId);
+    };
     shown.onclick = () => {
       window.focus();
       navigator_?.(path);

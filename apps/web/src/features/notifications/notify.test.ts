@@ -1,7 +1,9 @@
 import type { UserProfile } from '@metacode/shared';
-import { describe, expect, it } from 'vitest';
+import type { CommunitySummary, MessageDto } from '@metacode/shared';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { mentionCandidates } from '../chat/Composer';
-import { mentionsMe, shouldNotify } from './notify';
+import { mentionsMe, notifyMessage, setViewingChannel, shouldNotify } from './notify';
+import { useNotificationSettings } from './settings';
 
 const user = (id: string, username: string, displayName: string | null = null): UserProfile => ({
   id,
@@ -60,5 +62,57 @@ describe('멘션 고르기', () => {
     expect(mentionCandidates(people, 'bo', me.id).map((p) => p.username)).toEqual(['bobby']);
     expect(mentionCandidates(people, '밥', me.id).map((p) => p.username)).toEqual(['dev-bob']);
     expect(mentionCandidates(people, '', me.id)).toHaveLength(3);
+  });
+});
+
+describe('시스템 알림 창', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('같은 채널의 알림도 메시지마다 따로 띄우고, 그 채널을 열면 걷는다', () => {
+    const shown: { tag: string; closed: boolean; close(): void; onclose?: () => void }[] = [];
+    vi.stubGlobal(
+      'Notification',
+      class {
+        static permission = 'granted';
+        tag: string;
+        closed = false;
+        onclose?: () => void;
+        constructor(_title: string, options: { tag: string }) {
+          this.tag = options.tag;
+          shown.push(this);
+        }
+        close() {
+          this.closed = true;
+          this.onclose?.();
+        }
+      },
+    );
+    const store = new Map<string, string>();
+    vi.stubGlobal('localStorage', {
+      getItem: (k: string) => store.get(k) ?? null,
+      setItem: (k: string, v: string) => store.set(k, v),
+    });
+    vi.stubGlobal('location', { pathname: '/dm', hash: '' });
+    vi.stubGlobal('document', { visibilityState: 'visible', hasFocus: () => false });
+    useNotificationSettings.setState({ level: 'mentions', sound: false, desktop: true });
+    const community = {
+      id: 'k',
+      name: '커뮤니티',
+      channels: [{ id: 'c1', name: '일반' }],
+    } as unknown as CommunitySummary;
+    const send = (id: string) =>
+      notifyMessage({
+        message: { ...message('@alice'), id, attachments: [] } as unknown as MessageDto,
+        me,
+        communities: [community],
+        dms: [],
+      });
+    send('m1');
+    send('m2');
+    // 예전엔 둘 다 채널 ID 태그라 두 번째가 첫 번째를 조용히 바꿔 보이지 않았다
+    expect(shown.map((n) => n.tag)).toEqual(['m1', 'm2']);
+    setViewingChannel('c1');
+    expect(shown.every((n) => n.closed)).toBe(true);
+    setViewingChannel(null);
   });
 });
