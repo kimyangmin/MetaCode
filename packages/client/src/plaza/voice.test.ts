@@ -1,6 +1,6 @@
 import type { VoiceCall } from '@metacode/shared';
 import { describe, expect, it } from 'vitest';
-import { type VoiceLabel, plazaVoiceStates } from './plazaVoice';
+import { type VoiceLabel, plazaVoiceStates } from './voice.js';
 
 const lounge: VoiceLabel = { kind: 'channel', name: 'lounge' };
 

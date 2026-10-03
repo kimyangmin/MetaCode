@@ -1,7 +1,7 @@
 import { builtinAsset } from '@metacode/shared/builtin-assets';
 import { describe, expect, it } from 'vitest';
 import { PlazaStyle, encodePixels } from '@metacode/shared';
-import { airbornePose, animationName, characterPose, emoteDurationMs } from './characterSprite';
+import { airbornePose, animationName, characterPose, emoteDurationMs } from './pose.js';
 
 const manifest = builtinAsset('builtin:char-long')!;
 

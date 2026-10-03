@@ -1,27 +1,8 @@
-import { type AssetAnimation, type AssetManifest, decodeFrame } from '@metacode/shared';
-import { paletteColors } from './pixelCanvas';
+import type { AssetManifest } from '@metacode/shared';
+import { framePixels } from '@metacode/client';
 
-/** 팔레트 픽셀 한 장을 RGBA로. palette를 주면 매니페스트 팔레트 대신 쓴다 (캐릭터 색 바꾸기) */
-export function framePixels(
-  manifest: AssetManifest,
-  frame: number,
-  palette: readonly string[] = manifest.palette,
-): Uint8ClampedArray<ArrayBuffer> {
-  const { width, height } = manifest;
-  const out = new Uint8ClampedArray(width * height * 4);
-  const pixels = decodeFrame(manifest.frames[frame] ?? '');
-  if (!pixels) return out;
-  const colorOf = paletteColors(palette);
-  for (let i = 0; i < Math.min(pixels.length, width * height); i++) {
-    const color = colorOf(pixels[i]!);
-    if (!color) continue;
-    out[i * 4] = color[0];
-    out[i * 4 + 1] = color[1];
-    out[i * 4 + 2] = color[2];
-    out[i * 4 + 3] = 255;
-  }
-  return out;
-}
+// 프레임 RGBA·애니메이션 프레임 계산은 네이티브 앱과 함께 쓴다 (packages/client)
+export { frameAt, frameOnce, framePixels, isAnimated } from '@metacode/client';
 
 /**
  * 텍스처 한 변의 최대 크기. 프레임을 한 줄로 늘어놓은 시트가 오래된 GPU의 WebGL 한계(4096px)를
@@ -94,22 +75,4 @@ export function sheetCanvas(
     ctx.drawImage(buffer, x, y, cell.width, cell.height);
   });
   return canvas;
-}
-
-/** 애니메이션을 시작하고 elapsedMs가 지났을 때 보일 프레임 번호 (반복) */
-export function frameAt(animation: AssetAnimation, elapsedMs: number): number {
-  const { frames, frameMs } = animation;
-  const step = Math.floor(Math.max(0, elapsedMs) / frameMs) % frames.length;
-  return frames[step]!;
-}
-
-/** 한 번만 재생하는 애니메이션: 끝나면 마지막 프레임에 머문다 */
-export function frameOnce(animation: AssetAnimation, elapsedMs: number): number {
-  const { frames, frameMs } = animation;
-  const step = Math.min(frames.length - 1, Math.floor(Math.max(0, elapsedMs) / frameMs));
-  return frames[step]!;
-}
-
-export function isAnimated(animation: AssetAnimation | undefined): boolean {
-  return !!animation && new Set(animation.frames).size > 1;
 }
