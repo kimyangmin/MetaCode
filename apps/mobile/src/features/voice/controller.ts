@@ -44,6 +44,8 @@ export class VoiceController {
   private speaking = false;
   /** 화면 보기 요청 번호 (watch) */
   private watchRequest = 0;
+  /** 이번 통화에서 마이크 권한을 받았다 (join이 들어가기 전에 묻는다) */
+  private micAllowed = true;
 
   constructor(private readonly meId: string) {}
 
@@ -129,6 +131,11 @@ export class VoiceController {
     store().setSession({ channelId, status: 'connecting', listenOnly: false });
     store().patch({ error: null, gains: {} });
     try {
+      // 마이크 권한은 서버에 들어가기 전에 묻는다. 권한 창에 머무는 동안은 통화 유지 서비스가 아직 없어서, 화면이
+      // 꺼지면 앱이 멈추고 실시간 연결이 끊겨 서버가 통화에서 뺐다 (들어간 채로 멈춘 상태가 되었음).
+      const { muted, deafened } = store();
+      this.micAllowed = muted || deafened ? true : await micPermission();
+      if (store().session?.channelId !== channelId) return;
       const result = await this.requestJoin(channelId);
       // 기다리는 사이 다른 통화를 눌렀거나 나갔다.
       if (store().session?.channelId !== channelId) return;
@@ -310,7 +317,7 @@ export class VoiceController {
     const { muted, deafened } = store();
     const wantMic = !muted && !deafened;
     try {
-      const allowed = wantMic ? await micPermission() : true;
+      const allowed = !wantMic || this.micAllowed;
       const micOk = await conn.connect(url, token, wantMic && allowed);
       if (this.connection !== conn) return;
       store().setSession({ channelId, status: 'connected', listenOnly: !micOk || !allowed });
