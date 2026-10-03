@@ -31,6 +31,8 @@ const config: ExpoConfig = {
       monochromeImage: './assets/android-icon-monochrome.png',
     },
     predictiveBackGestureEnabled: false,
+    // 음성 통화(LiveKit)는 마이크만 쓴다. 카메라·다른 앱 위에 그리기는 받지 않는다 (웹·데스크톱도 카메라를 쓰지 않음)
+    blockedPermissions: ['android.permission.CAMERA', 'android.permission.SYSTEM_ALERT_WINDOW'],
   },
   plugins: [
     'expo-router',
@@ -45,6 +47,8 @@ const config: ExpoConfig = {
     ['expo-build-properties', { android: { minSdkVersion: 24 } }],
     // 채팅 첨부: 사진만 고른다 (카메라·마이크 권한은 받지 않음, 웹·데스크톱도 카메라를 쓰지 않음)
     ['expo-image-picker', { cameraPermission: false, microphonePermission: false }],
+    // 음성 통화: 통화용 오디오(에코 제거, 통화 음량 키). 마이크 권한은 @livekit/react-native가 선언한다
+    ['@livekit/react-native-expo-plugin', { android: { audioType: 'communication' } }],
   ],
   experiments: {
     typedRoutes: true,
