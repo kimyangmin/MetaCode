@@ -3,6 +3,7 @@ import {
   type CommunitySummary,
   type DmSummary,
   type ServerToClientEvents,
+  type UserProfile,
   SocketEvent,
 } from '@metacode/shared';
 import { useQueryClient } from '@tanstack/react-query';
@@ -23,6 +24,8 @@ import { useChatEffectsStore } from '../stores/chatEffects';
 import { usePresenceStore, useTypingStore, withUserProfile } from '@metacode/client';
 import { useProfileStore } from '../stores/profile';
 import { useVoiceStore } from '../features/voice/store';
+import { notifyMessage } from '../features/notifications/notify';
+import { meQueryKey } from '../features/auth/auth';
 
 export type AppSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
 export type RealtimeStatus = 'connecting' | 'connected' | 'disconnected';
@@ -79,6 +82,13 @@ export function RealtimeProvider({ meId, children }: { meId: string; children: R
         dms?.some((d) => d.id === message.channelId) ||
         communities?.some((c) => c.channels.some((ch) => ch.id === message.channelId));
       if (!known) void queryClient.invalidateQueries({ queryKey: queryKeys.dms });
+      // 설정대로 알림음·시스템 알림 (DM과 나를 부른 메시지가 기본)
+      notifyMessage({
+        message,
+        me: queryClient.getQueryData<UserProfile>(meQueryKey),
+        communities,
+        dms,
+      });
     });
     socket.on(SocketEvent.MessageUpdated, (message) => updateMessageInCache(queryClient, message));
     // 이 창에서 지운 메시지면(설정이 켜져 있을 때) 재가 되어 사라지는 연출을 보여 준 뒤 목록에서 뺀다.

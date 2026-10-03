@@ -112,6 +112,7 @@ const MARKDOWN: { syntax: string; label: string }[] = [
   { syntax: '>>> 여기부터\n끝까지 인용', label: '끝까지 인용' },
   { syntax: '- 목록\n- 목록', label: '목록' },
   { syntax: '1. 첫째\n2. 둘째', label: '번호 목록' },
+  { syntax: '@아이디', label: '멘션 (입력창에서 @를 쓰면 고를 수 있음)' },
   { syntax: '\\*별표 그대로\\*', label: '기호 그대로 쓰기' },
 ];
 

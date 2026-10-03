@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 
 export type SettingsSection =
-  'account' | 'character' | 'assets' | 'appearance' | 'voice' | 'features';
+  'account' | 'character' | 'assets' | 'appearance' | 'notifications' | 'voice' | 'features';
 
 interface SettingsState {
   /** 열린 설정 화면의 항목. 닫혀 있으면 null */

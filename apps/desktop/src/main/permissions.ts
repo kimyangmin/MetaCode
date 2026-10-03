@@ -1,6 +1,6 @@
 /**
  * 앱 화면에 주는 권한: 통화 마이크, 화면 공유, 스피커 고르기, 클립보드 쓰기(초대 링크 복사),
- * 전체 화면(화면 공유 보기. 0.4.0까지는 빠져 있어서 전체 화면 버튼이 늘 거절되었음)
+ * 전체 화면(화면 공유 보기. 0.4.0까지는 빠져 있어서 전체 화면 버튼이 늘 거절되었음), 메시지 알림
  */
 const ALLOWED = new Set([
   'media',
@@ -8,6 +8,7 @@ const ALLOWED = new Set([
   'clipboard-sanitized-write',
   'speaker-selection',
   'fullscreen',
+  'notifications',
 ]);
 
 /**

@@ -615,6 +615,88 @@ a.button {
   color: var(--danger);
 }
 
+/* 멘션: @닉네임 (나를 부른 것은 더 진하게) */
+.md-mention {
+  padding: 0 3px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  color: var(--accent);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.md-mention:hover {
+  background: color-mix(in srgb, var(--accent) 30%, transparent);
+}
+
+.md-mention[data-me] {
+  background: color-mix(in srgb, var(--mc-ember) 30%, transparent);
+  color: inherit;
+}
+
+/* 나를 부른 메시지 (@내아이디, 내 메시지에 답장) */
+.message[data-mentioned] {
+  background: color-mix(in srgb, var(--mc-ember) 10%, transparent);
+  box-shadow: inset 3px 0 0 var(--mc-ember);
+}
+
+.message[data-mentioned]:hover {
+  background: color-mix(in srgb, var(--mc-ember) 16%, transparent);
+}
+
+/* 입력창의 멘션 고르기 목록 */
+.mention-picker {
+  display: grid;
+  max-height: 260px;
+  margin: 0 0 6px;
+  padding: 4px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.2);
+  list-style: none;
+}
+
+.mention-picker li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.mention-picker li[aria-selected='true'] {
+  background: var(--bg-hover);
+}
+
+.mention-picker img {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+}
+
+.mention-picker span {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+/* 설정 → 알림의 알림음 줄 */
+.notification-sound {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.notification-sound__name {
+  flex: 1 1 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .user-panel {
   display: flex;
   align-items: center;

@@ -23,6 +23,7 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
 - 기술 스택은 README 표대로 확정되었습니다 (2026-09-26). 메타버스 렌더링은 Phaser 3 대신 Phaser 4로 정했습니다 (2026-09-27).
 - 2026-09-30: Phase 8(네이티브 안드로이드 앱, `apps/mobile`) 시작. 1단계: Expo 뼈대, 토큰 로그인(`POST /auth/android/token`), Actions APK 빌드 — 실제 기기에서 운영 서버 로그인 확인. 2단계: 화면 틀(서랍, 채널·DM·멤버 목록, 실시간 연결).
 - 2026-10-01: 커뮤니티를 만들 때 광장 방식(탑다운 / 횡스크롤)을 고릅니다 (커뮤니티 설정 → 광장에서 바꿀 수 있음). 횡스크롤 광장은 옆에서 본 분수 광장(`fountain-side`)에서 좌우로 걷고 점프합니다. 광장 배율(Ctrl +/−), 캐릭터 모션(숫자 키). 도트 에디터 GIF 가져오기·내보내기와 큰 캐릭터 성능(#85), 횡스크롤 광장 캐릭터 따로 고르기(#86). 정보 팝업 사진 크게 보기, 코드 블록 언어별 색, 라이트/다크 모드(설정 → 화면), 프로필 사진·커뮤니티 이미지 한도 15MB. 광장에서 오브젝트에 끼거나 휴대폰 횡스크롤에서 턱을 못 오르던 문제(서버 이동 검증) 수정. 도트 에디터에서 캐릭터의 광장 방식(탑다운 / 횡스크롤, 횡스크롤용은 오른쪽만 그리고 왼쪽은 반전)을 고름.
+- 2026-10-03: 멘션(`@아이디`, 입력창 자동완성, 나를 부른 메시지 강조)과 메시지 알림(알림음·시스템 알림, 설정 → 앱 설정 → 알림에서 알릴 메시지·mp3 알림음).
 - Phase를 진행하면 이 섹션과 README 로드맵 체크박스를 함께 갱신합니다.
 
 ## 기술 메모
@@ -299,6 +300,11 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
   - 프로필 사진은 둘 다 저장합니다: `avatarKey`(멈춘 사진) + `avatarAnimatedKey`(`<id>-animated.webp`, 없으면 null) → DTO `avatarUrl` / `avatarAnimatedUrl`. 채팅 목록 등 사진이 많이 모이는 곳은 멈춘 사진, 사람마다 한 줄인 목록(멤버, DM, 친구, 새 대화)·정보 팝업·내 사진은 움직이는 사진(`<Avatar animate />`).
   - 올릴 수 있는 원본은 15MB까지입니다 (`AVATAR_MAX_BYTES`, 프로필 사진과 커뮤니티 아이콘·배너가 같이 씀).
   - 커뮤니티 아이콘·배너는 움직이는 사진이면 그것 하나만 저장해 어디서나 움직입니다.
+- **멘션과 알림:** `packages/client`의 `markdownParser.ts`(`mention` 노드, `extractMentions`), 웹 `features/notifications/`(`notify.ts`, `settings.ts`, `sound.ts`), `features/settings/NotificationSettings.tsx`
+  - 멘션은 글 속의 `@사용자ID`(GitHub 로그인 이름, 대소문자 무시)입니다. 서버는 따로 저장하지 않고 메시지 글에서 읽습니다. 메일 주소처럼 앞에 글자가 붙은 @와 코드 안은 멘션이 아닙니다. 채팅은 `MentionContext`로 그 채널의 사람을 찾아 `@닉네임`으로 보여 주고(모르는 아이디는 글자 그대로, 누르면 정보 팝업), 나를 부른 메시지(@내아이디 또는 **내 메시지에 단 답장**, `mentionsMe`)는 모닥불색 띠로 강조합니다. 입력창에서 `@`를 쓰면 아이디가 그 글자로 시작하거나 닉네임에 그 글자가 있는 사람을 고르는 목록이 뜹니다 (↑↓, Enter·Tab, Esc). 말풍선·답장 미리보기는 `@아이디` 글자로 남습니다.
+  - 알림(`notifyMessage`, 실시간 `message:created`에서): 설정의 알릴 메시지가 모든 메시지 / DM과 멘션만(기본) / 받지 않음입니다. 내 메시지와 **지금 보고 있는 채널**(ChatView가 `setViewingChannel`, 창이 앞에 있을 때)은 알리지 않습니다. 알림음(크기 조절)과 시스템 알림(`Notification`, 권한을 받았을 때, 누르면 그 채널로 `setNotificationNavigator`)을 냅니다. 분리한 창·에디터 창(`/popout/`)은 알리지 않고, 여러 탭이 같은 메시지를 한꺼번에 알리지 않게 알린 메시지 ID를 localStorage에 적어 둡니다.
+  - 알림음은 기본으로 앱에 넣은 `assets/sounds/notification.mp3`이고, 설정에서 mp3(2MB까지, 틀어 볼 수 있는지 먼저 확인)를 고르면 이 기기의 IndexedDB(`metacode` → `sounds`)에 두고 씁니다. 서버에는 올리지 않습니다. 다른 창은 `BroadcastChannel('metacode-notification-sound')`로 따라갑니다. 설정 값은 localStorage `metacode:notifications`입니다.
+  - 데스크톱 앱은 권한 처리기에 `notifications`를 더해야 시스템 알림이 뜹니다 (`permissions.ts`, 다음 데스크톱 릴리스부터). 그 전 앱은 알림음만 납니다.
 - **채널 만들기:** 커뮤니티를 만들면 텍스트 채널 `일반`과 음성 채널 `일반`이 함께 생깁니다. 채널 목록의 "텍스트 채널"·"음성 채널" 머리글 오른쪽 +(관리자). 누른 구역의 종류가 골라진 채로 열립니다. 음성 채널이 없어도 관리자에게는 음성 채널 머리글을 보여 줍니다.
 - **데스크톱 제목 표시줄 (0.5.0):** `apps/desktop/src/main/titlebar.ts`, 웹 `features/desktop/TitleBar.tsx`
   - 메인 창은 OS 제목 표시줄 없이(`frame: false`, macOS는 `titleBarStyle: 'hidden'`으로 신호등만 남김) 띄우고, Windows·Linux는 메뉴 막대도 없앱니다(`Menu.setApplicationMenu(null)`, 개발 중에는 F12·Ctrl+Shift+I·F5를 되살림).
