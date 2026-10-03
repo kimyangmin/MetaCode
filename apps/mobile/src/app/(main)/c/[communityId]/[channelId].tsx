@@ -1,6 +1,7 @@
+import { CommunityRole } from '@metacode/shared';
 import { Redirect, useLocalSearchParams } from 'expo-router';
 import { Hash } from 'lucide-react-native';
-import { useCommunities } from '@/api/queries';
+import { useCommunities, useMembers } from '@/api/queries';
 import { ChannelScreen } from '@/features/chat/ChannelScreen';
 import { useTheme } from '@/ui/theme';
 
@@ -12,6 +13,7 @@ export default function CommunityChannel() {
     channelId: string;
   }>();
   const communities = useCommunities();
+  const members = useMembers(communityId);
   if (!communities.data) return null;
   const community = communities.data.find((c) => c.id === communityId);
   if (!community) return <Redirect href="/" />;
@@ -22,10 +24,13 @@ export default function CommunityChannel() {
   return (
     <ChannelScreen
       key={channel.id}
-      channelId={channel.id}
+      channel={channel}
       icon={<Hash color={theme.muted} size={20} />}
       title={channel.name ?? ''}
+      inputTitle={`#${channel.name ?? ''}`}
+      people={members.data?.map((m) => m.user) ?? []}
       showMembers
+      canDeleteOthers={community.myRole !== CommunityRole.Member}
     />
   );
 }

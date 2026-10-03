@@ -1,17 +1,10 @@
 import type { CommunitySummary, DmSummary, MessageDto, UserProfile } from '@metacode/shared';
-import { displayName, dmTitle, extractMentions, markdownToPlain } from '@metacode/client';
+import { displayName, dmTitle, markdownToPlain, mentionsMe } from '@metacode/client';
 import { type NotifyLevel, useNotificationSettings } from './settings';
 import { playNotificationSound } from './sound';
 
-/** 나를 부른 메시지인지: @내아이디가 있거나, 내 메시지에 단 답장 */
-export function mentionsMe(
-  message: Pick<MessageDto, 'author' | 'content' | 'replyTo'>,
-  me: Pick<UserProfile, 'id' | 'username'>,
-): boolean {
-  if (message.author.id === me.id) return false;
-  if (message.replyTo?.author.id === me.id) return true;
-  return extractMentions(message.content).includes(me.username.toLowerCase());
-}
+// 나를 부른 메시지인지는 네이티브 앱과 함께 쓴다 (packages/client)
+export { mentionsMe } from '@metacode/client';
 
 /**
  * 이 메시지를 알릴지. 내가 보낸 것은 알리지 않고, 지금 그 채널을 보고 있으면(창이 앞에 있을 때) 알리지 않는다.

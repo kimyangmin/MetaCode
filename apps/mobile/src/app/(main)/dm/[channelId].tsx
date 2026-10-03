@@ -11,7 +11,16 @@ export default function DmChannel() {
   if (!dms.data || !me) return null;
   const dm = dms.data.find((d) => d.id === channelId);
   if (!dm) return <Redirect href="/dm" />;
+  const title = dmTitle(dm, me.id);
   return (
-    <ChannelScreen key={dm.id} channelId={dm.id} title={dmTitle(dm, me.id)} showMembers={false} />
+    <ChannelScreen
+      key={dm.id}
+      channel={dm}
+      title={title}
+      inputTitle={title}
+      people={dm.participants}
+      showMembers={false}
+      canDeleteOthers={false}
+    />
   );
 }
