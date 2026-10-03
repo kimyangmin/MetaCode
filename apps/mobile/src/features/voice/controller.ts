@@ -273,8 +273,15 @@ export class VoiceController {
   }
 
   private async connect(channelId: string, { url, token }: VoiceJoinResult): Promise<void> {
-    // LiveKit(WebRTC 네이티브 모듈)은 처음 통화에 들어갈 때 불러온다.
-    const { VoiceConnection } = await import('./connection');
+    // LiveKit(WebRTC 네이티브 모듈)은 처음 통화에 들어갈 때 불러온다. 불러오지 못하면(네이티브 모듈이 없는
+    // 예전 빌드) 서버에 들어간 것도 되돌린다: 그러지 않으면 통화 목록에 남는다.
+    let VoiceConnection: typeof import('./connection').VoiceConnection;
+    try {
+      ({ VoiceConnection } = await import('./connection'));
+    } catch {
+      this.socket?.emit(SocketEvent.VoiceLeave, {});
+      throw new Error('이 앱 버전에서는 음성 통화를 쓸 수 없습니다. 앱을 업데이트해 주세요.');
+    }
     if (store().session?.channelId !== channelId) return;
     const conn = new VoiceConnection({
       onSpeaking: (value) => this.onSpeaking(value),

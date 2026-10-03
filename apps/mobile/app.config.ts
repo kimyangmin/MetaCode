@@ -45,8 +45,9 @@ const config: ExpoConfig = {
       { image: './assets/splash-icon.png', imageWidth: 96, backgroundColor: NIGHT },
     ],
     ['expo-build-properties', { android: { minSdkVersion: 24 } }],
-    // 채팅 첨부: 사진만 고른다 (카메라·마이크 권한은 받지 않음, 웹·데스크톱도 카메라를 쓰지 않음)
-    ['expo-image-picker', { cameraPermission: false, microphonePermission: false }],
+    // 채팅 첨부: 사진만 고른다 (카메라 권한은 받지 않음, 웹·데스크톱도 카메라를 쓰지 않음).
+    // microphonePermission: false는 안드로이드에서 RECORD_AUDIO를 manifest에서 빼 버려 음성 통화 마이크까지 막으므로 두지 않는다.
+    ['expo-image-picker', { cameraPermission: false }],
     // 음성 통화: 통화용 오디오(에코 제거, 통화 음량 키). 마이크 권한은 @livekit/react-native가 선언한다
     ['@livekit/react-native-expo-plugin', { android: { audioType: 'communication' } }],
   ],
