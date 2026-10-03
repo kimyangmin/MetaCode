@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { markdownToPlain, parseInline, parseMarkdown } from './markdownParser.js';
+import { extractMentions, markdownToPlain, parseInline, parseMarkdown } from './markdownParser.js';
 
 const text = (value: string) => ({ type: 'text', value });
 
@@ -97,5 +97,24 @@ describe('markdownToPlain', () => {
   it('기호를 빼고 스포일러는 가린다', () => {
     expect(markdownToPlain('**안녕** ||비밀이야|| `코드`')).toBe('안녕 ▒▒▒▒ 코드');
     expect(markdownToPlain('- 하나\n- 둘')).toBe('• 하나\n• 둘');
+  });
+});
+
+describe('멘션', () => {
+  it('@사용자ID를 멘션으로 나누고, 메일 주소·코드 안은 멘션이 아니다', () => {
+    expect(parseInline('안녕 @Alice! a@b.com `@bob`')).toEqual([
+      { type: 'text', value: '안녕 ' },
+      { type: 'mention', username: 'alice' },
+      { type: 'text', value: '! a@b.com ' },
+      { type: 'code', value: '@bob' },
+    ]);
+  });
+
+  it('글에서 멘션한 사람을 겹치지 않게 모으고, 기호를 뺀 글에서는 @아이디로 남긴다', () => {
+    expect(extractMentions('**@carol** @dev-bob @Carol\n```\n@nobody\n```')).toEqual([
+      'carol',
+      'dev-bob',
+    ]);
+    expect(markdownToPlain('hi @Alice')).toBe('hi @alice');
   });
 });

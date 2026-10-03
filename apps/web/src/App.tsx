@@ -19,9 +19,12 @@ import { RealtimeProvider } from './realtime/RealtimeProvider';
 import { createAppRouter } from './router';
 import { useColorSchemeSync } from './stores/colorScheme';
 import { useUiStore } from './stores/ui';
+import { loadNotificationSound } from './features/notifications/sound';
 
 export function App() {
   useColorSchemeSync();
+  // 직접 고른 알림음 (이 기기의 IndexedDB)
+  useEffect(() => void loadNotificationSound(), []);
   return (
     <>
       <Screen />

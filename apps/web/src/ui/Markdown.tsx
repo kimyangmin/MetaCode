@@ -1,6 +1,25 @@
-import { type ReactNode, useMemo, useState } from 'react';
-import { type Block, type Inline, parseMarkdown } from '@metacode/client';
+import {
+  type MouseEvent,
+  type ReactNode,
+  createContext,
+  useContext,
+  useMemo,
+  useState,
+} from 'react';
+import type { UserProfile } from '@metacode/shared';
+import { type Block, type Inline, displayName, parseMarkdown } from '@metacode/client';
 import { CodeBlock } from './CodeBlock';
+
+/**
+ * 멘션(@사용자ID)을 누구로 그릴지. 채팅 목록이 그 채널의 사람들로 채워 준다. 모르는 사람이면 글자 그대로.
+ */
+export interface MentionResolver {
+  find(username: string): UserProfile | undefined;
+  meId: string;
+  onOpen?(user: UserProfile, e: MouseEvent<HTMLElement>): void;
+}
+
+export const MentionContext = createContext<MentionResolver | null>(null);
 
 /**
  * 채팅 메시지 글을 마크다운으로 그린다 (parseMarkdown의 트리 → React 요소, HTML은 해석하지 않음).
@@ -107,8 +126,29 @@ function InlineView({ nodes }: { nodes: Inline[] }) {
         );
       case 'spoiler':
         return <Spoiler key={i} nodes={node.children} />;
+      case 'mention':
+        return <Mention key={i} username={node.username} />;
     }
   });
+}
+
+/** 멘션: 아는 사람이면 @닉네임 표시 (누르면 정보 팝업), 나를 부른 것이면 강조 */
+function Mention({ username }: { username: string }) {
+  const resolver = useContext(MentionContext);
+  const user = resolver?.find(username);
+  if (!user) return `@${username}`;
+  return (
+    <span
+      className="md-mention"
+      data-me={user.id === resolver!.meId || undefined}
+      role="button"
+      tabIndex={0}
+      title={`@${user.username}`}
+      onClick={(e) => resolver!.onOpen?.(user, e)}
+    >
+      @{displayName(user)}
+    </span>
+  );
 }
 
 /** 스포일러: 누르기 전에는 가려져 있다 */

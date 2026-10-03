@@ -6,6 +6,7 @@
 | --- | --- | --- | --- | --- |
 | [Tiny Town](https://kenney.nl/assets/tiny-town) (1.1) | Kenney (www.kenney.nl) | [CC0 1.0](http://creativecommons.org/publicdomain/zero/1.0/) | `vendor/kenney-tiny-town/` | 16×16 타일 전부 (`builtin:tt-<번호>`) |
 | [16x16 base sprites](https://opengameart.org/content/16x16-base-sprites) | Unnamed (OpenGameArt) | CC0 | `vendor/base-sprites/` | 기본 캐릭터의 몸 (`builtin:char-short`, `builtin:char-long`) |
+| New Notification 040 (`universfield-new-notification-040-493469.mp3`, 사용자가 준 파일) | Universfield (Pixabay) | [Pixabay Content License](https://pixabay.com/service/license-summary/) | `apps/web/src/assets/sounds/notification.mp3` | 기본 메시지 알림음 |
 
 직접 그린 것 (`tools/assets/`, 같은 저장소의 라이선스를 따름):
 

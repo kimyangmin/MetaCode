@@ -1,3 +1,4 @@
+import { mentionsMe } from '../notifications/notify';
 import {
   MESSAGE_MAX_LENGTH,
   type MessageDto,
@@ -25,7 +26,7 @@ import { useCommunities } from '../communities/hooks';
 import { forgetOwnDeletion, markOwnDeletion } from './ashEffect';
 import { displayName, formatDay, formatTime, sameDay, markdownToPlain } from '@metacode/client';
 import { copyText } from '../../ui/clipboard';
-import { Markdown } from '../../ui/Markdown';
+import { Markdown, MentionContext, type MentionResolver } from '../../ui/Markdown';
 import { MessageAttachments } from './MessageAttachments';
 import { useSwipeToReply } from './swipeReply';
 import { type MenuTarget, MessageMenu } from './MessageMenu';
@@ -58,6 +59,8 @@ interface MessageListProps {
   messages: MessageDto[];
   pending: PendingMessage[];
   me: UserProfile;
+  /** 멘션(@아이디)을 누구로 보일지 찾는 사람들 */
+  people: UserProfile[];
   hasMore: boolean;
   loadingMore: boolean;
   onLoadMore(): void;
@@ -91,6 +94,16 @@ export function MessageList(props: MessageListProps) {
   const myRole = useCommunities().data?.find((c) => c.id === props.communityId)?.myRole;
   const moderator = myRole !== undefined && isManager(myRole);
   const canDelete = (message: MessageDto) => moderator || message.author.id === me.id;
+  // 멘션(@아이디)을 이 채널의 사람으로 찾아 닉네임으로 보여 주고, 누르면 정보 팝업
+  const { people, communityId } = props;
+  const mentionResolver = useMemo<MentionResolver>(() => {
+    const byName = new Map([...people, me].map((p) => [p.username.toLowerCase(), p]));
+    return {
+      find: (username) => byName.get(username),
+      meId: me.id,
+      onOpen: (user, e) => openProfile(user, e, communityId),
+    };
+  }, [people, me, communityId]);
 
   // ── 채팅 영역 잡기 (Ctrl+Shift) ──
   const [range, setRange] = useState<MessageRange | null>(null);
@@ -268,141 +281,144 @@ export function MessageList(props: MessageListProps) {
   }, [hasMore, loadingMore, onLoadMore]);
 
   return (
-    <div className="message-list-wrap">
-      {range && (
-        <div className="selection-bar" role="status">
-          <strong>{selected.length}개 잡음</strong>
-          <span>Shift+↑↓ 또는 끌어서 범위</span>
-          <span>
-            <kbd>D</kbd> {moderator ? '삭제' : '내 메시지 삭제'}
-          </span>
-          <span>
-            <kbd>C</kbd> 복사
-          </span>
-          <span>
-            <kbd>F</kbd> 전달
-          </span>
-          <button type="button" className="icon-button" onClick={() => setRange(null)}>
-            Esc
-          </button>
-        </div>
-      )}
-      <div
-        className="message-list"
-        role="log"
-        aria-live="polite"
-        ref={listRef}
-        onScroll={onScroll}
-        data-selecting={range !== null}
-      >
-        {pending.map((p) => (
-          <div key={p.clientId} className="message message--pending" data-status={p.status}>
-            <div className="message__gutter" />
-            <div className="message__body">
-              <p className="message__content">
-                {p.content || <FileCount count={p.attachmentIds.length} />}
-              </p>
-              {p.status === 'failed' && (
-                <button className="message__retry" onClick={() => props.onRetry(p.clientId)}>
-                  전송 실패 · 다시 보내기
-                </button>
-              )}
-            </div>
-          </div>
-        ))}
-
-        {messages.map((message, i) => {
-          // messages는 최신부터이므로 시간상 바로 앞 메시지는 i + 1번째다.
-          const previous = messages[i + 1];
-          const newDay = !previous || !sameDay(previous.createdAt, message.createdAt);
-          const grouped =
-            !newDay &&
-            previous.author.id === message.author.id &&
-            Date.parse(message.createdAt) - Date.parse(previous.createdAt) < GROUP_WINDOW_MS;
-          return (
-            <Fragment key={message.id}>
-              <MessageItem
-                message={message}
-                grouped={grouped}
-                mine={message.author.id === me.id}
-                communityId={props.communityId}
-                onMenu={setMenu}
-                menuOpen={menu?.message.id === message.id}
-                editing={editing === message.id}
-                onEditDone={() => setEditing(null)}
-                selected={selectedIds.has(message.id)}
-                selectProps={range ? selectHandlers(message.id) : undefined}
-              />
-              {newDay && (
-                <div className="day-divider" role="separator">
-                  <span>{formatDay(message.createdAt)}</span>
-                </div>
-              )}
-            </Fragment>
-          );
-        })}
-
-        {messages.length === 0 && pending.length === 0 && !hasMore && (
-          <p className="message-list__empty">{props.emptyText}</p>
-        )}
-        <div ref={sentinel} className="message-list__top">
-          {loadingMore && '이전 메시지를 불러오는 중…'}
-        </div>
-        {actionError && (
-          <p className="message-list__error" role="alert">
-            {actionError}
-            <button
-              type="button"
-              className="icon-button"
-              onClick={() => setActionError(null)}
-              aria-label="알림 닫기"
-            >
-              <X aria-hidden />
+    <MentionContext.Provider value={mentionResolver}>
+      <div className="message-list-wrap">
+        {range && (
+          <div className="selection-bar" role="status">
+            <strong>{selected.length}개 잡음</strong>
+            <span>Shift+↑↓ 또는 끌어서 범위</span>
+            <span>
+              <kbd>D</kbd> {moderator ? '삭제' : '내 메시지 삭제'}
+            </span>
+            <span>
+              <kbd>C</kbd> 복사
+            </span>
+            <span>
+              <kbd>F</kbd> 전달
+            </span>
+            <button type="button" className="icon-button" onClick={() => setRange(null)}>
+              Esc
             </button>
-          </p>
+          </div>
         )}
-        {menu && (
-          <MessageMenu
-            target={menu}
-            mine={menu.message.author.id === me.id}
-            canDelete={canDelete(menu.message)}
-            onReply={props.onReply}
-            onForward={(message) => props.onForward([message])}
-            onEdit={(message) => setEditing(message.id)}
-            onDelete={(message) => setDeleting({ messages: [message], others: 0 })}
-            onClose={() => setMenu(null)}
+        <div
+          className="message-list"
+          role="log"
+          aria-live="polite"
+          ref={listRef}
+          onScroll={onScroll}
+          data-selecting={range !== null}
+        >
+          {pending.map((p) => (
+            <div key={p.clientId} className="message message--pending" data-status={p.status}>
+              <div className="message__gutter" />
+              <div className="message__body">
+                <p className="message__content">
+                  {p.content || <FileCount count={p.attachmentIds.length} />}
+                </p>
+                {p.status === 'failed' && (
+                  <button className="message__retry" onClick={() => props.onRetry(p.clientId)}>
+                    전송 실패 · 다시 보내기
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+
+          {messages.map((message, i) => {
+            // messages는 최신부터이므로 시간상 바로 앞 메시지는 i + 1번째다.
+            const previous = messages[i + 1];
+            const newDay = !previous || !sameDay(previous.createdAt, message.createdAt);
+            const grouped =
+              !newDay &&
+              previous.author.id === message.author.id &&
+              Date.parse(message.createdAt) - Date.parse(previous.createdAt) < GROUP_WINDOW_MS;
+            return (
+              <Fragment key={message.id}>
+                <MessageItem
+                  message={message}
+                  grouped={grouped}
+                  mine={message.author.id === me.id}
+                  mentioned={mentionsMe(message, me)}
+                  communityId={props.communityId}
+                  onMenu={setMenu}
+                  menuOpen={menu?.message.id === message.id}
+                  editing={editing === message.id}
+                  onEditDone={() => setEditing(null)}
+                  selected={selectedIds.has(message.id)}
+                  selectProps={range ? selectHandlers(message.id) : undefined}
+                />
+                {newDay && (
+                  <div className="day-divider" role="separator">
+                    <span>{formatDay(message.createdAt)}</span>
+                  </div>
+                )}
+              </Fragment>
+            );
+          })}
+
+          {messages.length === 0 && pending.length === 0 && !hasMore && (
+            <p className="message-list__empty">{props.emptyText}</p>
+          )}
+          <div ref={sentinel} className="message-list__top">
+            {loadingMore && '이전 메시지를 불러오는 중…'}
+          </div>
+          {actionError && (
+            <p className="message-list__error" role="alert">
+              {actionError}
+              <button
+                type="button"
+                className="icon-button"
+                onClick={() => setActionError(null)}
+                aria-label="알림 닫기"
+              >
+                <X aria-hidden />
+              </button>
+            </p>
+          )}
+          {menu && (
+            <MessageMenu
+              target={menu}
+              mine={menu.message.author.id === me.id}
+              canDelete={canDelete(menu.message)}
+              onReply={props.onReply}
+              onForward={(message) => props.onForward([message])}
+              onEdit={(message) => setEditing(message.id)}
+              onDelete={(message) => setDeleting({ messages: [message], others: 0 })}
+              onClose={() => setMenu(null)}
+            />
+          )}
+        </div>
+        {deleting && (
+          <DeleteConfirm
+            {...deleting}
+            onConfirm={() => void confirmDelete(deleting.messages)}
+            onCancel={() => setDeleting(null)}
           />
         )}
+        {toast && (
+          <p className="message-list__toast" role="status">
+            {toast}
+          </p>
+        )}
+        {away && (
+          <button
+            type="button"
+            className="jump-to-bottom"
+            onClick={jumpToBottom}
+            aria-label={newCount > 0 ? `새 메시지 ${newCount}개, 맨 아래로` : '맨 아래로'}
+            title="맨 아래로"
+          >
+            <ArrowDown aria-hidden />
+            {newCount > 0 && (
+              <span className="jump-to-bottom__count" aria-hidden>
+                {newCount > 99 ? '99+' : newCount}
+              </span>
+            )}
+          </button>
+        )}
       </div>
-      {deleting && (
-        <DeleteConfirm
-          {...deleting}
-          onConfirm={() => void confirmDelete(deleting.messages)}
-          onCancel={() => setDeleting(null)}
-        />
-      )}
-      {toast && (
-        <p className="message-list__toast" role="status">
-          {toast}
-        </p>
-      )}
-      {away && (
-        <button
-          type="button"
-          className="jump-to-bottom"
-          onClick={jumpToBottom}
-          aria-label={newCount > 0 ? `새 메시지 ${newCount}개, 맨 아래로` : '맨 아래로'}
-          title="맨 아래로"
-        >
-          <ArrowDown aria-hidden />
-          {newCount > 0 && (
-            <span className="jump-to-bottom__count" aria-hidden>
-              {newCount > 99 ? '99+' : newCount}
-            </span>
-          )}
-        </button>
-      )}
-    </div>
+    </MentionContext.Provider>
   );
 }
 
@@ -487,6 +503,7 @@ function MessageItem({
   message,
   grouped,
   mine,
+  mentioned,
   communityId,
   onMenu,
   menuOpen,
@@ -498,6 +515,8 @@ function MessageItem({
   message: MessageDto;
   grouped: boolean;
   mine: boolean;
+  /** 나를 부른 메시지 (@내아이디, 내 메시지에 답장): 강조해서 보인다 */
+  mentioned: boolean;
   communityId?: string;
   onMenu(target: MenuTarget): void;
   /** 이 메시지의 메뉴가 떠 있는지 (손가락으로 쓰는 기기에서 밝게 보여 준다) */
@@ -532,6 +551,7 @@ function MessageItem({
       className="message"
       data-grouped={grouped && !message.replyTo}
       data-mine={mine}
+      data-mentioned={mentioned || undefined}
       data-message-id={message.id}
       data-selected={selected}
       data-menu-open={menuOpen || undefined}

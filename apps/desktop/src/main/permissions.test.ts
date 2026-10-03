@@ -13,6 +13,11 @@ describe('allowPermission', () => {
     expect(allowPermission('display-capture', false)).toBe(false);
   });
 
+  it('메시지 알림은 앱 화면에만 허락한다', () => {
+    expect(allowPermission('notifications', true)).toBe(true);
+    expect(allowPermission('notifications', false)).toBe(false);
+  });
+
   it('화면 공유 보기의 전체 화면은 앱 화면에만 허락한다', () => {
     expect(allowPermission('fullscreen', true)).toBe(true);
     expect(allowPermission('fullscreen', false)).toBe(false);
@@ -28,7 +33,7 @@ describe('allowPermission', () => {
   });
 
   it('필요 없는 권한은 앱 화면이라도 거절한다', () => {
-    for (const permission of ['geolocation', 'notifications', 'openExternal', 'midi']) {
+    for (const permission of ['geolocation', 'openExternal', 'midi']) {
       expect(allowPermission(permission, true)).toBe(false);
     }
   });

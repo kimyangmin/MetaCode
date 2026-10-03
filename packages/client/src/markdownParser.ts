@@ -12,6 +12,8 @@ export type Inline =
   | { type: 'text'; value: string }
   | { type: 'code'; value: string }
   | { type: 'link'; href: string; children: Inline[] }
+  /** @사용자ID (GitHub 로그인 이름, 소문자로) */
+  | { type: 'mention'; username: string }
   | {
       type: 'bold' | 'italic' | 'underline' | 'strike' | 'spoiler';
       children: Inline[];
@@ -136,11 +138,15 @@ export function parseInline(text: string): Inline[] {
     if (!buffer) return;
     // 글자 속 주소는 링크로
     for (const part of splitLinks(buffer)) {
-      out.push(
-        part.type === 'link'
-          ? { type: 'link', href: part.value, children: [{ type: 'text', value: part.value }] }
-          : { type: 'text', value: part.value },
-      );
+      if (part.type === 'link') {
+        out.push({
+          type: 'link',
+          href: part.value,
+          children: [{ type: 'text', value: part.value }],
+        });
+      } else {
+        out.push(...splitMentions(part.value));
+      }
     }
     buffer = '';
   };
@@ -262,9 +268,47 @@ function inlinePlain(nodes: Inline[]): string {
   return nodes
     .map((node) => {
       if (node.type === 'text' || node.type === 'code') return node.value;
+      if (node.type === 'mention') return `@${node.username}`;
       if (node.type === 'spoiler')
         return '▒'.repeat(Math.min(8, inlinePlain(node.children).length));
       return inlinePlain(node.children);
     })
     .join('');
+}
+
+/**
+ * 멘션: @ 뒤의 GitHub 사용자 ID (영문·숫자·가운데 -, 39자까지). 메일 주소(a@b.com)처럼 앞에 글자가 붙은 @는
+ * 멘션이 아니다. 코드(`…`, 코드 블록) 안은 parseInline이 먼저 떼어 내므로 멘션이 되지 않는다.
+ */
+const MENTION = /(?<![\w.@])@([A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?)(?![\w-])/g;
+
+function splitMentions(text: string): Inline[] {
+  const out: Inline[] = [];
+  let last = 0;
+  for (const match of text.matchAll(MENTION)) {
+    const at = match.index;
+    if (at > last) out.push({ type: 'text', value: text.slice(last, at) });
+    out.push({ type: 'mention', username: match[1]!.toLowerCase() });
+    last = at + match[0].length;
+  }
+  if (last < text.length) out.push({ type: 'text', value: text.slice(last) });
+  return out;
+}
+
+/** 글에서 멘션한 사용자 ID들 (소문자, 겹치지 않게) */
+export function extractMentions(text: string): string[] {
+  const found = new Set<string>();
+  const visitInline = (nodes: Inline[]) => {
+    for (const node of nodes) {
+      if (node.type === 'mention') found.add(node.username);
+      else if (node.type !== 'text' && node.type !== 'code') visitInline(node.children);
+    }
+  };
+  const visitBlock = (block: Block) => {
+    if (block.type === 'paragraph' || block.type === 'heading') visitInline(block.children);
+    else if (block.type === 'quote') block.children.forEach(visitBlock);
+    else if (block.type === 'list') block.items.forEach(visitInline);
+  };
+  parseMarkdown(text).forEach(visitBlock);
+  return [...found];
 }
