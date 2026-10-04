@@ -8,7 +8,6 @@ import { friendsKey, usePresenceStore } from '@metacode/client';
 // 친구 상태 판정은 네이티브 앱과 함께 쓴다 (packages/client)
 export { friendStatusOf, friendsKey } from '@metacode/client';
 
-
 /** 친구, 받은 요청, 보낸 요청. 받은 온라인 여부를 전역 Presence에도 반영한다 (friend:updated로 다시 받음) */
 export function useFriends() {
   const query = useQuery({
