@@ -35,7 +35,7 @@ import {
   isSideDoc,
   tileSize,
   toDefinition,
-} from './mapModel';
+} from '@metacode/client';
 import {
   Brush,
   Eraser,

@@ -22,3 +22,7 @@ export * from './plaza/voice.js';
 export * from './plaza/character.js';
 export * from './plaza/world.js';
 export * from './friends.js';
+export * from './editor/editorModel.js';
+export * from './editor/selection.js';
+export * from './editor/mapModel.js';
+export * from './editor/indexImage.js';

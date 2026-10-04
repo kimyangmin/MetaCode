@@ -18,8 +18,8 @@ import {
   fromManifest,
   newDoc,
   toManifest,
-} from './editorModel';
-import { indexImage } from './png';
+} from './editorModel.js';
+import { indexImage } from './indexImage.js';
 
 const at = { animation: 0, frame: 0 };
 

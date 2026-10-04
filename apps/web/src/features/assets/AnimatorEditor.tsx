@@ -43,7 +43,7 @@ import { isKeyboardClaimed } from '../../ui/keyboardClaim';
 import { KeyCapture } from '../../ui/KeyCapture';
 import { Select } from '../../ui/Select';
 import { NODE_H, NODE_W, type SkillKind, addSkill, freeName, snap } from './animatorSkills';
-import { type EditorAnimation, type PixelDocument, usedMotionKeys } from './editorModel';
+import { type EditorAnimation, type PixelDocument, usedMotionKeys } from '@metacode/client';
 import { frameCanvas } from './pixelCanvas';
 import {
   ArrowDown,

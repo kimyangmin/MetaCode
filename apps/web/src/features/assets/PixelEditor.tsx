@@ -49,7 +49,7 @@ import {
   isMotion,
   requiredOf,
   toManifest,
-} from './editorModel';
+} from '@metacode/client';
 import type { EditorTarget } from './editorStore';
 import { type GifFile, GifImportDialog } from './GifImportDialog';
 import { decodeGif, downloadBytes, encodeGif } from './gif';
@@ -71,7 +71,7 @@ import {
   rectFrom,
   shiftPixels,
   stamp,
-} from './selection';
+} from '@metacode/client';
 import {
   type RgbaImage,
   type SheetSprite,
