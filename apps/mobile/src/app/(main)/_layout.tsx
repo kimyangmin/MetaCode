@@ -12,6 +12,7 @@ import { UserPanel } from '@/layout/UserPanel';
 import { useVoiceStore } from '@/features/voice/store';
 import { VoicePanel } from '@/features/voice/VoicePanel';
 import { ProfileSheet } from '@/features/profile/ProfileSheet';
+import { EditorHost } from '@/features/editor/EditorHost';
 import { VoiceProvider } from '@/features/voice/VoiceProvider';
 import { RealtimeProvider } from '@/realtime/RealtimeProvider';
 import { usePendingInvite } from '@/stores/pendingInvite';
@@ -104,6 +105,7 @@ function Shell({ me }: { me: UserDetail }) {
       </AppShell>
       {/* 정보 시트는 서랍보다 위에 (멤버 서랍에서도 연다) */}
       <ProfileSheet />
+      <EditorHost />
     </>
   );
 }

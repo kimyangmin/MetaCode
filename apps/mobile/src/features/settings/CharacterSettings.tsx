@@ -1,5 +1,4 @@
 import {
-  type AssetDto,
   type AssetManifest,
   BUILTIN_CHARACTERS,
   COLOR_PRESETS,
@@ -16,10 +15,11 @@ import {
   defaultCharacter,
 } from '@metacode/shared';
 import { builtinAsset } from '@metacode/shared/builtin-assets';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { ApiError, apiFetch, apiSend } from '../../api/client';
+import { useMyAssets } from '../../api/assets';
+import { ApiError, apiSend } from '../../api/client';
 import { meQueryKey } from '../../api/queries';
 import { AssetPreview } from '../../ui/AssetPreview';
 import { Button, Segmented } from '../../ui/controls';
@@ -40,14 +40,6 @@ const SIDE_POSES = [
   { animation: 'jump-right', label: '점프' },
   { animation: 'emote', label: '첨부 모션' },
 ] as const;
-
-/** 내가 그린 캐릭터 (웹 useMyAssets와 같은 캐시 키) */
-function useMyCharacters() {
-  return useQuery({
-    queryKey: ['assets'],
-    queryFn: () => apiFetch<AssetDto[]>('/assets'),
-  });
-}
 
 /**
  * 설정 → 캐릭터 (웹 CharacterSettings): 탑다운 광장과 횡스크롤 광장의 캐릭터를 따로 고른다. 기본 캐릭터는 부위마다
@@ -73,7 +65,7 @@ export function CharacterSettings({ me }: { me: UserDetail }) {
 function CharacterPicker({ me, style }: { me: UserDetail; style: PlazaStyle }) {
   const theme = useTheme();
   const queryClient = useQueryClient();
-  const mine = useMyCharacters().data ?? [];
+  const mine = useMyAssets().data ?? [];
   const side = style === PlazaStyle.SideScroll;
   const sameAsTopDown = side && !me.sideCharacter;
   const saved: CharacterChoice = characterFor(me, style) ?? defaultCharacter(me.id);

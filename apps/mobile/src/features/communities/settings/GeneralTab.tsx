@@ -15,7 +15,9 @@ import * as ImagePicker from 'expo-image-picker';
 import { router } from 'expo-router';
 import { useState } from 'react';
 import { Alert, StyleSheet, Text, View } from 'react-native';
+import { useCommunityAssets } from '../../../api/assets';
 import { apiSend } from '../../../api/client';
+import { AssetList } from '../../editor/AssetList';
 import { Button, Segmented, TextField } from '../../../ui/controls';
 import { useTheme } from '../../../ui/theme';
 import { Field, Hint, StatusText, useRefresh, useRequest } from './shared';
@@ -262,7 +264,27 @@ export function PlazaTab({ community }: { community: CommunitySummary }) {
         맵 에디터로 꾸민 맵은 그 방식에서만 쓰고 지우지 않습니다. 원래 방식으로 되돌리면 다시
         나타납니다.
       </Hint>
+      <CommunityAssets communityId={community.id} />
     </View>
+  );
+}
+
+/** 커뮤니티 타일·오브젝트 (이 커뮤니티 광장의 맵에 쓴다) */
+function CommunityAssets({ communityId }: { communityId: string }) {
+  const theme = useTheme();
+  const assets = useCommunityAssets(communityId).data ?? [];
+  return (
+    <Field label="커뮤니티 타일·오브젝트">
+      <Text style={{ color: theme.muted, fontSize: 12 }}>
+        이 커뮤니티 광장의 맵에 놓을 수 있습니다. 맵에 쓰고 있는 에셋은 지울 수 없습니다.
+      </Text>
+      <AssetList
+        assets={assets}
+        kinds={['tile', 'object']}
+        communityId={communityId}
+        emptyText="아직 커뮤니티 에셋이 없습니다."
+      />
+    </Field>
   );
 }
 

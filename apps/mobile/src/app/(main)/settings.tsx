@@ -5,6 +5,7 @@ import {
   ChevronRight,
   CircleUserRound,
   LogOut,
+  Palette,
   PersonStanding,
   SunMoon,
   X,
@@ -16,12 +17,13 @@ import { useMe } from '@/api/queries';
 import { signOut } from '@/auth/session';
 import { AccountSettings } from '@/features/settings/AccountSettings';
 import { AppearanceSettings } from '@/features/settings/AppearanceSettings';
+import { AssetSettings } from '@/features/settings/AssetSettings';
 import { CharacterSettings } from '@/features/settings/CharacterSettings';
 import { useUiStore } from '@/stores/ui';
 import { Avatar } from '@/ui/Avatar';
 import { useTheme } from '@/ui/theme';
 
-type Section = 'account' | 'character' | 'appearance';
+type Section = 'account' | 'character' | 'assets' | 'appearance';
 
 const SECTIONS: {
   title: string;
@@ -32,6 +34,7 @@ const SECTIONS: {
     items: [
       { id: 'account', label: '내 계정', icon: CircleUserRound },
       { id: 'character', label: '캐릭터', icon: PersonStanding },
+      { id: 'assets', label: '에셋', icon: Palette },
     ],
   },
   { title: '앱 설정', items: [{ id: 'appearance', label: '화면', icon: SunMoon }] },
@@ -40,6 +43,7 @@ const SECTIONS: {
 const LABEL: Record<Section, string> = {
   account: '내 계정',
   character: '캐릭터',
+  assets: '에셋',
   appearance: '화면',
 };
 
@@ -163,6 +167,7 @@ export default function Settings() {
         )}
         {section === 'account' && <AccountSettings me={me} />}
         {section === 'character' && <CharacterSettings me={me} />}
+        {section === 'assets' && <AssetSettings />}
         {section === 'appearance' && <AppearanceSettings />}
       </ScrollView>
     </View>
