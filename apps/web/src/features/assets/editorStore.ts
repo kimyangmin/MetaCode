@@ -1,6 +1,6 @@
 import type { AssetDto } from '@metacode/shared';
 import { create } from 'zustand';
-import type { EditorDoc } from './editorModel';
+import type { EditorDoc } from '@metacode/client';
 
 /** 에디터로 여는 것: 새 에셋(빈 문서나 복제한 문서) 또는 저장된 에셋 */
 export type EditorTarget =

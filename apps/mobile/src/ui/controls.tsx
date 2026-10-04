@@ -48,11 +48,11 @@ export function Button({
 }
 
 /** 이름표가 붙은 입력칸 */
-export function TextField({ label, ...props }: TextInputProps & { label: string }) {
+export function TextField({ label, ...props }: TextInputProps & { label?: string }) {
   const theme = useTheme();
   return (
     <View style={styles.field}>
-      <Text style={[styles.fieldLabel, { color: theme.muted }]}>{label}</Text>
+      {label ? <Text style={[styles.fieldLabel, { color: theme.muted }]}>{label}</Text> : null}
       <TextInput
         placeholderTextColor={theme.muted}
         {...props}

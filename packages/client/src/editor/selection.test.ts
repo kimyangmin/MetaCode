@@ -10,7 +10,7 @@ import {
   rectFrom,
   shiftPixels,
   stamp,
-} from './selection';
+} from './selection.js';
 
 const W = 8;
 
