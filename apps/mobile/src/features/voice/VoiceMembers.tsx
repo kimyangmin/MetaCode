@@ -3,6 +3,7 @@ import type { VoiceMember } from '@metacode/shared';
 import { HeadphoneOff, MicOff } from 'lucide-react-native';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Avatar } from '../../ui/Avatar';
+import { openProfile } from '../../stores/profile';
 import { useTheme } from '../../ui/theme';
 import { useVoiceStore } from './store';
 import { useVoice } from './VoiceProvider';
@@ -31,14 +32,21 @@ export function VoiceMembers({
         const speaking = inCall && member.speaking && !member.muted;
         return (
           <View key={member.user.id} style={styles.row}>
-            <Avatar
-              user={member.user}
-              size={24}
-              ringColor={speaking ? SPEAKING_COLOR : undefined}
-            />
-            <Text style={[styles.name, { color: theme.muted }]} numberOfLines={1}>
-              {displayName(member.user)}
-            </Text>
+            <Pressable
+              onPress={() => openProfile(member.user)}
+              style={styles.who}
+              accessibilityRole="button"
+              accessibilityLabel={`${displayName(member.user)} 정보`}
+            >
+              <Avatar
+                user={member.user}
+                size={24}
+                ringColor={speaking ? SPEAKING_COLOR : undefined}
+              />
+              <Text style={[styles.name, { color: theme.muted }]} numberOfLines={1}>
+                {displayName(member.user)}
+              </Text>
+            </Pressable>
             {member.sharing && (
               <Pressable
                 onPress={() => void voice.watch(channelId, member.user.id)}
@@ -67,6 +75,7 @@ export function VoiceMembers({
 const styles = StyleSheet.create({
   list: { paddingLeft: 30, paddingBottom: 4, gap: 2 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 32 },
+  who: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8 },
   name: { flex: 1, fontSize: 14 },
   live: { borderRadius: 4, paddingHorizontal: 5, paddingVertical: 1 },
   liveText: { color: '#fff', fontSize: 10, fontWeight: '800' },

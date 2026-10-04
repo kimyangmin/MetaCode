@@ -6,6 +6,7 @@ import { useEffect } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { restoreSession, useSession } from '@/auth/session';
+import { restoreColorScheme } from '@/stores/colorScheme';
 import { useTheme } from '@/ui/theme';
 
 void SplashScreen.preventAutoHideAsync();
@@ -20,6 +21,7 @@ export default function RootLayout() {
 
   useEffect(() => {
     void restoreSession();
+    void restoreColorScheme();
   }, []);
 
   // 로그인 상태를 알 때까지 시작 화면을 둔다 (로그인 화면이 잠깐 비치지 않게)
@@ -44,6 +46,8 @@ export default function RootLayout() {
             </Stack.Protected>
             {/* 로그인 결과 딥링크 (metacode://auth). 받자마자 알맞은 화면으로 옮긴다 */}
             <Stack.Screen name="auth" />
+            {/* 초대 링크 (metacode://invite/<코드>). 로그인 전이면 코드를 기억해 두고 로그인 화면으로 */}
+            <Stack.Screen name="invite/[code]" />
           </Stack>
         </QueryClientProvider>
       </SafeAreaProvider>

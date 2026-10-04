@@ -31,7 +31,7 @@ export function Sheet({
           ]}
         >
           <View style={[styles.handle, { backgroundColor: theme.border }]} />
-          <Text style={[styles.title, { color: theme.fg }]}>{title}</Text>
+          {title ? <Text style={[styles.title, { color: theme.fg }]}>{title}</Text> : null}
           {children}
         </View>
       </KeyboardAvoidingView>

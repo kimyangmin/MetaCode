@@ -21,3 +21,4 @@ export * from './plaza/art.js';
 export * from './plaza/voice.js';
 export * from './plaza/character.js';
 export * from './plaza/world.js';
+export * from './friends.js';

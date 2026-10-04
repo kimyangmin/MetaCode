@@ -1,5 +1,5 @@
 import type { UserDetail } from '@metacode/shared';
-import { Slot, useGlobalSearchParams, usePathname } from 'expo-router';
+import { Slot, router, useGlobalSearchParams, usePathname } from 'expo-router';
 import { Suspense, lazy, useEffect } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useCommunities, useMe } from '@/api/queries';
@@ -11,8 +11,10 @@ import { Rail } from '@/layout/Rail';
 import { UserPanel } from '@/layout/UserPanel';
 import { useVoiceStore } from '@/features/voice/store';
 import { VoicePanel } from '@/features/voice/VoicePanel';
+import { ProfileSheet } from '@/features/profile/ProfileSheet';
 import { VoiceProvider } from '@/features/voice/VoiceProvider';
 import { RealtimeProvider } from '@/realtime/RealtimeProvider';
+import { usePendingInvite } from '@/stores/pendingInvite';
 import { useUiStore } from '@/stores/ui';
 import { useTheme } from '@/ui/theme';
 
@@ -60,6 +62,14 @@ function Shell({ me }: { me: UserDetail }) {
   const community = useCommunities().data?.find((c) => c.id === communityId);
   const watching = useVoiceStore((s) => s.watching !== null);
 
+  // 로그인 전에 연 초대 링크가 있으면 이어 간다
+  useEffect(() => {
+    const { code } = usePendingInvite.getState();
+    if (!code) return;
+    usePendingInvite.setState({ code: null });
+    router.replace({ pathname: '/invite/[code]', params: { code } });
+  }, []);
+
   // 다른 화면으로 옮기면 멤버 서랍은 닫는다 (목록 서랍은 커뮤니티를 오가는 동안 열어 둔다)
   useEffect(() => useUiStore.getState().setMembersOpen(false), [pathname]);
 
@@ -83,14 +93,18 @@ function Shell({ me }: { me: UserDetail }) {
   );
 
   return (
-    <AppShell nav={nav} members={community ? <MemberList communityId={community.id} /> : null}>
-      <Slot />
-      {watching && (
-        <Suspense fallback={null}>
-          <ScreenViewer />
-        </Suspense>
-      )}
-    </AppShell>
+    <>
+      <AppShell nav={nav} members={community ? <MemberList communityId={community.id} /> : null}>
+        <Slot />
+        {watching && (
+          <Suspense fallback={null}>
+            <ScreenViewer />
+          </Suspense>
+        )}
+      </AppShell>
+      {/* 정보 시트는 서랍보다 위에 (멤버 서랍에서도 연다) */}
+      <ProfileSheet />
+    </>
   );
 }
 

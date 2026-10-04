@@ -12,6 +12,7 @@ import Animated, {
   useSharedValue,
   withTiming,
 } from 'react-native-reanimated';
+import { openProfile } from '../../stores/profile';
 import { Avatar } from '../../ui/Avatar';
 import { Markdown } from '../../ui/Markdown';
 import { mc, useTheme } from '../../ui/theme';
@@ -120,12 +121,24 @@ export const MessageItem = memo(function MessageItem({
             )}
             <View style={styles.body}>
               <View style={styles.gutter}>
-                {!grouped && <Avatar user={message.author} size={40} />}
+                {!grouped && (
+                  <Pressable
+                    onPress={() => openProfile(message.author)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${displayName(message.author)} 정보`}
+                  >
+                    <Avatar user={message.author} size={40} />
+                  </Pressable>
+                )}
               </View>
               <View style={styles.main}>
                 {!grouped && (
                   <View style={styles.header}>
-                    <Text style={[styles.name, { color: theme.fg }]} numberOfLines={1}>
+                    <Text
+                      style={[styles.name, { color: theme.fg }]}
+                      numberOfLines={1}
+                      onPress={() => openProfile(message.author)}
+                    >
                       {displayName(message.author)}
                     </Text>
                     <Text style={[styles.time, { color: theme.muted }]}>
