@@ -341,11 +341,11 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
   - 설정 창은 앱처럼 두 화면입니다 (`SettingsWindow`의 `data-page`): 목록(내 프로필 카드, 묶음별 카드, 로그아웃) → 항목을 누르면 내용(← 뒤로). ⚙로 열면 목록부터, 항목을 정해 열면(도움말, "음성 설정 열기") 그 내용부터 (`useSettingsStore.listFirst`). 내용에서 Esc(안드로이드 뒤로 가기)는 목록으로 돌아갑니다.
   - 휴대폰 브라우저와 안드로이드 WebView는 `getDisplayMedia`가 없어 화면 공유 버튼을 숨깁니다 (`canShareScreen`). 보기는 됩니다.
   - 브라우저 패널의 모바일 크기 에뮬레이션에서는 화면이 그려지지 않을 때가 있어(전환 애니메이션이 멈춰 보임) DOM 크기로 확인했습니다.
-- **안드로이드 앱:** `apps/android`(Capacitor 8), 웹 `platform/android.ts`, `platform/appLinks.ts`, 자세한 것은 `docs/android.md`
+- **예전 안드로이드 앱 (Capacitor, 0.x):** `apps/android`(Capacitor 8), 웹 `platform/android.ts`, `platform/appLinks.ts`, 자세한 것은 `docs/android.md`. 1.0.0부터 Release는 네이티브 앱(아래 Phase 8)이고, 모두 옮겨 가면 이 항목의 코드를 지웁니다.
   - 데스크톱처럼 운영 웹을 여는 셸입니다(`server.url`). Capacitor는 이 주소의 HTML을 앱 안에서 받아 브리지 스크립트를 넣어 주므로, 웹 번들의 `@capacitor/*`가 네이티브 플러그인(App, Browser)을 부릅니다. 이 코드는 `isAndroidApp()`(User-Agent의 `MetaCodeAndroid` + `window.Capacitor`)일 때만 `loadAndroid()`로 불러오고, ESLint가 `src/platform` 밖에서 `@capacitor/*`를 못 쓰게 막습니다.
   - 로그인: Custom Tab으로 `client=android&code_challenge=` → 서버가 `metacode://auth?code=`로 돌려보내는 페이지(바로 열고, 막히면 버튼) → `POST /auth/android/session`이 **웹과 같은 쿠키**를 심습니다. 이후는 웹과 똑같이 쿠키로 인증·갱신합니다. 앱 코드는 종류별로 따로 저장해(`oauth:<client>:<code>`) 데스크톱 코드와 섞이지 않습니다 (테스트 있음). PKCE verifier는 localStorage에 잠깐 두고, 앱을 켠 주소는 새로 고침해도 다시 오므로 처리한 주소를 sessionStorage에 적어 두 번 처리하지 않습니다.
   - 첨부 받기: `GET /attachments/:id/link`(권한 확인 후 `{url}`, no-store) → 시스템 브라우저. 뒤로 가기: 서랍 → 떠 있는 창(Esc를 보냄) → 앞 화면 → 앱 내리기. 분리 창(⧉)은 만들지 않습니다.
-  - Release는 `android-v*` 태그, **Latest로 올리지 않습니다** (데스크톱 업데이트가 `/releases/latest`를 봄). 서명 키는 저장소 비밀값(`ANDROID_KEYSTORE_BASE64` 등)에서 꺼냅니다. 아이콘·시작 화면은 `scripts/icons.mjs`가 만든 도트 모닥불입니다.
+  - Release(0.x)는 `android-v*` 태그, **Latest로 올리지 않습니다** (데스크톱 업데이트가 `/releases/latest`를 봄). 서명 키는 저장소 비밀값(`ANDROID_KEYSTORE_BASE64` 등)에서 꺼냅니다. 아이콘·시작 화면은 `scripts/icons.mjs`가 만든 도트 모닥불입니다.
   - PC에 Android SDK가 없어 APK는 GitHub Actions에서만 빌드했습니다. 실제 기기에서의 로그인·통화·딥링크 확인은 사람이 해야 합니다.
 - **네이티브 안드로이드 앱 (Phase 8):** `apps/mobile`(Expo SDK 57, RN 0.86, Expo Router), 자세한 것은 `docs/mobile.md`
   - Expo 버전마다 API가 자주 바뀌므로 기억으로 쓰지 말고 `https://docs.expo.dev/versions/v57.0.0/`을 확인합니다. 패키지는 `npx expo install <이름>`으로 넣어 SDK에 맞는 버전을 받습니다 (pnpm 격리 설치 그대로, Metro 설정 없음).
@@ -367,6 +367,7 @@ MetaCode는 Discord/Slack 같은 채팅·음성 통화 플랫폼에 **메타버�
   - **제스처 콜백에서 `this`를 쓰지 않습니다:** Reanimated Babel 플러그인이 `Gesture.Pan().onUpdate(...)` 같은 인라인 콜백을 worklet으로 바꾸면서 `this`를 잃습니다 (`runOnJS(true)`여도). 클래스 안에서는 `const self = this`로 잡아 둡니다 (`Cannot read property ... of undefined`로 실제로 겪음).
   - Fast Refresh는 `useState`로 만든 엔진 객체를 그대로 두므로, 엔진 클래스에 메서드를 더하면 예전 객체에는 없어서 `undefined is not a function`이 납니다. 앱을 다시 켜면 됩니다 (`adb shell am force-stop me.kimyangmin.metacode` 뒤 다시 실행).
   - 가로로 놓는 `ScrollView`에는 `flexGrow: 0`을 줍니다. RN `ScrollView`는 기본이 `flexGrow: 1`이라, 목록 서랍의 커뮤니티 막대(`Rail`, 폭 72)가 채널 목록과 남는 폭을 나눠 가져 화면 절반을 차지했고, 아래 내 정보 칸의 이름·"온라인"이 눌려 세로로 꺾였습니다.
+  - 릴리스(`docs/mobile.md` "릴리스"): `android-v*` 태그 → `android-release.yml`이 `apps/mobile`을 prebuild·`assembleRelease`해서 예전 앱과 같은 키로 서명한 APK를 Release로(Latest 아님). 서명은 `app.config.ts`의 `withReleaseSigning`(ExpoConfig의 plugins 칸이 함수를 받지 않아 config를 감싸서 냄)이 `ANDROID_KEYSTORE_PATH`가 있을 때만 넣습니다. 앱은 스스로 업데이트하지 않아서 켤 때 GitHub Release 목록으로 새 버전을 알립니다 (`features/app/UpdateNotice.tsx`). 예전 Capacitor 앱 안의 웹은 "새 앱 받기"를 띄웁니다 (웹 `UpdateNotice`의 `isAndroidApp`).
   - Skia는 설치 스크립트로 미리 빌드된 라이브러리를 받으므로 `onlyBuiltDependencies`에 있습니다.
   - Windows에서 로컬 Gradle 빌드는 C++ 단계(worklets, screens, skia)가 `ninja: manifest 'build.ninja' still dirty after 100 tries`로 실패했습니다 (pnpm 연결 폴더를 CMake가 계속 다시 확인함). APK는 Actions(`Mobile Build`, ubuntu)에서 만들고, 개발 빌드(dev client)를 기기에 설치한 뒤 JS만 로컬 Metro로 바꿔 끼웁니다.
 - **Windows에서 파일 수정:** Windows PowerShell 5.1의 `Get-Content`/`Set-Content`는 UTF-8 한글을 깨뜨립니다. 파일 수정은 편집 도구나 bash를 씁니다. Windows용 Python으로 고칠 때는 `newline=''`로 열어야 줄바꿈이 CRLF로 바뀌지 않습니다 (Prettier가 LF를 요구함).
