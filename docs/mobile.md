@@ -44,7 +44,7 @@ cd apps/mobile/android
 ./gradlew assembleRelease   # 서명 설정 전에는 디버그 키로 서명됨
 ```
 
-`Mobile Build` 워크플로가 같은 방법으로 APK를 만들어 아티팩트로 남깁니다. 빌드가 10분 넘게 걸려서 지금은 PR마다 돌리지 않고, 필요할 때 GitHub Actions → Mobile Build → Run workflow(브랜치 고르기)로 실행합니다.
+`Mobile Build` 워크플로가 같은 방법으로 APK를 만들어 아티팩트로 남깁니다. 빌드가 10분 넘게 걸려서 지금은 PR마다 돌리지 않고, 필요할 때 GitHub Actions → Mobile Build → Run workflow(브랜치 고르기)로 실행합니다. 실행할 때 만들 APK(`dev` 개발 빌드만 / `release` JS를 넣은 빌드만 / `both`)와 CPU 종류(기본 arm64-v8a 하나)를 고릅니다. 개발 빌드 + arm64 하나가 가장 빠르고, 둘 다 두 CPU용으로 만들면 20분 넘게 걸립니다. 명령줄: `gh workflow run "Mobile Build" --ref <브랜치> -f variant=dev`.
 
 ## 인증
 
@@ -55,8 +55,26 @@ cd apps/mobile/android
 3. 앱이 `POST /auth/android/token {code, codeVerifier}`로 토큰을 받습니다. 액세스 토큰은 메모리에, 리프레시 토큰은 SecureStore(안드로이드 Keystore)에 둡니다.
 4. API는 `Authorization: Bearer`, 갱신은 `POST /auth/refresh {refreshToken}`입니다.
 
-## 예전 앱을 대신할 때
+## 릴리스
 
-- 패키지 이름(`me.kimyangmin.metacode`)과 서명 키가 같아야 덮어 설치됩니다. versionCode는 버전으로 계산하므로(1.0.0 → 10000) 예전 앱(0.x)보다 큽니다.
-- `android-release.yml`을 `apps/mobile`을 빌드하도록 바꾸고, `apps/android`와 서버의 `android/session`, 웹의 `platform/android.ts`를 정리합니다.
+GitHub Releases의 서명한 APK로 냅니다 (Play 스토어 아님). 서명 키는 예전 Capacitor 앱과 같은 저장소 비밀값(`ANDROID_KEYSTORE_BASE64` 등, [docs/android.md](android.md) "서명 키 만들기")이라, 예전 앱(0.x) 위에 덮어 설치됩니다.
+
+1. 서버·웹이 먼저 배포되어 있어야 합니다 (앱이 쓰는 API).
+2. `apps/mobile/package.json`의 `version`을 올려서 병합합니다. `versionCode`는 버전에서 만듭니다 (1.2.3 → 10203).
+3. 그 커밋에 `android-v<버전>` 태그를 달아 push합니다.
+   ```bash
+   git tag android-v1.0.0 && git push origin android-v1.0.0
+   ```
+4. `Android Release` 워크플로가 `expo prebuild` → `assembleRelease`(arm64-v8a, armeabi-v7a)로 `MetaCode-<버전>.apk`를 만들어 Release로 올립니다 (약 20분). 태그와 package.json 버전이 다르거나 서명 키 비밀값이 없으면 실패합니다.
+
+- **Latest로 올리지 않습니다.** 데스크톱 앱이 저장소의 Latest Release로 업데이트를 확인하기 때문입니다 (`--latest=false`).
+- 릴리스 서명은 `app.config.ts`의 `withReleaseSigning`이 prebuild 때 `app/build.gradle`에 넣습니다. 환경변수 `ANDROID_KEYSTORE_PATH`가 있을 때만 그 키, 없으면 디버그 키입니다 (로컬·`Mobile Build`).
+- 앱은 스스로 업데이트하지 않습니다. 켤 때 Release 목록에서 지금보다 새 `android-v*`를 찾아 화면 위에 "새 버전 → 받기"를 띄웁니다 (`features/app/UpdateNotice.tsx`, 6시간에 한 번, GitHub API는 로그인 없이 시간당 60번).
+- 개발 빌드(dev client)는 디버그 키라 서명이 달라서, 그 위에는 릴리스 APK를 덮어 설치할 수 없습니다. 개발 빌드를 지우고(`adb uninstall me.kimyangmin.metacode`) 설치합니다. 반대도 같습니다.
+- 손으로 실행(workflow_dispatch)하면 Release 없이 APK를 아티팩트로 남깁니다.
+
+## 예전 앱에서 옮겨 올 때
+
 - 예전 앱의 로그인(쿠키)은 이어지지 않으므로 한 번 다시 로그인해야 합니다.
+- 예전 앱을 쓰는 사람에게는 운영 웹이 "새 앱 받기"(`ANDROID_DOWNLOAD_URL`, `android-v` Release 목록)를 띄웁니다.
+- 모두 옮겨 가면 `apps/android`, 서버의 `android/session`, 웹의 `platform/android.ts`와 그것을 부르는 곳을 정리합니다.

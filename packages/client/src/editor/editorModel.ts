@@ -23,7 +23,7 @@ import {
   encodeFrame,
   isBlank,
 } from '@metacode/shared';
-import { type Rect, emptyRowsBelow, shiftPixels } from './selection';
+import { type Rect, emptyRowsBelow, shiftPixels } from './selection.js';
 
 /**
  * 도트 에디터가 고치는 문서. 매니페스트는 애니메이션이 프레임을 번호로 함께 쓰지만(같은 그림 한 번만 저장),

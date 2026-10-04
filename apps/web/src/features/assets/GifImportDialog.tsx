@@ -2,7 +2,7 @@ import { CHARACTER_MAX_SIZE, FRAME_LIMIT, FRAME_MS_MAX, FRAME_MS_MIN } from '@me
 import { useEffect, useMemo, useState } from 'react';
 import { isKeyboardClaimed } from '../../ui/keyboardClaim';
 import { Select } from '../../ui/Select';
-import { ANIMATION_LIMIT, type PixelDocument } from './editorModel';
+import { ANIMATION_LIMIT, type PixelDocument } from '@metacode/client';
 import {
   type Anchor,
   type DecodedGif,

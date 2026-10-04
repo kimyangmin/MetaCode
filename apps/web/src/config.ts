@@ -9,3 +9,10 @@ export function webUrl(): string {
 
 /** 데스크톱 앱 설치 파일을 받는 곳 (GitHub Releases의 최신 버전) */
 export const DESKTOP_DOWNLOAD_URL = 'https://github.com/kimyangmin/MetaCode/releases/latest';
+
+/**
+ * 안드로이드 앱 APK를 받는 곳. 안드로이드 Release는 Latest로 올리지 않으므로(데스크톱 업데이트가 Latest를 봄)
+ * `android-v` 태그의 Release만 골라 보여 준다.
+ */
+export const ANDROID_DOWNLOAD_URL =
+  'https://github.com/kimyangmin/MetaCode/releases?q=android-v&expanded=true';

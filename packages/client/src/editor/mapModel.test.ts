@@ -1,7 +1,7 @@
 import { type MapDefinition, mapDefinitionSchema } from '@metacode/shared';
 import { BUILTIN_MAPS } from '@metacode/shared/builtin-assets';
 import { describe, expect, it } from 'vitest';
-import { MapDocument, fromDefinition, toDefinition } from './mapModel';
+import { MapDocument, fromDefinition, toDefinition } from './mapModel.js';
 
 const sizes: Record<string, { w: number; h: number }> = {
   'builtin:bench': { w: 2, h: 2 },

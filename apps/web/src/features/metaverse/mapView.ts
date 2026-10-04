@@ -11,6 +11,7 @@ import {
   objectBounds,
 } from '@metacode/shared';
 import type Phaser from 'phaser';
+import { type AssetLookup, manifestId } from '@metacode/client';
 import {
   frameAt,
   framePixels,
@@ -20,24 +21,7 @@ import {
   sheetColumns,
 } from '../assets/render';
 
-export type AssetLookup = (ref: AssetRef) => AssetManifest | undefined;
-
-/** 매니페스트마다 다른 번호 (같은 에셋을 고쳐 새 매니페스트를 받으면 텍스처를 새로 만든다) */
-const manifestIds = new WeakMap<AssetManifest, number>();
-let nextManifestId = 0;
-
-/**
- * 매니페스트 객체마다 붙이는 번호. 텍스처 키에 넣으면 에셋을 고쳐 새 매니페스트를 받았을 때 키가 바뀌어
- * 새 그림으로 다시 만든다 (같은 에셋 ID·버전이라도 예전 매니페스트로 만든 텍스처를 쓰지 않게).
- */
-export function manifestId(manifest: AssetManifest): number {
-  let id = manifestIds.get(manifest);
-  if (id === undefined) {
-    id = ++nextManifestId;
-    manifestIds.set(manifest, id);
-  }
-  return id;
-}
+export type { AssetLookup } from '@metacode/client';
 
 function textureKeyOf(ref: AssetRef, manifest: AssetManifest): string {
   return `asset:${ref}:${manifestId(manifest)}`;

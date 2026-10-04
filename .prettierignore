@@ -14,3 +14,4 @@ apps/android/android/**/build
 # 네이티브 앱: expo prebuild가 만드는 네이티브 프로젝트와 Expo 캐시
 apps/mobile/android
 apps/mobile/.expo
+apps/mobile/expo-env.d.ts

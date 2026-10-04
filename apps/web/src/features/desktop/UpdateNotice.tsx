@@ -1,13 +1,13 @@
 import type { UpdateReadyInfo } from '@metacode/shared';
 import { type ReactNode, useEffect, useState } from 'react';
-import { DESKTOP_DOWNLOAD_URL } from '../../config';
-import { getDesktopBridge } from '../../platform';
+import { ANDROID_DOWNLOAD_URL, DESKTOP_DOWNLOAD_URL } from '../../config';
+import { getDesktopBridge, isAndroidApp, loadAndroid } from '../../platform';
 import { X } from 'lucide-react';
 
 /**
  * 데스크톱 앱 업데이트 안내. 메인 프로세스가 새 버전을 다 받아 두면 "다시 시작"을 띄운다
  * (누르지 않아도 앱을 끌 때 설치된다). 자동 업데이트가 없는 옛 앱(0.2.0 이하)에는 설치 파일 받는 곳을 알려 준다.
- * 브라우저에서는 아무것도 그리지 않는다.
+ * 웹을 감싼 예전 안드로이드 앱(Capacitor)에는 새 네이티브 앱을 받으라고 알린다. 브라우저에서는 아무것도 그리지 않는다.
  */
 export function UpdateNotice() {
   const desktop = getDesktopBridge();
@@ -28,6 +28,23 @@ export function UpdateNotice() {
     };
   }, [updates]);
 
+  if (isAndroidApp()) {
+    if (dismissed === 'android') return null;
+    return (
+      <Notice onClose={() => setDismissed('android')}>
+        <span>새 안드로이드 앱이 나왔습니다. 받아서 설치하면 이 앱 위에 덮어 설치됩니다.</span>
+        <button
+          type="button"
+          className="button button--primary"
+          onClick={() =>
+            void loadAndroid().then((android) => android.openExternal(ANDROID_DOWNLOAD_URL))
+          }
+        >
+          새 앱 받기
+        </button>
+      </Notice>
+    );
+  }
   if (!desktop) return null;
 
   if (!updates) {

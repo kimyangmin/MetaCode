@@ -3,7 +3,7 @@ import type { QueryClient } from '@tanstack/react-query';
 import { isAndroidApp } from '../../platform';
 import { appUrl } from '../../stores/layout';
 import { PHONE_QUERY } from '../../ui/useMediaQuery';
-import { type EditorDoc, fromManifest, newDoc } from './editorModel';
+import { type EditorDoc, fromManifest, newDoc } from '@metacode/client';
 import { type EditorTarget, useAssetEditorStore, useMapEditorStore } from './editorStore';
 
 /**

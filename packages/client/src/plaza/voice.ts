@@ -1,0 +1,41 @@
+import type { VoiceCall } from '@metacode/shared';
+
+/** 통화 중인 캐릭터에 보일 것: 참여 중인 음성 채널, 화면 공유, 말하는 중, 음소거 */
+export interface ActorVoice {
+  label: VoiceLabel;
+  /** 화면을 공유 중 */
+  sharing: boolean;
+  speaking: boolean;
+  muted: boolean;
+}
+
+/** 캐릭터 위에 보일 통화 이름: 음성 채널(스피커 아이콘 + 채널 이름) 또는 DM 통화(전화 아이콘 + "통화 중") */
+export interface VoiceLabel {
+  kind: 'channel' | 'call';
+  name: string;
+}
+
+/**
+ * 광장 캐릭터에 보일 통화 상태. 이 광장에 속한 통화(분수 광장은 커뮤니티의 음성 채널들,
+ * 모닥불 캠프는 그 DM)의 참여자만 표시하고, 표시할 이름은 channelLabels에서 가져온다.
+ * 참여 중인 채널 이름은 모두에게 보이지만, 말하는 중은 내가 들어가 있는 통화(myCallId)의 사람만 보인다.
+ */
+export function plazaVoiceStates(
+  calls: Record<string, VoiceCall>,
+  channelLabels: ReadonlyMap<string, VoiceLabel>,
+  myCallId: string | null,
+): Map<string, ActorVoice> {
+  const states = new Map<string, ActorVoice>();
+  for (const [channelId, label] of channelLabels) {
+    for (const member of calls[channelId]?.members ?? []) {
+      states.set(member.user.id, {
+        label,
+        // 화면을 공유 중이면 광장에서도 알 수 있게 표시한다.
+        sharing: member.sharing,
+        speaking: channelId === myCallId && member.speaking,
+        muted: member.muted,
+      });
+    }
+  }
+  return states;
+}
