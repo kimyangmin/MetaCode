@@ -46,6 +46,8 @@ export default function RootLayout() {
             </Stack.Protected>
             {/* 로그인 결과 딥링크 (metacode://auth). 받자마자 알맞은 화면으로 옮긴다 */}
             <Stack.Screen name="auth" />
+            {/* 초대 링크 (metacode://invite/<코드>). 로그인 전이면 코드를 기억해 두고 로그인 화면으로 */}
+            <Stack.Screen name="invite/[code]" />
           </Stack>
         </QueryClientProvider>
       </SafeAreaProvider>
