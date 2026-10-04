@@ -1,9 +1,10 @@
 name: Android Release
 
-# android-v<버전> 태그를 push하면 서명한 APK를 만들어 GitHub Release로 올린다.
+# android-v<버전> 태그를 push하면 네이티브 안드로이드 앱(apps/mobile, React Native)의 서명한 APK를 만들어 GitHub Release로 올린다.
 # 데스크톱 앱이 저장소의 Latest Release로 업데이트를 확인하므로, 안드로이드 Release는 Latest로 올리지 않는다.
-# 태그의 버전은 apps/android/package.json의 version과 같아야 한다. 절차는 docs/android.md.
+# 태그의 버전은 apps/mobile/package.json의 version과 같아야 한다. 절차는 docs/mobile.md "릴리스".
 # 손으로 실행(workflow_dispatch)하면 Release 없이 APK만 만들어 Actions 아티팩트로 남긴다 (빌드 확인용).
+# 서명 키는 예전 앱(apps/android, Capacitor 0.x)과 같은 키라 그 위에 덮어 설치된다.
 on:
   push:
     tags: ['android-v*']
@@ -19,16 +20,16 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
 
       - name: Check version
         id: version
         run: |
-          version=$(node -p "require('./apps/android/package.json').version")
+          version=$(node -p "require('./apps/mobile/package.json').version")
           if [ "$GITHUB_REF_TYPE" = "tag" ] && [ "android-v$version" != "$GITHUB_REF_NAME" ]; then
-            echo "::error::태그($GITHUB_REF_NAME)와 apps/android/package.json 버전($version)이 다릅니다."
+            echo "::error::태그($GITHUB_REF_NAME)와 apps/mobile/package.json 버전($version)이 다릅니다."
             exit 1
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
@@ -42,21 +43,17 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      # 앱이 불러오는 워크스페이스 패키지(@metacode/shared, @metacode/client)는 dist를 쓴다
+      - run: pnpm --filter "@metacode/mobile^..." build
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '21'
           cache: gradle
 
-      # Android SDK는 ubuntu 러너에 이미 있다 (ANDROID_HOME). 모자란 플랫폼은 Gradle이 받아 온다.
-      # android-actions/setup-android@v3는 sdkmanager가 없어진 'tools' 패키지를 설치하려다 실패해서 쓰지 않는다.
-      - name: Check Android SDK
-        run: |
-          echo "ANDROID_HOME=$ANDROID_HOME"
-          ls "$ANDROID_HOME/platforms" "$ANDROID_HOME/build-tools"
-
-      # 네이티브 프로젝트에 설정(capacitor.config.json)과 플러그인(App, Browser)을 넣는다.
-      - run: pnpm --filter @metacode/android exec cap sync android
+      # 네이티브 프로젝트는 커밋하지 않고 app.config.ts로 만든다 (릴리스 서명도 app.config.ts의 설정 플러그인)
+      - run: pnpm --filter @metacode/mobile exec expo prebuild --platform android --no-install
 
       # 서명 키는 저장소 비밀값에서 꺼낸다 (docs/android.md "서명 키 만들기"). 태그 빌드는 키가 꼭 있어야 한다.
       - name: Prepare signing key
@@ -74,8 +71,9 @@ jobs:
           echo "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/release.jks"
           echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
 
+      # 휴대폰 CPU 두 종류(64비트, 오래된 32비트)를 한 APK에 넣는다
       - name: Build APK
-        working-directory: apps/android/android
+        working-directory: apps/mobile/android
         env:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
@@ -83,20 +81,19 @@ jobs:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
           chmod +x gradlew
+          ./gradlew --no-daemon assembleRelease -PreactNativeArchitectures=arm64-v8a,armeabi-v7a
           mkdir -p ../upload
           if [ -n "$ANDROID_KEYSTORE_PATH" ]; then
-            ./gradlew --no-daemon assembleRelease
             cp app/build/outputs/apk/release/app-release.apk "../upload/MetaCode-$VERSION.apk"
           else
-            ./gradlew --no-daemon assembleDebug
-            cp app/build/outputs/apk/debug/app-debug.apk "../upload/MetaCode-$VERSION-debug.apk"
+            cp app/build/outputs/apk/release/app-release.apk "../upload/MetaCode-$VERSION-debug.apk"
           fi
           ls -la ../upload
 
       - uses: actions/upload-artifact@v4
         with:
           name: android-apk
-          path: apps/android/upload/*.apk
+          path: apps/mobile/upload/*.apk
           if-no-files-found: error
 
       - name: Publish release
@@ -105,7 +102,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           VERSION: ${{ steps.version.outputs.version }}
-        working-directory: apps/android/upload
+        working-directory: apps/mobile/upload
         run: |
           gh release create "$GITHUB_REF_NAME" "MetaCode-$VERSION.apk" \
             --latest=false \
@@ -114,7 +111,7 @@ jobs:
           1. 휴대폰에서 이 페이지를 열고 \`MetaCode-$VERSION.apk\`를 받습니다.
           2. 받은 파일을 열면 \"출처를 알 수 없는 앱\" 설치를 허용할지 묻습니다. 허용하고 설치합니다.
 
-          앱 화면은 운영 웹(https://metacode.kimyangmin.me)을 그대로 여는 것이라, 기능 업데이트는 앱을 다시 설치하지 않아도 들어옵니다.
-          앱 자체가 바뀌었을 때만(이 Release처럼) 새 APK를 받아 덮어 설치하면 됩니다. 로그인은 그대로 남습니다.
+          예전 앱(0.x, 웹을 감싼 앱)이 있으면 그 위에 덮어 설치됩니다. 로그인 방식이 바뀌어 처음 한 번은 다시 로그인해야 합니다.
+          앱 화면을 휴대폰에서 직접 그리므로, 앱의 기능이 바뀌면 새 APK를 받아 덮어 설치합니다.
 
-          안드로이드 7.0 이상, Chrome(또는 Android System WebView)이 최신이어야 합니다."
+          안드로이드 7.0 이상."

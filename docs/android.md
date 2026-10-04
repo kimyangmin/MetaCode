@@ -1,4 +1,6 @@
-# 안드로이드 앱
+# 안드로이드 앱 (예전, Capacitor)
+
+> **예전 앱입니다.** 1.0.0부터 `android-v*` Release는 네이티브 앱(`apps/mobile`, [docs/mobile.md](mobile.md))을 올립니다. 같은 패키지 이름·서명 키라 이 앱(0.x) 위에 덮어 설치됩니다. 이 앱을 쓰는 사람에게는 웹이 "새 앱 받기"를 띄웁니다 (`UpdateNotice`). 모두 옮겨 가면 `apps/android`, 서버의 `POST /auth/android/session`, 웹의 `platform/android.ts`를 지웁니다. 아래 서명 키 만들기는 새 앱도 그대로 씁니다.
 
 `apps/android`는 [Capacitor](https://capacitorjs.com)로 만든 안드로이드 앱입니다. 데스크톱 앱처럼 **운영 웹(`https://metacode.kimyangmin.me`)을 앱 창(WebView)에서 여는 셸**이라, 웹을 배포하면 앱 화면도 바로 최신이 됩니다. 앱(APK)을 새로 내야 하는 것은 네이티브 쪽(권한, 딥링크, 아이콘, 플러그인)을 바꿨을 때뿐입니다.
 
