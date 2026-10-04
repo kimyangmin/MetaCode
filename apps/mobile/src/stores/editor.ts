@@ -7,10 +7,18 @@ export type EditorTarget =
   | { mode: 'create'; communityId: string | null; doc: EditorDoc }
   | { mode: 'edit'; asset: AssetDto };
 
-interface EditorState {
-  target: EditorTarget | null;
+/** 맵 에디터로 여는 커뮤니티 광장 */
+export interface MapEditorTarget {
+  communityId: string;
+  communityName: string;
 }
 
-export const useEditorStore = create<EditorState>(() => ({ target: null }));
+interface EditorState {
+  target: EditorTarget | null;
+  map: MapEditorTarget | null;
+}
+
+export const useEditorStore = create<EditorState>(() => ({ target: null, map: null }));
 
 export const openEditor = (target: EditorTarget) => useEditorStore.setState({ target });
+export const openMapEditor = (map: MapEditorTarget) => useEditorStore.setState({ map });

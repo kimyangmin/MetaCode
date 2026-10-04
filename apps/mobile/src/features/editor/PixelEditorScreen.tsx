@@ -54,6 +54,7 @@ import { Sheet } from '../../ui/Sheet';
 import { useTheme } from '../../ui/theme';
 import { ColorSheet } from './ColorSheet';
 import { EditorCanvas } from './EditorCanvas';
+import { IconButton, ToolButton, toolStyle } from './buttons';
 import { EditorFrameImages } from './frameImages';
 
 type Tool = 'pencil' | 'eraser' | 'fill' | 'pick' | 'footprint';
@@ -366,7 +367,7 @@ export function PixelEditorScreen({ target, onClose }: { target: EditorTarget; o
           onPress={() => setBrush(BRUSHES[(BRUSHES.indexOf(brush) + 1) % BRUSHES.length]!)}
           accessibilityRole="button"
           accessibilityLabel={`붓 굵기 ${brush}`}
-          style={[styles.tool, { backgroundColor: theme.bgInput }]}
+          style={[toolStyle.tool, { backgroundColor: theme.bgInput }]}
         >
           <Text style={{ color: theme.fg, fontWeight: '700' }}>{brush}px</Text>
         </Pressable>
@@ -626,61 +627,6 @@ function AnimationPreview({
   );
 }
 
-function IconButton({
-  icon: Icon,
-  label,
-  disabled,
-  onPress,
-}: {
-  icon: ComponentType<{ color: string; size: number }>;
-  label: string;
-  disabled?: boolean;
-  onPress(): void;
-}) {
-  const theme = useTheme();
-  return (
-    <Pressable
-      onPress={onPress}
-      disabled={disabled}
-      hitSlop={4}
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      style={({ pressed }) => [
-        styles.icon,
-        { opacity: disabled ? 0.35 : 1 },
-        pressed && { backgroundColor: theme.bgHover },
-      ]}
-    >
-      <Icon color={theme.fg} size={20} />
-    </Pressable>
-  );
-}
-
-function ToolButton({
-  icon: Icon,
-  label,
-  active,
-  onPress,
-}: {
-  icon: ComponentType<{ color: string; size: number }>;
-  label: string;
-  active: boolean;
-  onPress(): void;
-}) {
-  const theme = useTheme();
-  return (
-    <Pressable
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      accessibilityState={{ selected: active }}
-      style={[styles.tool, { backgroundColor: active ? theme.accent : theme.bgInput }]}
-    >
-      <Icon color={active ? theme.accentFg : theme.fg} size={20} />
-    </Pressable>
-  );
-}
-
 function SwitchRow({
   label,
   value,
@@ -735,7 +681,6 @@ const styles = StyleSheet.create({
     paddingTop: 8,
     borderTopWidth: StyleSheet.hairlineWidth,
   },
-  tool: { flex: 1, height: 40, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
   // 가로 ScrollView는 기본이 flexGrow: 1이라 남는 높이를 가져간다
   paletteScroll: { flexGrow: 0 },
   palette: { gap: 8, paddingHorizontal: 10, paddingVertical: 10, alignItems: 'center' },
@@ -751,7 +696,6 @@ const styles = StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth,
   },
   animation: { flex: 1, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6 },
-  icon: { width: 40, height: 40, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
   animationRow: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -18,6 +18,7 @@ import { Alert, StyleSheet, Text, View } from 'react-native';
 import { useCommunityAssets } from '../../../api/assets';
 import { apiSend } from '../../../api/client';
 import { AssetList } from '../../editor/AssetList';
+import { openMapEditor } from '../../../stores/editor';
 import { Button, Segmented, TextField } from '../../../ui/controls';
 import { useTheme } from '../../../ui/theme';
 import { Field, Hint, StatusText, useRefresh, useRequest } from './shared';
@@ -203,8 +204,8 @@ const STYLE_TO: Record<PlazaStyle, string> = {
 };
 
 /**
- * 광장: 광장 방식 바꾸기. 바꾸면 광장을 보던 사람들은 새 광장의 스폰 영역에서 다시 시작한다. 맵 에디터로 꾸민 맵은
- * 그 방식에서만 쓰고 지우지 않는다 (커뮤니티 타일·오브젝트와 맵 편집은 에디터 단계에서).
+ * 광장: 광장 방식 바꾸기, 맵 편집, 커뮤니티 타일·오브젝트. 방식을 바꾸면 광장을 보던 사람들은 새 광장의 스폰 영역에서
+ * 다시 시작한다. 맵 에디터로 꾸민 맵은 그 방식에서만 쓰고 지우지 않는다.
  */
 export function PlazaTab({ community }: { community: CommunitySummary }) {
   const refresh = useRefresh(community.id);
@@ -264,6 +265,19 @@ export function PlazaTab({ community }: { community: CommunitySummary }) {
         맵 에디터로 꾸민 맵은 그 방식에서만 쓰고 지우지 않습니다. 원래 방식으로 되돌리면 다시
         나타납니다.
       </Hint>
+      <Field label="광장 맵">
+        <Hint>
+          지금 광장 방식({community.plazaStyle === PlazaStyle.SideScroll ? '횡스크롤' : '탑다운'})의
+          맵에 타일을 칠하고 오브젝트를 놓습니다. 저장하면 광장에 있던 사람들은 스폰 영역에서 다시
+          시작합니다.
+        </Hint>
+        <Button
+          label="광장 맵 편집"
+          onPress={() =>
+            openMapEditor({ communityId: community.id, communityName: community.name })
+          }
+        />
+      </Field>
       <CommunityAssets communityId={community.id} />
     </View>
   );
