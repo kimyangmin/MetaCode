@@ -1,8 +1,9 @@
 import { displayName, memberColor, usePresenceStore } from '@metacode/client';
 import type { CommunityMember } from '@metacode/shared';
-import { SectionList, StyleSheet, Text, View } from 'react-native';
+import { Pressable, SectionList, StyleSheet, Text } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useCommunities, useMembers } from '../../api/queries';
+import { openProfile } from '../../stores/profile';
 import { Avatar } from '../../ui/Avatar';
 import { useTheme } from '../../ui/theme';
 
@@ -36,7 +37,16 @@ export function MemberList({ communityId }: { communityId: string }) {
         </Text>
       )}
       renderItem={({ item: m }) => (
-        <View style={[styles.row, { opacity: isOnline(m) ? 1 : 0.5 }]}>
+        <Pressable
+          onPress={() => openProfile(m.user, communityId)}
+          accessibilityRole="button"
+          accessibilityLabel={`${displayName(m.user)} 정보`}
+          style={({ pressed }) => [
+            styles.row,
+            { opacity: isOnline(m) ? 1 : 0.5 },
+            pressed && { backgroundColor: theme.bgHover },
+          ]}
+        >
           <Avatar user={m.user} size={34} showPresence animate />
           <Text
             style={[styles.name, { color: memberColor(m.roleIds, roles) ?? theme.fg }]}
@@ -47,7 +57,7 @@ export function MemberList({ communityId }: { communityId: string }) {
           {ROLE_LABEL[m.role] ? (
             <Text style={[styles.role, { color: theme.muted }]}>{ROLE_LABEL[m.role]}</Text>
           ) : null}
-        </View>
+        </Pressable>
       )}
     />
   );

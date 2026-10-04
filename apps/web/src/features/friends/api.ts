@@ -1,11 +1,13 @@
-import type { FriendChanged, FriendStatus, FriendsList } from '@metacode/shared';
+import type { FriendChanged, FriendsList } from '@metacode/shared';
 import { type QueryClient, useQuery } from '@tanstack/react-query';
 import { useEffect } from 'react';
 import { apiFetch } from '../../api/client';
 import { jsonBody } from '../../api/queries';
-import { usePresenceStore } from '@metacode/client';
+import { friendsKey, usePresenceStore } from '@metacode/client';
 
-export const friendsKey = ['friends'] as const;
+// 친구 상태 판정은 네이티브 앱과 함께 쓴다 (packages/client)
+export { friendStatusOf, friendsKey } from '@metacode/client';
+
 
 /** 친구, 받은 요청, 보낸 요청. 받은 온라인 여부를 전역 Presence에도 반영한다 (friend:updated로 다시 받음) */
 export function useFriends() {
@@ -26,15 +28,6 @@ export function useFriends() {
       );
   }, [query.data]);
   return query;
-}
-
-/** 나와 그 사람의 관계 */
-export function friendStatusOf(list: FriendsList | undefined, userId: string): FriendStatus {
-  if (!list) return 'none';
-  if (list.friends.some((f) => f.user.id === userId)) return 'friends';
-  if (list.incoming.some((f) => f.user.id === userId)) return 'incoming';
-  if (list.outgoing.some((f) => f.user.id === userId)) return 'outgoing';
-  return 'none';
 }
 
 const refresh = (queryClient: QueryClient) =>
