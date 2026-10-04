@@ -1,10 +1,11 @@
 import { displayName } from '@metacode/client';
 import type { UserProfile } from '@metacode/shared';
-import { LogOut } from 'lucide-react-native';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { router, usePathname } from 'expo-router';
+import { Settings } from 'lucide-react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { signOut } from '../auth/session';
 import { type RealtimeStatus, useRealtime } from '../realtime/RealtimeProvider';
+import { useUiStore } from '../stores/ui';
 import { Avatar } from '../ui/Avatar';
 import { useTheme } from '../ui/theme';
 
@@ -16,7 +17,7 @@ const STATUS_LABEL: Record<RealtimeStatus, string> = {
 
 /**
  * 목록 아래: 내 프로필과 연결 상태 (웹 UserPanel).
- * 설정 화면은 뒤 단계에서 만든다. 그때까지는 로그아웃만 둔다.
+ * 오른쪽 톱니바퀴로 설정을 연다 (로그아웃은 설정 안에).
  */
 export function UserPanel({ me }: { me: UserProfile }) {
   const theme = useTheme();
@@ -25,11 +26,11 @@ export function UserPanel({ me }: { me: UserProfile }) {
   const statusColor =
     status === 'connected' ? theme.ok : status === 'connecting' ? theme.warn : theme.muted;
 
-  const confirmSignOut = () =>
-    Alert.alert('로그아웃', '로그아웃할까요?', [
-      { text: '취소', style: 'cancel' },
-      { text: '로그아웃', style: 'destructive', onPress: () => void signOut() },
-    ]);
+  const pathname = usePathname();
+  const openSettings = () => {
+    useUiStore.setState({ settingsReturn: pathname, navOpen: false });
+    router.replace('/settings');
+  };
 
   return (
     <View
@@ -50,13 +51,13 @@ export function UserPanel({ me }: { me: UserProfile }) {
         <Text style={{ color: statusColor, fontSize: 12 }}>{STATUS_LABEL[status]}</Text>
       </View>
       <Pressable
-        onPress={confirmSignOut}
+        onPress={openSettings}
         hitSlop={8}
         accessibilityRole="button"
-        accessibilityLabel="로그아웃"
+        accessibilityLabel="설정"
         style={styles.button}
       >
-        <LogOut color={theme.muted} size={20} />
+        <Settings color={theme.muted} size={20} />
       </Pressable>
     </View>
   );

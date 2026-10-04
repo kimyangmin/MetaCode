@@ -6,6 +6,7 @@ import { useEffect } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { restoreSession, useSession } from '@/auth/session';
+import { restoreColorScheme } from '@/stores/colorScheme';
 import { useTheme } from '@/ui/theme';
 
 void SplashScreen.preventAutoHideAsync();
@@ -20,6 +21,7 @@ export default function RootLayout() {
 
   useEffect(() => {
     void restoreSession();
+    void restoreColorScheme();
   }, []);
 
   // 로그인 상태를 알 때까지 시작 화면을 둔다 (로그인 화면이 잠깐 비치지 않게)

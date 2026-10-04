@@ -9,6 +9,8 @@ interface UiState {
   plazaOpen: boolean;
   /** 광장 높이 (dp). null이면 화면의 40% */
   plazaHeight: number | null;
+  /** 설정을 열기 전 화면 (설정에서 나가면 돌아간다) */
+  settingsReturn: string | null;
   setPlazaOpen(open: boolean): void;
   setPlazaHeight(height: number): void;
   setNavOpen(open: boolean): void;
@@ -22,6 +24,7 @@ export const useUiStore = create<UiState>((set) => ({
   membersOpen: false,
   plazaOpen: true,
   plazaHeight: null,
+  settingsReturn: null,
   setPlazaOpen: (plazaOpen) => set({ plazaOpen }),
   setPlazaHeight: (plazaHeight) => set({ plazaHeight }),
   setNavOpen: (navOpen) => set(navOpen ? { navOpen, membersOpen: false } : { navOpen }),

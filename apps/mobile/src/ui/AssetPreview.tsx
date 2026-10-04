@@ -15,12 +15,15 @@ export function AssetPreview({
   animation = 'default',
   dir = 'down',
   palette,
+  animate = true,
 }: {
   manifest: AssetManifest;
   box: number;
   animation?: string;
   dir?: Direction;
   palette?: readonly string[];
+  /** false면 첫 프레임에 멈춘다 (목록의 작은 그림이 많을 때) */
+  animate?: boolean;
 }) {
   const [images] = useState(() => new FrameImages());
   const [elapsed, setElapsed] = useState(0);
@@ -29,10 +32,11 @@ export function AssetPreview({
   // 프레임이 바뀌는 간격으로만 다시 그린다
   const frameMs = manifest.animations[animation]?.frameMs ?? 200;
   useEffect(() => {
+    if (!animate) return;
     const start = Date.now();
     const timer = setInterval(() => setElapsed(Date.now() - start), frameMs);
     return () => clearInterval(timer);
-  }, [frameMs, manifest, animation]);
+  }, [frameMs, manifest, animation, animate]);
 
   const pose =
     manifest.kind === 'character'
